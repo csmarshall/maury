@@ -24,6 +24,8 @@ from maury.manifest import (
     validate_manifest,
 )
 from maury.mining import (
+    CrossRefResult,
+    CrossRefSummary,
     Finding,
     extract_from_messages,
     walk_user_messages,
@@ -616,6 +618,34 @@ _DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
     default="text",
     show_default=True,
 )
+@click.option(
+    "--crossref",
+    "crossref_enabled",
+    is_flag=True,
+    help=(
+        "After extraction, classify each finding against ~/.claude/CLAUDE.md "
+        "via the four-state model (NEW / PRESENT_AND_CLEAR / PRESENT_BUT_UNCLEAR / "
+        "PRESENT_AND_REINFORCED). Per ADR-0020. Adds one LLM call per finding."
+    ),
+)
+@click.option(
+    "--claude-md",
+    "claude_md_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=str(Path.home() / ".claude" / "CLAUDE.md"),
+    show_default=True,
+    help="Path to current CLAUDE.md for cross-reference (only used with --crossref).",
+)
+@click.option(
+    "--repo",
+    "repo_path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Synced-repo path for temporal cross-reference lookup (git history of "
+        "CLAUDE.md). Only used with --crossref. None = current-only mode."
+    ),
+)
 def mine_cmd(
     projects_dir: Path,
     project_name: str | None,
@@ -623,12 +653,19 @@ def mine_cmd(
     max_windows: int | None,
     backend_name: str | None,
     output_format: str,
+    crossref_enabled: bool,
+    claude_md_path: Path,
+    repo_path: Path | None,
 ) -> None:
-    """Mine transcripts for durable preference candidates (Phase 6a).
+    """Mine transcripts for durable preference candidates (Phase 6a + 6c).
 
     Walks JSONL transcripts under --projects-dir, batches user messages
     into windows of --window-size, and asks the configured LLM backend
     to extract durable preferences from each window.
+
+    With --crossref, each finding is then classified against your current
+    CLAUDE.md (and historical CLAUDE.md from --repo's git history, if
+    provided) into one of four states.
 
     By default, picks the project with the most user messages. Pass
     --project to target a specific one. Pass --max-windows to cap cost.
@@ -676,11 +713,34 @@ def mine_cmd(
         on_window_done=_on_window_done,
     )
 
+    # Cross-reference (Phase 6c).
+    crossref_summary = None
+    if crossref_enabled and result.findings:
+        from maury.mining import crossref_findings
+
+        click.echo("")
+        click.echo(f"cross-referencing {len(result.findings)} finding(s) against {claude_md_path}...")
+        if repo_path:
+            click.echo(f"  using git history from: {repo_path}")
+        current_md = claude_md_path.read_text(encoding="utf-8")
+
+        def _on_xref_progress(i: int, total: int, finding: Finding, xref: object) -> None:
+            state = getattr(xref, "state", "?")
+            click.echo(f"  [{i}/{total}] {state}  ({finding.text[:60]})")
+
+        crossref_summary = crossref_findings(
+            result.findings,
+            llm=llm,
+            current_claude_md=current_md,
+            repo_path=repo_path,
+            on_progress=_on_xref_progress,
+        )
+
     # Output.
     if output_format == "json":
-        click.echo(_findings_as_json(result.findings))
+        click.echo(_findings_as_json(result.findings, summary=crossref_summary))
     else:
-        click.echo(_findings_as_text(result.findings, result.windows_processed))
+        click.echo(_findings_as_text(result.findings, result.windows_processed, summary=crossref_summary))
 
     if result.warnings:
         click.echo("")
@@ -704,22 +764,69 @@ def _pick_busiest_project(projects_dir: Path) -> Path:
     return candidates[0][1]
 
 
-def _findings_as_text(findings: list[Finding], windows_processed: int) -> str:
+def _findings_as_text(
+    findings: list[Finding],
+    windows_processed: int,
+    *,
+    summary: CrossRefSummary | None = None,
+) -> str:
+    """Render findings as human-readable text. If summary is a CrossRefSummary, group by state."""
     if not findings:
         return f"\nprocessed {windows_processed} window(s), found nothing durable."
-    lines = [f"\n=== {len(findings)} finding(s) across {windows_processed} window(s) ==="]
-    for f in findings:
-        lines.append(f"\n[{f.confidence}] {f.kind}/{f.scope_hint}: {f.text}")
-        if f.evidence:
-            lines.append(f"   evidence: {f.evidence!r}")
+
+    if summary is None:
+        # No cross-reference: flat list
+        lines = [f"\n=== {len(findings)} finding(s) across {windows_processed} window(s) ==="]
+        for f in findings:
+            lines.append(f"\n[{f.confidence}] {f.kind}/{f.scope_hint}: {f.text}")
+            if f.evidence:
+                lines.append(f"   evidence: {f.evidence!r}")
+        return "\n".join(lines)
+
+    # Cross-referenced: group by state, with the killer signal (REINFORCED) first
+    by_state = summary.by_state
+    state_order = ("PRESENT_AND_REINFORCED", "PRESENT_BUT_UNCLEAR", "NEW", "PRESENT_AND_CLEAR")
+    state_marker = {
+        "PRESENT_AND_REINFORCED": "WARN",
+        "PRESENT_BUT_UNCLEAR": "review",
+        "NEW": "propose",
+        "PRESENT_AND_CLEAR": "ok",
+    }
+    lines = [
+        f"\n=== {summary.total()} finding(s) across {windows_processed} window(s), grouped by cross-reference state ==="
+    ]
+    counts = " | ".join(f"{state}={len(by_state.get(state, []))}" for state in state_order)
+    lines.append(f"summary: {counts}")
+    for state in state_order:
+        bucket = by_state.get(state, [])
+        if not bucket:
+            continue
+        marker = state_marker[state]
+        lines.append(f"\n--- {state} ({len(bucket)}) [{marker}] ---")
+        for f, xref in bucket:
+            lines.append(f"\n[{f.confidence}] {f.kind}/{f.scope_hint}: {f.text}")
+            if f.evidence:
+                lines.append(f"   evidence: {f.evidence!r}")
+            lines.append(f"   xref: {xref.rationale}")
+            if xref.claude_md_quote:
+                lines.append(f"   matches CLAUDE.md: {xref.claude_md_quote[:200]!r}")
+            lines.append(f"   suggested action: {xref.suggested_action}")
     return "\n".join(lines)
 
 
-def _findings_as_json(findings: list[Finding]) -> str:
+def _findings_as_json(findings: list[Finding], *, summary: CrossRefSummary | None = None) -> str:
+    """Render findings as JSON. With summary, includes per-finding xref state."""
     import json as _json
 
-    payload = [
-        {
+    xref_by_finding_id: dict[int, CrossRefResult] = {}
+    if summary is not None:
+        for bucket in summary.by_state.values():
+            for f, xref in bucket:
+                xref_by_finding_id[id(f)] = xref
+
+    payload = []
+    for f in findings:
+        entry: dict[str, object] = {
             "kind": f.kind,
             "scope_hint": f.scope_hint,
             "text": f.text,
@@ -730,8 +837,16 @@ def _findings_as_json(findings: list[Finding]) -> str:
             "source_window_first_ts": f.source_window.first_timestamp,
             "source_window_last_ts": f.source_window.last_timestamp,
         }
-        for f in findings
-    ]
+        xref_opt: CrossRefResult | None = xref_by_finding_id.get(id(f))
+        if xref_opt is not None:
+            xref = xref_opt
+            entry["crossref"] = {
+                "state": xref.state,
+                "claude_md_quote": xref.claude_md_quote,
+                "rationale": xref.rationale,
+                "suggested_action": xref.suggested_action,
+            }
+        payload.append(entry)
     return _json.dumps(payload, indent=2)
 
 

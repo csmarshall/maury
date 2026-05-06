@@ -6,6 +6,13 @@ core; subsequent phases add cross-window grouping (6b), temporal
 cross-reference (6c), and the proposal-review UI (Phase 7).
 """
 
+from .crossref import (
+    CrossRefResult,
+    CrossRefSummary,
+    crossref_finding,
+    crossref_findings,
+    get_claude_md_at_timestamp,
+)
 from .extractor import (
     DEFAULT_WINDOW_SIZE,
     EXTRACTION_PROMPT,
@@ -32,13 +39,18 @@ __all__ = [
     "DEFAULT_WINDOW_SIZE",
     "EXTRACTION_PROMPT",
     "SYSTEM_INJECTED_PREFIXES",
+    "CrossRefResult",
+    "CrossRefSummary",
     "ExtractionResult",
     "ExtractionWindow",
     "Finding",
     "TranscriptMessage",
+    "crossref_finding",
+    "crossref_findings",
     "extract_from_messages",
     "extract_window",
     "format_window_for_prompt",
+    "get_claude_md_at_timestamp",
     "make_windows",
     "walk_user_messages",
     "walk_user_messages_in_file",
