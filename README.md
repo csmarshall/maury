@@ -114,8 +114,9 @@ Claude config across hosts. The tagline writes itself.
 ## Status
 
 Pre-v0.1, scaffolding stage. See [`docs/tenets.md`](docs/tenets.md) for
-the principles maury is built on and [`docs/adr/`](docs/adr/) for the
-architecture decisions.
+the principles maury is built on, [`docs/workflow.md`](docs/workflow.md)
+for ASCII state diagrams of the user-facing flows, and
+[`docs/adr/`](docs/adr/) for the architecture decisions.
 
 ## Install
 
