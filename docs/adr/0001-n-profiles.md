@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
+
 ## Context
 
 Initial sketches assumed exactly two contexts: "home" and "work." Real

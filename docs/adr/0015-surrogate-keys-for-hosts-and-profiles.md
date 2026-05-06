@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 6 — Identity is not name](../tenets.md#6-identity-is-not-name)
+
 ## Context
 
 The v1 manifest schema used the human-readable name as the dict key for

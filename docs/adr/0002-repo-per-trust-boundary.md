@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
+
 ## Context
 
 The work laptop must not have access to personal-context bytes. We

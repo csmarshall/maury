@@ -3,6 +3,11 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
+- [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
+
 ## Context
 
 Earlier ADRs implicitly assumed config flows in one direction: from

@@ -3,6 +3,11 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
+- [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
+
 ## Context
 
 A host with rw access only to its own profile's repo (e.g., a work

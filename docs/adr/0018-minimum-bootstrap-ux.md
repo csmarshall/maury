@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
+
 ## Context
 
 Self-directed onboarding for a new host needs to work with the

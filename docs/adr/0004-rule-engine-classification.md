@@ -3,6 +3,11 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
+- [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
+
 ## Context
 
 Mining transcripts for preferences is genuinely fuzzy work — well-suited

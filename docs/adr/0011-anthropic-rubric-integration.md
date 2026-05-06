@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
+
 ## Context
 
 Anthropic ships no public API or CLI for evaluating CLAUDE.md / settings

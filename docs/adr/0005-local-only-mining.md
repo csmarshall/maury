@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 4 — Sensitive data stays local](../tenets.md#4-sensitive-data-stays-local)
+
 ## Context
 
 A natural design would centralize mining: SSH to each host, pull all the

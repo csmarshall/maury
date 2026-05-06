@@ -3,6 +3,11 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
+- [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
+
 ## Context
 
 [rlancemartin/claude-diary](https://github.com/rlancemartin/claude-diary)

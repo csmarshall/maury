@@ -3,6 +3,12 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 
+## Related tenets
+
+- [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
+- [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
+- [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
+
 ## Context
 
 Earlier ADRs (0005, 0008, 0011, 0013) treated mining as a single
