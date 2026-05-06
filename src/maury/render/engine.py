@@ -21,10 +21,17 @@ overlay for agents/skills/bin. Other content types are stubbed.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from maury.manifest import Manifest
+
+from .settings_merge import (
+    SettingsMergeError,
+    collect_settings_layers,
+    merge_layers,
+)
 
 # ---- result types ---------------------------------------------------------
 
@@ -119,6 +126,9 @@ def render(
 
     # CLAUDE.md: concatenate from base + each profile in chain + host overlay.
     _render_claude_md(layers, result)
+
+    # settings.json: deep-merge per ADR-0019.
+    _render_settings_json(layers, result)
 
     # File-overlay content (later wins, with warning when child shadows parent):
     for subdir in ("agents", "skills", "bin"):
@@ -219,6 +229,30 @@ def _render_claude_md(layers: list[LayerSource], result: RenderResult) -> None:
         RenderedFile(
             target_path="CLAUDE.md",
             content=final_content,
+            source_layer="merged",
+        )
+    )
+
+
+# ---- settings.json deep-merge -------------------------------------------
+
+
+def _render_settings_json(layers: list[LayerSource], result: RenderResult) -> None:
+    """Deep-merge settings.json across layers and emit the result."""
+    layer_paths = [(layer.name, layer.repo_root / layer.relative_root) for layer in layers]
+    contents = collect_settings_layers(layer_paths)
+    if not contents:
+        return
+    try:
+        merged = merge_layers(contents)
+    except SettingsMergeError as e:
+        result.errors.append(f"settings.json: {e}")
+        return
+    payload = json.dumps(merged, indent=2).encode() + b"\n"
+    result.files.append(
+        RenderedFile(
+            target_path="settings.json",
+            content=payload,
             source_layer="merged",
         )
     )
