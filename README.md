@@ -71,14 +71,41 @@ Three pillars:
 ## Why "Maury"?
 
 Maury Sline is the talent agent in *The Blues Brothers* who books Jake
-and Elwood's gigs — the closest thing to a manager the brothers have. The
-metaphor maps cleanly: an agent who books your configs across town,
+and Elwood's gigs — the closest thing to a manager the brothers have.
+The metaphor maps cleanly: an agent who books your configs across town,
 knows where everyone needs to be, and gets the band on stage.
 
-The deeper thread: Anthropic's Claude is widely understood to be named
-after Claude **Elwood** Shannon — same Elwood as Elwood Blues. Maury is
-Elwood's agent. So `claude → elwood → maury` traces the lineage from the
-model, through information theory, through Chicago, to the tool.
+The deeper thread is a four-generation family tree from the model down
+to the tool that manages it:
+
+```
+                    ┌─────────────────────────┐
+                    │  Claude  (Anthropic LLM)│
+                    └────────────┬────────────┘
+                                 │  named after
+                                 ▼
+              ┌────────────────────────────────────┐
+              │  Claude Elwood Shannon             │
+              │  father of information theory      │
+              └────────────────┬───────────────────┘
+                               │  shares "Elwood" with
+                               ▼
+                ┌──────────────────────────────┐
+                │  Elwood Blues  (Dan Aykroyd) │
+                │  The Blues Brothers          │
+                └──────────────┬───────────────┘
+                               │  managed by
+                               ▼
+                ┌──────────────────────────────┐
+                │  Maury Sline (Steve Lawrence)│
+                │  Elwood's booking agent      │
+                │  the namesake of this tool   │
+                └──────────────────────────────┘
+```
+
+So `claude → elwood → maury` traces the lineage from the model, through
+information theory, through Chicago, to the tool that manages your
+Claude config across hosts. The tagline writes itself.
 
 ## Status
 
