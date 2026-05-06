@@ -47,10 +47,13 @@ local-only mining + rule-engine classification + cross-OS hook
 portability + active in-session capture — is what no single tool does.
 That's maury.
 
-The first principle (see [`docs/tenets.md`](docs/tenets.md)):
-*Within a profile, Claude's behavior should be identical across every
-host you use. Across profiles, differences must be explicit.* Drift
-within a profile is a bug; differences between profiles are a feature.
+The project's purpose, captured as tenet #2 in
+[`docs/tenets.md`](docs/tenets.md): *within a profile, Claude's
+behavior should be identical across every host you use. Across
+profiles, differences must be explicit.* Drift within a profile is
+a bug; differences between profiles are a feature. (Tenet #1 is
+"first, do no harm" — the operating principle for every state-
+changing operation.)
 
 ## What it does
 

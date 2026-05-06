@@ -22,7 +22,7 @@ kills adoption, and there's always an escape hatch a user could find.
 Accepting them silently is worse — `maury sync` would then clobber
 the user's edits with the rendered output.
 
-Per tenet #2 (first, do no harm) and tenet #8 (hand-edits are
+Per tenet #1 (first, do no harm) and tenet #8 (hand-edits are
 first-class input), we need a deliberate model for **drift detection
 and reconciliation**. This is a GitOps-style reconciliation loop
 where the synced repo + manifest is the desired state, the host's
@@ -149,7 +149,7 @@ v1.1 (deferred):
 - **Read-only files / file-system locks.** Rejected: friction kills
   adoption; users will find escape hatches anyway.
 - **Pull-and-clobber by default with warnings.** Rejected: violates
-  tenet #2 (first, do no harm). Users would lose data they didn't
+  tenet #1 (first, do no harm). Users would lose data they didn't
   realize they could lose.
 - **Treat Claude-writes as a privileged channel that bypasses
   reconcile entirely.** Rejected (per Q8): non-uniform; hard to

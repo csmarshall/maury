@@ -12,7 +12,19 @@ either the decision is wrong or the tenet needs an explicit revision.
 
 ---
 
-## 1. Consistency within a profile; controlled difference across profiles
+## 1. First, do no harm
+
+The operating principle for everything below. Never silently overwrite,
+lose, or expose user data. Every state-changing operation is auditable,
+reversible where possible, and pauses for input when there's ambiguity.
+A tool that helps you raise the boats can't be allowed to sink any of
+them.
+
+*Embodied by: drift-detect-before-clobber (Q10), three-way merge with
+user arbitration (Q11), Claude-writes logged with revert path (Q8),
+no auto-promotion across trust boundaries (ADR-0009).*
+
+## 2. Consistency within a profile; controlled difference across profiles
 
 The reason maury exists. Within a profile, Claude's behavior,
 configuration, capabilities, and skills should be **identical** across
@@ -25,16 +37,6 @@ Drift between hosts within a profile is a bug. Differences between
 profiles are a feature.
 
 *Embodied by: the entire project.*
-
-## 2. First, do no harm
-
-Never silently overwrite, lose, or expose user data. Every state-
-changing operation is auditable, reversible where possible, and pauses
-for input when there's ambiguity.
-
-*Embodied by: drift-detect-before-clobber (Q10), three-way merge with
-user arbitration (Q11), Claude-writes logged with revert path (Q8),
-no auto-promotion across trust boundaries (ADR-0009).*
 
 ## 3. Trust boundaries are physical, not policy
 
