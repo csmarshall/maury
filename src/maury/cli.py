@@ -14,6 +14,7 @@ from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
 from maury.doctor import Report, render_json, render_text, run_all
 from maury.ids import short as short_id
+from maury.llm import BackendUnavailableError, get_backend
 from maury.manifest import (
     ManifestError,
     dump_manifest,
@@ -21,6 +22,11 @@ from maury.manifest import (
     known_profiles_from,
     load_manifest,
     validate_manifest,
+)
+from maury.mining import (
+    Finding,
+    extract_from_messages,
+    walk_user_messages,
 )
 from maury.render import RenderError, apply_render, render
 from maury.rules import (
@@ -561,6 +567,172 @@ def review() -> None:
 def promote_review() -> None:
     """Review and execute cross-repo promotion proposals."""
     raise click.ClickException("not yet implemented")
+
+
+# ---- mine ---------------------------------------------------------------
+
+
+_DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+
+@main.command("mine")
+@click.option(
+    "--projects-dir",
+    "projects_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=str(_DEFAULT_PROJECTS_DIR),
+    show_default=True,
+    help="Directory holding per-project transcript JSONL.",
+)
+@click.option(
+    "--project",
+    "project_name",
+    help="Specific project hash dir to mine. Default: highest-volume project.",
+)
+@click.option(
+    "--window-size",
+    type=int,
+    default=50,
+    show_default=True,
+    help="User messages per LLM extraction window.",
+)
+@click.option(
+    "--max-windows",
+    type=int,
+    default=None,
+    help="Cap on windows to process (cost control). Default: no cap.",
+)
+@click.option(
+    "--backend",
+    "backend_name",
+    type=click.Choice(["cli", "sdk"]),
+    default=None,
+    help="LLM backend to use. Default: cli (uses Claude Code subscription quota).",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+def mine_cmd(
+    projects_dir: Path,
+    project_name: str | None,
+    window_size: int,
+    max_windows: int | None,
+    backend_name: str | None,
+    output_format: str,
+) -> None:
+    """Mine transcripts for durable preference candidates (Phase 6a).
+
+    Walks JSONL transcripts under --projects-dir, batches user messages
+    into windows of --window-size, and asks the configured LLM backend
+    to extract durable preferences from each window.
+
+    By default, picks the project with the most user messages. Pass
+    --project to target a specific one. Pass --max-windows to cap cost.
+    """
+    # Pick the project if not specified.
+    target_project_dir: Path
+    if project_name:
+        target_project_dir = projects_dir / project_name
+        if not target_project_dir.is_dir():
+            raise click.ClickException(f"project directory not found: {target_project_dir}")
+    else:
+        target_project_dir = _pick_busiest_project(projects_dir)
+        click.echo(f"selected project (busiest): {target_project_dir.name}")
+
+    # Walk + filter messages.
+    msgs = list(walk_user_messages(target_project_dir))
+    click.echo(f"signal-bearing user messages after noise filter: {len(msgs)}")
+    if not msgs:
+        click.echo("nothing to mine.")
+        return
+
+    # Backend.
+    try:
+        llm = get_backend(backend_name)
+    except (ValueError, BackendUnavailableError) as e:
+        raise click.ClickException(f"LLM backend not available: {e}") from e
+    click.echo(f"LLM backend: {llm.name}")
+
+    # Run extraction with a tiny per-window status line.
+    from maury.mining import ExtractionWindow as _Window
+
+    def _on_window_start(w: _Window) -> None:
+        click.echo(f"  window {w.index + 1}: {len(w.messages)} messages, {len(w.session_ids)} session(s)...")
+
+    def _on_window_done(w: _Window, findings: list[Finding]) -> None:
+        click.echo(f"    -> {len(findings)} finding(s)")
+
+    result = extract_from_messages(
+        msgs,
+        llm=llm,
+        project=target_project_dir.name,
+        window_size=window_size,
+        max_windows=max_windows,
+        on_window_start=_on_window_start,
+        on_window_done=_on_window_done,
+    )
+
+    # Output.
+    if output_format == "json":
+        click.echo(_findings_as_json(result.findings))
+    else:
+        click.echo(_findings_as_text(result.findings, result.windows_processed))
+
+    if result.warnings:
+        click.echo("")
+        click.echo("warnings:", err=True)
+        for w in result.warnings:
+            click.echo(f"  {w}", err=True)
+
+
+def _pick_busiest_project(projects_dir: Path) -> Path:
+    """Default project: the one with the most signal-bearing user messages."""
+    candidates: list[tuple[int, Path]] = []
+    for child in projects_dir.iterdir():
+        if not child.is_dir():
+            continue
+        n = sum(1 for _ in walk_user_messages(child))
+        if n:
+            candidates.append((n, child))
+    if not candidates:
+        raise click.ClickException(f"no projects with user messages found under {projects_dir}")
+    candidates.sort(reverse=True)
+    return candidates[0][1]
+
+
+def _findings_as_text(findings: list[Finding], windows_processed: int) -> str:
+    if not findings:
+        return f"\nprocessed {windows_processed} window(s), found nothing durable."
+    lines = [f"\n=== {len(findings)} finding(s) across {windows_processed} window(s) ==="]
+    for f in findings:
+        lines.append(f"\n[{f.confidence}] {f.kind}/{f.scope_hint}: {f.text}")
+        if f.evidence:
+            lines.append(f"   evidence: {f.evidence!r}")
+    return "\n".join(lines)
+
+
+def _findings_as_json(findings: list[Finding]) -> str:
+    import json as _json
+
+    payload = [
+        {
+            "kind": f.kind,
+            "scope_hint": f.scope_hint,
+            "text": f.text,
+            "evidence": f.evidence,
+            "confidence": f.confidence,
+            "source_window_index": f.source_window.index,
+            "source_project": f.source_window.project,
+            "source_window_first_ts": f.source_window.first_timestamp,
+            "source_window_last_ts": f.source_window.last_timestamp,
+        }
+        for f in findings
+    ]
+    return _json.dumps(payload, indent=2)
 
 
 # ---- doctor ------------------------------------------------------------
