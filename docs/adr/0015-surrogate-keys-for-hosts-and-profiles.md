@@ -137,7 +137,8 @@ short-circuit to a warning and refuse to push.
   each host uses local nicknames as keys (`"base"`, `"personal"`,
   `"work"`); these are display labels for URLs, never referenced
   cross-host. URL IS the surrogate key.
-- **Rules** already have stable IDs (the `id:` field). No change.
+- **Rules** already have stable IDs (the `id:` field). No change in
+  v1; see [addendum](#addendum-rule-ids-2026-05-06) below.
 - **Capability tool names** (`sed`, `gsed`) are real-world identifiers
   from PATH; not maury entities.
 - **Action vocabulary** (`notify`, `log_jsonl`) — vocabulary terms,
@@ -216,3 +217,16 @@ conventions. No new task; folds into the next thing we build.
 - **GUIDs without prefix.** Rejected: prefixes (`host_`, `profile_`)
   make IDs self-describing in error messages and audit logs at
   trivial cost.
+
+## Addendum: rule IDs (2026-05-06)
+
+The original "What does NOT change" bullet about rules has been
+narrowed by [ADR-0021](0021-promotion-changelog.md). To make the
+promotion changelog work without a separate ID space, rule IDs adopt
+the same `rule_<32 hex>` surrogate prefix as hosts and profiles.
+
+The slug-style IDs in v1 seed rules (`hostname-foo`, `code-style-bar`)
+are migrated by `maury manifest upgrade-v1-to-v2`, which mints a new
+`rule_<hex>` for each existing rule and stores the original slug as
+a `legacy_id:` field for grep-friendliness. Tools should display
+`name (rule_short)` exactly as for hosts and profiles.

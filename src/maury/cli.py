@@ -38,6 +38,8 @@ from maury.rules import (
     render_trace,
     validate_rules,
 )
+from maury.sync import RepoSyncResult, SyncError
+from maury.sync import sync as run_sync
 
 BANNER = r"""
   ┌──────────────────────────┐
@@ -441,10 +443,113 @@ def status() -> None:
     raise click.ClickException("not yet implemented")
 
 
-@main.command()
-def sync() -> None:
-    """Pull all reachable repos, render, and apply with confirmation."""
-    raise click.ClickException("not yet implemented")
+DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
+
+
+@main.command("sync")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=str(Path.home() / ".claude"),
+    show_default=True,
+    help="Target directory where rendered files would be written.",
+)
+@click.option(
+    "--repos-root",
+    "repos_root",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=str(DEFAULT_REPOS_ROOT),
+    show_default=True,
+    help="Where local clones live. Each repo nickname becomes a subdir.",
+)
+@click.option(
+    "--check",
+    "check",
+    is_flag=True,
+    help="Dry-run: don't pull from remotes, don't write to target.",
+)
+def sync_cmd(
+    manifest_file: Path | None,
+    target_dir: Path,
+    repos_root: Path,
+    check: bool,
+) -> None:
+    """Pull all reachable repos, render, and apply.
+
+    v0: assumes the host's manifest entry declares a repo named 'base';
+    drift detection (per ADR-0017), multi-repo profile composition, and
+    push of pending proposals are deferred to subsequent slices.
+    """
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+
+    # Live progress: print each repo as it completes
+    def _progress(rs: RepoSyncResult) -> None:
+        marker = {
+            "cloned": "+",
+            "pulled": "↻",
+            "up-to-date": "=",
+            "skipped": "·",
+            "error": "✗",
+        }.get(rs.action, "?")
+        line = f"  {marker} {rs.nickname:<24} {rs.action}"
+        if rs.detail:
+            line += f"  ({rs.detail[:80]})"
+        click.echo(line)
+
+    click.echo(f"sync: manifest={mpath}")
+    click.echo(f"      target={target_dir}")
+    click.echo(f"      repos-root={repos_root}")
+    if check:
+        click.echo("      --check (dry-run; no remote I/O, no writes)")
+    click.echo("")
+
+    try:
+        result = run_sync(
+            manifest_path=mpath,
+            target_dir=target_dir,
+            repos_root=repos_root,
+            dry_run=check,
+            on_repo_progress=_progress,
+        )
+    except SyncError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo("")
+    if result.host_id:
+        click.echo(f"host:    {short_id(result.host_id)}")
+    if result.profile_id:
+        click.echo(f"profile: {short_id(result.profile_id)}")
+
+    if result.warnings:
+        click.echo("")
+        click.echo("warnings:")
+        for w in result.warnings:
+            click.echo(f"  ! {w}")
+
+    if result.has_errors():
+        click.echo("")
+        click.echo("errors:")
+        for err in result.errors:
+            click.echo(f"  ✗ {err}", err=True)
+        sys.exit(1)
+
+    if result.render_result is not None:
+        click.echo("")
+        click.echo(f"render:  {len(result.render_result.files)} file(s)")
+        for action in result.apply_actions:
+            click.echo(f"  {action}")
+
+    if check:
+        click.echo("")
+        click.echo("(--check; no remote I/O performed and no files written)")
 
 
 # ---- render ------------------------------------------------------------
