@@ -1,7 +1,25 @@
 # ADR-0021: Promotion changelog for rule lineage
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0022](0022-branch-per-mining-run.md)
 **Date:** 2026-05-06
+**Superseded:** 2026-05-06
+
+## Why superseded
+
+This ADR proposed a parallel `.meta/changelog.jsonl` data structure
+to record rule provenance. ADR-0022 instead uses git's own commit log
+as the changelog — the proposal IS a commit, the rationale IS the
+commit message body, and `maury why <rule>` becomes
+`git log --follow --grep=...`. No sidecar file is needed.
+
+The forward-link to ADR-0015's "rule IDs adopt `rule_<hex>`" addendum
+also goes away, because findings are identified by their commit SHA
+on the run branch — no surrogate ID is minted.
+
+The original Decision/Consequences below is preserved as a breadcrumb
+of the design pivot; do not implement.
+
+---
 
 ## Related tenets
 

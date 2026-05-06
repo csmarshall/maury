@@ -190,3 +190,22 @@ backend — they call into the adapter through the interface.
 - **Bake auth into manifest URLs.** Rejected: secrets in manifest is
   a layering violation. Auth flows through the adapter from the
   ADR-0014 credential store.
+
+## Addendum (2026-05-06)
+
+[ADR-0022](0022-branch-per-mining-run.md) commits maury to git as
+the substrate for the proposal model and the changelog. Non-git-
+compatible backends (`p4`, `hg`, `svn`, `s3-age`, `bundle`) are no
+longer planned: the commit-message-as-proposal and `git log --grep`
+dedup mechanisms have no equivalent in those systems.
+
+Git-compatible alternatives remain in scope: `gitlab`, `gitea`,
+`codeberg`, self-hosted git, and the `github` adapter. The
+backend-as-adapter abstraction in this ADR survives — it's still
+useful for routing per-host auth, host capability detection, and
+URL-shape variation across git-hosting providers.
+
+If a user has a Perforce work shop and cannot use git for the work
+boundary, the answer is no longer "we'll add a Perforce backend";
+the answer is "you can't have a maury-managed work boundary on
+that shop." Acceptable given target-user reality.

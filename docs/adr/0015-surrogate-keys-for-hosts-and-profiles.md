@@ -218,15 +218,14 @@ conventions. No new task; folds into the next thing we build.
   make IDs self-describing in error messages and audit logs at
   trivial cost.
 
-## Addendum: rule IDs (2026-05-06)
+## Addendum: rule IDs — RETRACTED (2026-05-06)
 
-The original "What does NOT change" bullet about rules has been
-narrowed by [ADR-0021](0021-promotion-changelog.md). To make the
-promotion changelog work without a separate ID space, rule IDs adopt
-the same `rule_<32 hex>` surrogate prefix as hosts and profiles.
+This addendum proposed migrating rule IDs to the `rule_<32 hex>`
+surrogate prefix to support [ADR-0021](0021-promotion-changelog.md)'s
+promotion changelog. ADR-0021 has since been superseded by
+[ADR-0022](0022-branch-per-mining-run.md), which uses the commit log
+as the changelog and identifies findings by commit SHA. No surrogate
+ID for rules is needed.
 
-The slug-style IDs in v1 seed rules (`hostname-foo`, `code-style-bar`)
-are migrated by `maury manifest upgrade-v1-to-v2`, which mints a new
-`rule_<hex>` for each existing rule and stores the original slug as
-a `legacy_id:` field for grep-friendliness. Tools should display
-`name (rule_short)` exactly as for hosts and profiles.
+The original "What does NOT change" bullet stands as written: rules
+keep their existing `id:` slug field. No migration.
