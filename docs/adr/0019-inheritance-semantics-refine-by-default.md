@@ -132,7 +132,7 @@ unless the child explicitly sets `extends-policy: replace`.
 Every rendered file carries a provenance comment block at the top:
 
 ```markdown
-<!-- maury rendered file. do not hand-edit through here without `maury reconcile`.
+<!-- maury rendered file. hand-edits flow through `maury reconcile` so they're captured with provenance (per Tenet 8 — hand-edits are first-class input).
      layers (root → leaf):
        base                    base/CLAUDE.md (sha 8a7f3c1d)
        profile:home            profiles/home/CLAUDE.md.fragment (sha 4e9b4a2c)

@@ -19,7 +19,7 @@ hook config must work on:
   desktop notifications. No `osascript`.
 - **firewall (FreeBSD 14.2).** BSD userland (`sed -i ''` requires backup
   arg, `find` lacks `-printf`). No GUI, no `notify-send`, no
-  `osascript`. `pkg` for installs. Charles cannot sudo directly here —
+  `osascript`. `pkg` for installs. the project owner cannot sudo directly here —
   scripts that need privilege are written and run manually.
 - **work-laptop with MDM/EDR.** May block AppleScript notifications,
   may TCC-restrict directories, may require specific commit signing.

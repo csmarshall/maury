@@ -22,8 +22,9 @@ settings, hooks, and skills.
 ## Why maury exists
 
 If you use Claude Code on more than one machine, you've felt the gap:
-your CLAUDE.md is gold on workstation, missing on linux-server, half-applied on the
-work laptop. You add a useful skill on one machine and forget it
+your CLAUDE.md is gold on your workstation, missing on the linux box,
+half-applied on the work laptop. You add a useful skill on one machine
+and forget it
 elsewhere. The same correction surfaces in three transcripts because
 nothing carries the lesson across.
 
@@ -113,11 +114,16 @@ Claude config across hosts. The tagline writes itself.
 ## Status
 
 Pre-v0.1, scaffolding stage. See [`docs/tenets.md`](docs/tenets.md) for
-the principles maury is built on, [`docs/adr/`](docs/adr/) for
-architecture decisions, and `~/.claude/plans/let-s-build-this-out-warm-flask.md`
-for the full build plan.
+the principles maury is built on and [`docs/adr/`](docs/adr/) for the
+architecture decisions.
 
 ## Install
+
+> The instructions below are the **developer / clone-from-source** flow
+> for hacking on maury itself. Once published, the canonical user-install
+> path will be `pipx install maury` (per
+> [ADR-0018](docs/adr/0018-minimum-bootstrap-ux.md)) — but the package
+> isn't on PyPI yet.
 
 Requires Python ≥3.11 and [uv](https://docs.astral.sh/uv/).
 

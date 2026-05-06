@@ -20,9 +20,11 @@ reversible where possible, and pauses for input when there's ambiguity.
 A tool that helps you raise the boats can't be allowed to sink any of
 them.
 
-*Embodied by: drift-detect-before-clobber (Q10), three-way merge with
-user arbitration (Q11), Claude-writes logged with revert path (Q8),
-no auto-promotion across trust boundaries ([ADR-0009](adr/0009-promotion-only-cross-boundary.md)).*
+*Embodied by: [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
+(no auto-promotion across trust boundaries),
+[ADR-0017](adr/0017-drift-detection-and-reconciliation.md)
+(drift-detect-before-clobber, three-way merge with user arbitration,
+Claude-writes logged with revert path).*
 
 ## 2. Consistency within a profile; controlled difference across profiles
 
@@ -69,8 +71,9 @@ is "show me, ask me." Automation is opt-in via explicit flags
 (`--non-interactive`, `--force`).
 
 *Embodied by: [ADR-0004](adr/0004-rule-engine-classification.md) (classification is a deterministic rule engine,
-not LLM judgment), Q11 (three-way merge with arbitration), Q10
-(detect-first sync), the proposal review queue.*
+not LLM judgment), [ADR-0017](adr/0017-drift-detection-and-reconciliation.md) (three-way merge with arbitration; detect-first
+sync), [ADR-0020](adr/0020-two-mining-modes-bulk-and-incremental.md) (`PRESENT_AND_REINFORCED` surfaces for user
+investigation rather than auto-fix), the proposal review queue.*
 
 ## 6. Identity is not name
 
@@ -102,9 +105,9 @@ pipeline as mined fragments and active captures, with the same
 provenance and audit treatment. Tooling reduces friction; it doesn't
 gate.
 
-*Embodied by: [ADR-0017](adr/0017-drift-detection-and-reconciliation.md) (drift detection and reconciliation), Q6
-(prompt-to-claim for user-added files), Q7 (same path for rendered vs
-source-tree edits).*
+*Embodied by: [ADR-0017](adr/0017-drift-detection-and-reconciliation.md) (drift detection and reconciliation),
+[ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) (hand-edits flow through `maury reconcile` rather
+than being blocked).*
 
 ## 9. Defer to the platform
 
@@ -139,7 +142,11 @@ hatches exist (`--force`, `--non-interactive`) but the user must ask
 for them.
 
 *Embodied by: default push policy, default repo mode, default LLM
-backend, default sync flow, the entire flag-escape pattern.*
+backend, default sync flow, the entire flag-escape pattern;
+[ADR-0018](adr/0018-minimum-bootstrap-ux.md) (explicit `maury init`
+inputs, no auto-detection magic) and
+[ADR-0020](adr/0020-two-mining-modes-bulk-and-incremental.md)
+(explicit watermark + opt-in modes).*
 
 ---
 
@@ -159,7 +166,7 @@ backend, default sync flow, the entire flag-escape pattern.*
 
 ## Provenance
 
-Drafted in the conversation that produced [ADR-0001](adr/0001-n-profiles.md) through [ADR-0017](adr/0017-drift-detection-and-reconciliation.md),
+Drafted in the conversation that produced [ADR-0001](adr/0001-n-profiles.md) through [ADR-0020](adr/0020-two-mining-modes-bulk-and-incremental.md),
 distilled from the implicit values that emerged across decisions.
 Each tenet was independently visible in 2+ ADRs before being named.
 This document doesn't add new principles — it makes existing ones

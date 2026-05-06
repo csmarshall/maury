@@ -29,7 +29,7 @@ profiles that can see each other. Profiles within a boundary live in the
 same repo as separate `profiles/<name>/` directories. Base lives in its
 own repo so work hosts can consume it without seeing personal content.
 
-For Charles's likely use:
+For the project owner's likely use:
 
 | Repo | Contents | Read | Write |
 |---|---|---|---|

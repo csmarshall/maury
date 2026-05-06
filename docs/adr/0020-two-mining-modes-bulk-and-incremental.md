@@ -206,7 +206,7 @@ sync) get full temporal awareness.
 ## Prototype findings (validated 2026-05-06)
 
 Three throwaway scripts under `scripts/` validated this ADR's design
-end-to-end against Charles's real 761-message transcript corpus
+end-to-end against the project owner's real 761-message transcript corpus
 across 8 projects. Each finding shaped the architecture above.
 
 ### Finding 1: lexical clustering does NOT pre-extract signal
@@ -244,7 +244,7 @@ through `claude -p` with a structured extraction prompt. Output:
 - "Write multi-line commands as scripts, not one-liners"
 - "Save state before risky/exploratory actions"
 - "Prefer approaches that avoid disabling SIP / code signing on macOS"
-- "Default reviewer/assignee on personal repos = Charles"
+- "Default reviewer/assignee on personal repos = <the project owner>"
 - Host-specific facts (pipx venv path, Python version, iTerm2
   keybinding limitations)
 
@@ -260,7 +260,7 @@ quota on `claude -p` per ADR-0012.
 ```json
 {
   "state": "PRESENT_AND_REINFORCED",
-  "claude_md_quote": "When suggesting commands for Charles to run: always append `2>&1 | tee ...`",
+  "claude_md_quote": "When suggesting commands for the user to run: always append `2>&1 | tee ...`",
   "rationale": "The rule is already in CLAUDE.md verbatim, but the transcript shows the user correcting Claude after it suggested a command without the tee redirection — clear sign the existing rule isn't being followed.",
   "suggested_action": "investigate-why-not-followed"
 }

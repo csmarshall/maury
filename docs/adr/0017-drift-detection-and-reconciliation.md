@@ -117,7 +117,7 @@ v1 (in scope):
   load-bearing for drift attribution)
 - **`maury-status` skill** that Claude can invoke mid-session to
   surface drift / pending captures / pending proposals
-  (per Q&A — Charles's specific requirement to ship in v1)
+  (per Q&A — the project owner's specific requirement to ship in v1)
 
 v1.1 (deferred):
 - The full `maury-stage` skill + base/CLAUDE.md fragment + staging
