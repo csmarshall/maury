@@ -1,0 +1,1 @@
+"""maury proposals module."""

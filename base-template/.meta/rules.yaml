@@ -1,0 +1,152 @@
+# maury rules.yaml — classification ruleset (the learned artifact)
+#
+# Three rule shapes, distinguished by which fields of `then` are populated:
+#   classify  : `then.profile` set
+#   forbid    : `then.forbid_profile` set (list with optional symbolic targets:
+#                 '*' = all known profiles, '!name' = all except <name>)
+#   scope     : `then.host_overlay` set without a `then.profile`
+#
+# Conditions are combined with implicit AND. At least one of `pattern`,
+# `any_keyword`, `all_keywords` must be specified.
+#
+# Provenance: every rule should carry `added` (ISO date) and a `reason`.
+# When the synthesizer adds a new rule from a reclassification, it
+# records the originating fragment ID in `reason`.
+
+version: 1
+
+rules:
+  # ---- host & identity ---------------------------------------------------
+
+  - id: hostname-rosa
+    when:
+      pattern: '\brosa\b'
+    then:
+      profile: home
+      host_overlay: rosa
+    confidence: high
+    priority: 10
+    added: 2026-05-06
+    reason: "Charles's Ubuntu homelab server"
+
+  - id: hostname-kamek
+    when:
+      pattern: '\bkamek\b'
+    then:
+      profile: home
+      host_overlay: kamek
+    confidence: high
+    priority: 10
+    added: 2026-05-06
+    reason: "Charles's FreeBSD firewall/router"
+
+  - id: hostname-toad
+    when:
+      pattern: '\btoad\b'
+    then:
+      profile: home
+      host_overlay: toad
+    confidence: high
+    priority: 10
+    added: 2026-05-06
+    reason: "Charles's macOS workstation"
+
+  # ---- universal (base) preferences -------------------------------------
+
+  - id: code-style-python
+    when:
+      any_keyword:
+        - ruff
+        - mypy
+        - "pyproject.toml"
+        - "type hint"
+        - docstring
+    then:
+      profile: base
+    confidence: high
+    priority: 5
+    added: 2026-05-06
+    reason: "Universal Python tooling preferences apply across all profiles"
+
+  - id: shell-conventions
+    when:
+      any_keyword:
+        - "set -euo pipefail"
+        - "unset TMOUT"
+        - "shellcheck"
+    then:
+      profile: base
+    confidence: high
+    priority: 5
+    added: 2026-05-06
+    reason: "Shell scripting conventions universal"
+
+  - id: commit-style
+    when:
+      any_keyword:
+        - "Co-Authored-By"
+        - "commit message"
+        - "PR title"
+        - "pull request"
+    then:
+      profile: base
+    confidence: medium
+    priority: 5
+    added: 2026-05-06
+    reason: "Git/PR style preferences are universal"
+
+  # ---- redaction guards -------------------------------------------------
+
+  - id: redact-home-network
+    when:
+      pattern: '\b192\.168\.1\.\d{1,3}\b'
+    then:
+      forbid_profile: ["!home"]
+    confidence: high
+    priority: 100
+    added: 2026-05-06
+    reason: "Home subnet must never appear in base or any non-home profile"
+
+  - id: redact-home-domain
+    when:
+      pattern: '\b\w+\.wozi\.com\b'
+    then:
+      forbid_profile: ["!home"]
+    confidence: high
+    priority: 100
+    added: 2026-05-06
+    reason: "Personal domain hostnames are home-only"
+
+  # ---- home-context content (homelab indicators) ------------------------
+
+  - id: homelab-services
+    when:
+      any_keyword:
+        - frigate
+        - "home assistant"
+        - homeassistant
+        - esphome
+        - scrypted
+        - traefik
+        - "/opt/sw"
+    then:
+      profile: home
+    confidence: high
+    priority: 8
+    added: 2026-05-06
+    reason: "Homelab service names indicate home context"
+
+  - id: freebsd-context
+    when:
+      any_keyword:
+        - "pf.conf"
+        - dpinger
+        - iocage
+        - "freebsd"
+    then:
+      profile: home
+      host_overlay: kamek
+    confidence: medium
+    priority: 8
+    added: 2026-05-06
+    reason: "FreeBSD-specific terminology points to kamek"

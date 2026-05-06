@@ -1,0 +1,1 @@
+"""maury promotion module."""

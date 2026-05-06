@@ -1,0 +1,58 @@
+[project]
+name = "maury"
+version = "0.1.0"
+description = "On a mission from Claude — multi-host Claude Code config sync, profile isolation, and learned-rule mining"
+readme = "README.md"
+authors = [
+    { name = "Charles Marshall", email = "charles@wozi.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "ruamel.yaml>=0.18",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+# Per ADR-0012: SDK is opt-in. Default LLM backend is `claude -p` (uses
+# the user's Claude Code subscription quota; no API key needed).
+sdk = [
+    "anthropic>=0.40",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+maury = "maury.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+# Per CLAUDE.md: no 80-char limit unless requested. Audit showed 0.27% of
+# lines over 100 chars and all of them are content that genuinely belongs
+# on one line (regex patterns, format strings, etc.). 120 covers them
+# without permitting absurdly long lines.
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
