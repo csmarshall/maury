@@ -8,6 +8,8 @@ from pathlib import Path
 import click
 
 from maury import __version__
+from maury.bootstrap import InitError
+from maury.bootstrap import init as run_init
 from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
 from maury.doctor import Report, render_json, render_text, run_all
@@ -363,6 +365,66 @@ def probe(output_path: Path | None, hostname_override: str | None) -> None:
 @main.group()
 def bootstrap() -> None:
     """Bootstrap a new host or repo."""
+
+
+# ---- init (the user's first command on a new host, per ADR-0018) -------
+
+
+@main.command("init")
+@click.option(
+    "--from-dir",
+    "from_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Initialize from a local directory containing the base repo.",
+)
+@click.option(
+    "--from-tarball",
+    "from_tarball",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Initialize from a tarball of the base repo.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=str(Path.home() / ".claude"),
+    show_default=True,
+    help="Where to write the rendered config tree.",
+)
+@click.option("--check", "dry_run", is_flag=True, help="Dry-run: show what would happen, write nothing.")
+def init_cmd(
+    from_dir: Path | None,
+    from_tarball: Path | None,
+    target_dir: Path,
+    dry_run: bool,
+) -> None:
+    """Initialize maury on a new host (first-run bootstrap)."""
+    if from_dir is None and from_tarball is None:
+        raise click.ClickException(
+            "provide one of --from-dir <path> or --from-tarball <path>. "
+            "(Future: --from-url <git-url>; not yet implemented.)"
+        )
+    if from_dir is not None and from_tarball is not None:
+        raise click.ClickException("--from-dir and --from-tarball are mutually exclusive")
+
+    try:
+        result = run_init(
+            source_dir=from_dir,
+            source_tarball=from_tarball,
+            target_dir=target_dir,
+            dry_run=dry_run,
+        )
+    except InitError as e:
+        raise click.ClickException(str(e)) from e
+
+    for action in result.actions:
+        click.echo(f"  {action}")
+    click.echo("")
+    click.echo(result.message)
+    if dry_run:
+        click.echo("(--check; no files were written)")
+    if not result.host_registered:
+        sys.exit(2)  # distinct exit so scripts can detect "host not registered yet"
 
 
 @main.command()
