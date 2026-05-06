@@ -20,6 +20,7 @@ from maury.manifest import (
     load_manifest,
     validate_manifest,
 )
+from maury.render import RenderError, apply_render, render
 from maury.rules import (
     RuleParseError,
     classify_fragment,
@@ -374,6 +375,118 @@ def status() -> None:
 def sync() -> None:
     """Pull all reachable repos, render, and apply with confirmation."""
     raise click.ClickException("not yet implemented")
+
+
+# ---- render ------------------------------------------------------------
+
+
+@main.command("render")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option(
+    "--repo",
+    "repo_path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Path to the repo containing base + profile content. Defaults to the manifest's parent dir.",
+)
+@click.option(
+    "--profile",
+    "profile_name_or_id",
+    help="Profile name or ID to render for. Defaults to the current host's assigned profile.",
+)
+@click.option(
+    "--host",
+    "host_name_or_id",
+    help="Host name or ID to render for. Defaults to the current machine.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=str(Path.home() / ".claude"),
+    show_default=True,
+    help="Target directory where rendered files would be written.",
+)
+@click.option("--check", is_flag=True, help="Dry-run: show what would be written without writing.")
+def render_cmd(
+    manifest_file: Path | None,
+    repo_path: Path | None,
+    profile_name_or_id: str | None,
+    host_name_or_id: str | None,
+    target_dir: Path,
+    check: bool,
+) -> None:
+    """Render base + profile chain + host overlay into the target directory."""
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    if not mpath.exists():
+        raise click.ClickException(f"manifest file not found: {mpath}")
+    try:
+        m = load_manifest(mpath)
+    except ManifestError as e:
+        raise click.ClickException(str(e)) from e
+
+    repo = repo_path or mpath.parent.parent
+    if not repo.is_dir():
+        raise click.ClickException(f"repo path is not a directory: {repo}")
+
+    # Resolve host: explicit arg, else current-machine lookup
+    if host_name_or_id:
+        hid = m.resolve_host(host_name_or_id)
+        if hid is None:
+            raise click.ClickException(
+                f"host {host_name_or_id!r} not in manifest; available: {sorted(s.name for s in m.hosts.values())}"
+            )
+    else:
+        match = m.host_for_current_machine()
+        if match is None:
+            raise click.ClickException(
+                "could not determine current host (no ~/.maury-host-id and "
+                f"hostname not in manifest). Pass --host explicitly. "
+                f"Available: {sorted(s.name for s in m.hosts.values())}"
+            )
+        hid, _ = match
+
+    host_spec = m.hosts[hid]
+
+    # Resolve profile: explicit arg, else use the host's assigned profile
+    if profile_name_or_id:
+        pid = m.resolve_profile(profile_name_or_id)
+        if pid is None:
+            raise click.ClickException(
+                f"profile {profile_name_or_id!r} not in manifest; "
+                f"available: {sorted(s.name for s in m.profiles.values())}"
+            )
+    else:
+        pid = host_spec.profile
+
+    try:
+        result = render(
+            repo_paths={"base": repo},
+            manifest=m,
+            profile_id=pid,
+            host_id=hid,
+        )
+    except RenderError as e:
+        raise click.ClickException(str(e)) from e
+
+    profile_name = m.profiles[pid].name
+    click.echo(
+        f"rendering host={host_spec.name} profile={profile_name} "
+        f"(layers={len(result.layers)}, files={len(result.files)})"
+    )
+    for w in result.warnings:
+        click.echo(f"  warn: {w}", err=True)
+
+    actions = apply_render(result, target_dir, dry_run=check)
+    for a in actions:
+        click.echo(f"  {a}")
+    if check:
+        click.echo("(--check; no files written)")
 
 
 @main.command()

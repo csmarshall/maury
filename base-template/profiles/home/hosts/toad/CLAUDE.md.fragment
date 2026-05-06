@@ -1,0 +1,5 @@
+## Host: toad (macOS)
+
+- GNU tools prefixed with `g` (gsed, greadlink, gfind, etc.).
+- Personal projects under `~/work/personal/`, homelab under `~/work/`.
+- iTerm2 + iMessage MCP plugin available.

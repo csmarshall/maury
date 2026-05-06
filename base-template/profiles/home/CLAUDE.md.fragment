@@ -1,0 +1,5 @@
+## Home context
+
+- Homelab hosts: rosa (Ubuntu), kamek (FreeBSD), toad (macOS workstation).
+- Personal email: charles@wozi.com.
+- Default DNS: AWS Route53 for wozi.com.
