@@ -17,7 +17,7 @@ that assumption:
 - Personal stuff on GitHub; work on self-hosted GitLab.
 - Personal stuff on GitHub; work on Perforce (`p4`), Mercurial, or
   Subversion.
-- Self-hosted Gitea on rosa for personal, GitHub for work.
+- Self-hosted Gitea on linux-server for personal, GitHub for work.
 - Encrypted bundles dropped in S3 / B2 for ultra-paranoid environments.
 - Air-gapped networks where the work boundary uses signed file
   bundles on a removable drive.
@@ -41,7 +41,7 @@ a small interface; the manifest selects the adapter at runtime.
 ```json
 "repos": {
   "base": {
-    "url":     "git@github-base:csmarshall/maury-base.git",
+    "url":     "git@github-base:exampleuser/maury-base.git",
     "mode":    "rw",
     "backend": "github"
   },
@@ -122,7 +122,7 @@ with a clear error pointing at the registry.
 ### CLI surface
 
 ```sh
-maury bootstrap repo <name> --backend github --visibility private --owner csmarshall
+maury bootstrap repo <name> --backend github --visibility private --owner exampleuser
 maury bootstrap repo <name> --backend git --url <existing-url>
 maury bootstrap repo <name> --backend p4 --depot //maury/work
 maury repo list                # shows all repos and their backends
@@ -137,7 +137,7 @@ maury repo backends            # lists registered backends + capabilities
     "name": "work-laptop",
     "profile": "profile_yyy",
     "repos": {
-      "base": { "url": "git@github-base:csmarshall/maury-base.git",
+      "base": { "url": "git@github-base:exampleuser/maury-base.git",
                 "mode": "ro", "backend": "github" },
       "work": { "url": "ssh://perforce.work.example.com:1666",
                 "mode": "rw", "backend": "p4",

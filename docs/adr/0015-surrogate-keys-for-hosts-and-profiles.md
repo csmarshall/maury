@@ -13,7 +13,7 @@ The v1 manifest schema used the human-readable name as the dict key for
 both hosts and profiles:
 
 ```json
-"hosts":    { "toad": {"profile": "home", ...}, ... },
+"hosts":    { "workstation": {"profile": "home", ...}, ... },
 "profiles": { "work": {"extends": null, ...}, ... }
 ```
 
@@ -22,10 +22,10 @@ distinction (Codd) and the DDD **Entity Identity** principle: an
 entity's identity should persist across attribute changes, including
 its name. Real consequences of getting this wrong:
 
-- Renaming `"toad"` → `"froggie"` breaks: every manifest reference,
-  the host overlay path `profiles/home/hosts/toad/`, every audit log
+- Renaming `"workstation"` → `"froggie"` breaks: every manifest reference,
+  the host overlay path `profiles/home/hosts/workstation/`, every audit log
   entry, any future cross-host reference in fragments
-  ("running on toad").
+  ("running on workstation").
 - Renaming `"work"` → `"old-amazon"` breaks: every rule whose target
   profile is `"work"`, every host's `profile` field, the directory
   `profiles/work/`, inheritance chain references in
@@ -74,7 +74,7 @@ self-describing in audit logs and error messages.
     "profile_4a2b...": { "name": "work", "extends": null, "description": "..." }
   },
   "hosts": {
-    "host_8a7f...": { "name": "toad",        "profile": "profile_3f1a...", ... },
+    "host_8a7f...": { "name": "workstation",        "profile": "profile_3f1a...", ... },
     "host_9b8c...": { "name": "work-laptop", "profile": "profile_4a2b...", ... }
   }
 }
@@ -95,14 +95,14 @@ profiles/
 ├── home/                  <-- directory uses name
 │   ├── profile.yaml       <-- contains: id, name
 │   └── hosts/
-│       └── toad/          <-- directory uses name
+│       └── workstation/          <-- directory uses name
 │           ├── host.yaml  <-- contains: id, name
 │           └── ...
 ```
 
 This trades a tiny amount of identity-purity (the directory name
 mirrors the mutable `name` field) for a substantial usability win
-(humans can `cd profiles/home/hosts/toad` without having to look up
+(humans can `cd profiles/home/hosts/workstation` without having to look up
 IDs). The contract is: directory rename is always paired with manifest
 update via `maury <entity> rename`. The pre-commit hook checks that
 every `<entity>.yaml`'s embedded `name` matches the directory name it
@@ -129,7 +129,7 @@ short-circuit to a warning and refuse to push.
 - Audit log records both ID and name on every entry: `{id, name_at_event_time}`.
 - Fragment provenance records originating host_id + profile_id.
 - Cross-host fragments referencing other hosts use IDs (e.g.,
-  "running on host_8a7f..." rather than "running on toad").
+  "running on host_8a7f..." rather than "running on workstation").
 
 ### What does NOT change
 

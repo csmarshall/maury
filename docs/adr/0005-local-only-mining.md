@@ -27,7 +27,7 @@ git only — the only thing pushed to the repo is sanitized, classified
 fragments.
 
 Cross-profile content emerging on the wrong host (e.g., a transcript on
-the work laptop that mentions `rosa` or `192.168.1.x`) is treated as an
+the work laptop that mentions `linux-server` or `192.168.1.x`) is treated as an
 anomaly: the fragment is **quarantined locally**, never written to git,
 and surfaced in the next review with a clear "anomaly: home content from
 work host" tag for the user to investigate.

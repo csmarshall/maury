@@ -28,7 +28,7 @@ no auto-promotion across trust boundaries ([ADR-0009](adr/0009-promotion-only-cr
 
 The reason maury exists. Within a profile, Claude's behavior,
 configuration, capabilities, and skills should be **identical** across
-every host you use — toad and rosa and the laptop should give you the
+every host you use — workstation and linux-server and the laptop should give you the
 same Claude. Across profiles, differences must be **explicit,
 intentional, and traceable** — not accidents of which machine you
 happened to be sitting in front of.

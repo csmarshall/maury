@@ -83,7 +83,7 @@ already wrote a clean paragraph).
 - The staging file must never sync to git. Defense-in-depth:
   `~/.claude/maury-staging/` is local-only, plus the file lives outside
   any synced repo path.
-- Cross-profile content emerging on the wrong host (e.g., a "rosa"
+- Cross-profile content emerging on the wrong host (e.g., a "linux-server"
   capture from a work-laptop session) gets quarantined by the
   anomaly-detection logic from ADR-0005 before reaching git.
 

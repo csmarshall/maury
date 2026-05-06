@@ -69,5 +69,5 @@ the test to assert the contract, not the call shape.
 
 Not yet wired up. Plan: GitHub Actions matrix running `uv sync` +
 `uv run pytest` on macOS + Ubuntu (FreeBSD is a Tier 2 concern;
-add a self-hosted runner on kamek if maury is ever built there).
+add a self-hosted runner on firewall if maury is ever built there).
 For now, the standard is "green locally before any commit."

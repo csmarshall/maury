@@ -15,7 +15,7 @@ We considered three v1 scopes:
 1. **Sync first, mining in v2.** Faster to a useful daily-driver tool
    but defers validating the riskiest piece (mining quality).
 2. **Mining-only spike first.** Validate the learning loop on real
-   toad transcripts before investing in multi-host scaffolding. Lowest
+   workstation transcripts before investing in multi-host scaffolding. Lowest
    risk for "is this whole thing worth building."
 3. **All three together.** Largest upfront build, but the rule engine
    matures with real data immediately and there's no v1-to-v2

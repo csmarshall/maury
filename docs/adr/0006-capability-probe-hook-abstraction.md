@@ -12,19 +12,19 @@
 Hooks are shell commands that Claude Code runs on tool events. The same
 hook config must work on:
 
-- **toad / personal-laptop / work-laptop (macOS).** GNU tools prefixed
+- **workstation / personal-laptop / work-laptop (macOS).** GNU tools prefixed
   with `g` (gsed, gfind), Homebrew under `/opt/homebrew/bin` on Apple
   Silicon. `osascript` available unless MDM blocks AppleScript.
-- **rosa (Ubuntu 25.10).** Native GNU userland. `notify-send` for
+- **linux-server (Ubuntu 25.10).** Native GNU userland. `notify-send` for
   desktop notifications. No `osascript`.
-- **kamek (FreeBSD 14.2).** BSD userland (`sed -i ''` requires backup
+- **firewall (FreeBSD 14.2).** BSD userland (`sed -i ''` requires backup
   arg, `find` lacks `-printf`). No GUI, no `notify-send`, no
   `osascript`. `pkg` for installs. Charles cannot sudo directly here —
   scripts that need privilege are written and run manually.
 - **work-laptop with MDM/EDR.** May block AppleScript notifications,
   may TCC-restrict directories, may require specific commit signing.
 
-A raw-shell hook config that works on toad will silently no-op or
+A raw-shell hook config that works on workstation will silently no-op or
 actively error on at least three of these. Synced config that breaks
 hooks defeats the value of sync.
 
@@ -62,7 +62,7 @@ capabilities are missing on the current host, with a clear report.
 - Capability detection of MDM on macOS uses `profiles list`, presence
   of `/Library/Application Support/JamfPro/` etc.
 - The tool itself never escalates privilege; on hosts marked
-  `privileged_writes: manual` (kamek), it writes proposed scripts under
+  `privileged_writes: manual` (firewall), it writes proposed scripts under
   `~/.claude/proposed/` for the user to run.
 - Hosts with `security_posture: managed` and `blocked_capabilities`
   list get those capabilities treated as hard exclusions during render.

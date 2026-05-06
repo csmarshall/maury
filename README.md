@@ -22,7 +22,7 @@ settings, hooks, and skills.
 ## Why maury exists
 
 If you use Claude Code on more than one machine, you've felt the gap:
-your CLAUDE.md is gold on toad, missing on rosa, half-applied on the
+your CLAUDE.md is gold on workstation, missing on linux-server, half-applied on the
 work laptop. You add a useful skill on one machine and forget it
 elsewhere. The same correction surfaces in three transcripts because
 nothing carries the lesson across.

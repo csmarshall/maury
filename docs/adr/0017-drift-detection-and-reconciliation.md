@@ -138,8 +138,8 @@ v1.1 (deferred):
   invoke it to remind the user of pending drift — gentle proactive
   nag without the full active-capture pipeline.
 - **Cross-host coordination of overrides** via synced
-  `hand-managed.json`: if you mark a path hand-managed on toad, rosa
-  knows that's a toad-local choice and doesn't try to render it
+  `hand-managed.json`: if you mark a path hand-managed on workstation, linux-server
+  knows that's a workstation-local choice and doesn't try to render it
   there.
 - **One shared reconcile pipeline** for all drift sources —
   hand-edits, Claude-writes, mined fragments, active captures (when

@@ -44,7 +44,7 @@ Three rule shapes:
 - **forbid** — block a profile assignment regardless of classify rules
   (the redaction guards). Symbolic targets supported: `*` (all),
   `!<name>` (all except), literal names.
-- **scope** — narrow further to a host overlay (`rosa` → `home/hosts/rosa/`).
+- **scope** — narrow further to a host overlay (`linux-server` → `home/hosts/linux-server/`).
 
 Every classification carries a trace listing which rules fired and why.
 `maury rules trace "<text>"` lets you dry-run any text against

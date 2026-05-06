@@ -13,7 +13,7 @@ Once we settled on repo-per-trust-boundary (ADR-0002), we needed an
 access mechanism for granting hosts read/write to specific repos. The
 natural choices are:
 
-1. Account-based collaboration (add `csmarshall-work` as collaborator on
+1. Account-based collaboration (add `example-work` as collaborator on
    `maury-base`).
 2. Fine-grained PATs (a token from one account scoped to specific repos).
 3. Per-host SSH deploy keys.
@@ -51,8 +51,8 @@ Host github-work
   "lock": true,
   "push_policy": "own_profile_only",
   "repos": {
-    "base": { "url": "git@github-base:csmarshall/maury-base.git", "mode": "rw" },
-    "work": { "url": "git@github-work:csmarshall-work/maury-work.git", "mode": "rw" }
+    "base": { "url": "git@github-base:exampleuser/maury-base.git", "mode": "rw" },
+    "work": { "url": "git@github-work:example-work/maury-work.git", "mode": "rw" }
   }
 }
 ```

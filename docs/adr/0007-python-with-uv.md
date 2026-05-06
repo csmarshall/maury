@@ -19,7 +19,7 @@ jean-claude), Rust. Constraints:
 - Static-binary distribution (Go/Rust) is attractive because it sidesteps
   per-host runtime version skew.
 
-The deciding question was whether FreeBSD (kamek) breaks the Python
+The deciding question was whether FreeBSD (firewall) breaks the Python
 distribution story. Investigation showed it doesn't: `pkg install uv`
 works on FreeBSD via the `devel/uv` port, with one caveat (no FreeBSD
 artifacts for `uv python install`; use system Python instead).
@@ -27,7 +27,7 @@ artifacts for `uv python install`; use system Python instead).
 ## Decision
 
 Python ≥3.11. Use `uv` for environment and dependency management on every
-host, including kamek. On FreeBSD specifically:
+host, including firewall. On FreeBSD specifically:
 
 1. `pkg install python311 uv` (don't use `uv python install`).
 2. `uv python pin /usr/local/bin/python3.11` to anchor.

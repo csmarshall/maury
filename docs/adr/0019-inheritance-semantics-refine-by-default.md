@@ -24,7 +24,7 @@ The mental model the user actually has:
 
 > A more-narrow context (home, work, acme-client) usually **refines**
 > the broader context. Base says "use ruff." Home says "Frigate runs
-> on rosa." Both apply — home doesn't replace base, it adds to it.
+> on linux-server." Both apply — home doesn't replace base, it adds to it.
 > Some things from the parent should be kept for persistence even
 > when the child has its own version of the same content.
 
@@ -136,7 +136,7 @@ Every rendered file carries a provenance comment block at the top:
      layers (root → leaf):
        base                    base/CLAUDE.md (sha 8a7f3c1d)
        profile:home            profiles/home/CLAUDE.md.fragment (sha 4e9b4a2c)
-       host-overlay:toad       profiles/home/hosts/toad/CLAUDE.md.fragment (sha 8f1e7d5b)
+       host-overlay:workstation       profiles/home/hosts/workstation/CLAUDE.md.fragment (sha 8f1e7d5b)
      suppressions: 1 line removed by host overlay (see audit)
 -->
 ```

@@ -66,7 +66,7 @@ maury init --from-dir /mnt/usb/maury-base/
 
 ### `maury bootstrap-snippet` for from-existing-host onboarding
 
-To shortcut step 1 above, run on any existing host (e.g., toad):
+To shortcut step 1 above, run on any existing host (e.g., workstation):
 
 ```sh
 maury bootstrap-snippet [--target macos|ubuntu|freebsd|linux]
@@ -115,7 +115,7 @@ Different verbs, different audiences, no overlap.
 
 The user is responsible for remembering or storing the base repo URL
 and one auth credential. Recommended: password manager entry
-("maury bootstrap: URL=git@github-base:csmarshall/maury-base.git;
+("maury bootstrap: URL=git@github-base:exampleuser/maury-base.git;
 SSH key in ~/.ssh/maury-bootstrap"). Maury does NOT build a
 bootstrap-info-sync mechanism for this — that's a chicken-and-egg
 problem (where would the info live before maury exists?) and outside
@@ -191,6 +191,6 @@ mechanism (Phase 2 — already shipped) and the render engine (Phase
 - **`maury bundle base`** (small command, v1) — produces a
   tarball of the base repo for offline distribution to new hosts.
 - **One-time bootstrap-token UX** (v2) — `maury bootstrap-token`
-  on toad emits a signed token containing URL + temporary access
+  on workstation emits a signed token containing URL + temporary access
   key; `maury init <token>` on the new host needs nothing else.
   Requires a token-signing key kept by the curator.

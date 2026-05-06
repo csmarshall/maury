@@ -23,8 +23,8 @@ rotated) is genuinely useful:
   can re-populate it.
 - When migrating a service from host A → host B, you need a checklist
   of credentials to bring along.
-- When debugging "why doesn't Claude on toad work with service X," it
-  helps to see "X's credential is registered on rosa, not toad."
+- When debugging "why doesn't Claude on workstation work with service X," it
+  helps to see "X's credential is registered on linux-server, not workstation."
 
 This is a clean two-tier separation that maury should support
 explicitly: **values are host-local**, **presence metadata is
@@ -100,7 +100,7 @@ endpoint), independent of whether maury holds credentials for it. The
 
 - A host can register "service-alpha is running here at port 7878"
   without yet having credentials for it.
-- A migration story: "I'm moving service-alpha from rosa → kamek"
+- A migration story: "I'm moving service-alpha from linux-server → firewall"
   → update both the `services` entry on each host and the
   `credentials` entries; the values must be re-set on the new host.
 
