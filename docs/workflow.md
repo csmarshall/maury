@@ -1,7 +1,7 @@
 # maury — Claude Code workflow
 
 How a maury-managed Claude Code setup actually flows over time, in
-words and ASCII.
+words and diagrams.
 
 The user has three lifecycles to think about:
 
@@ -11,183 +11,114 @@ The user has three lifecycles to think about:
 3. **Periodic:** mining, review, and promotion of new content into
    the canonical config.
 
-The diagrams below show each. They use minimal ASCII so they render
-the same in the GitHub web UI, in your terminal, and in Markdown
-preview.
+The diagrams below show each. They use [mermaid](https://mermaid.js.org/)
+so they render cleanly in any modern Markdown viewer (GitHub, GitLab,
+VS Code, Obsidian). Terminal viewers fall back to raw mermaid source.
+
+For per-command operational detail (what happens *inside* each
+`maury <command>`), see [`operations.md`](operations.md).
 
 ---
 
 ## 1. Install + first-run bootstrap (per host)
 
-```
-[fresh host]
-     │
-     │ install pipx (per docs/adr/0018-...)
-     ▼
-[pipx + python ready]
-     │
-     │ pipx install maury        (someday — published)
-     │ -- or --
-     │ uv sync + uv run maury    (today — clone-from-source)
-     ▼
-[maury available]
-     │
-     │ maury init --from-dir <repo>
-     │   (or --from-tarball for offline / air-gap)
-     ▼
-[~/.maury-host-id created]
-     │
-     │ maury reads .meta/manifest.json
-     │ → identifies this host (id-file or hostname fallback)
-     │ → walks base + profile chain + host overlay
-     │ → renders to ~/.claude/
-     ▼
-[~/.claude/ populated]
-     │
-     │ host is registered (in manifest)?
-     │   yes → render with the host's assigned profile
-     │   no  → write a register-this-host proposal; render proceeds
-     │         with default-profile until curator approves on next sync
-     ▼
-[deploy keys generated for additional repos (per ADR-0018 step 5)]
-     │
-     │ for each repo in this host's manifest entry:
-     │   - generate ssh keypair on this host
-     │   - print public key + ask user to add as a deploy key
-     │     (gh CLI used automatically when backend=github)
-     ▼
-[ready to use Claude Code]
+```mermaid
+flowchart TD
+    Fresh([fresh host]) --> Pipx[install pipx<br/>per ADR-0018]
+    Pipx --> Ready[pipx + python ready]
+    Ready --> Install{install<br/>method?}
+    Install -->|published| Pip[pipx install maury<br/>someday]
+    Install -->|source| UV[uv sync + uv run maury<br/>today]
+    Pip --> Avail[maury available]
+    UV --> Avail
+    Avail --> Init[maury init --from-dir REPO<br/>or --from-tarball for offline / air-gap]
+    Init --> HostID[~/.maury-host-id created]
+    HostID --> Read[maury reads .meta/manifest.json<br/>identifies host: id-file or hostname fallback<br/>walks base + profile chain + host overlay<br/>renders to ~/.claude/]
+    Read --> Populated[~/.claude/ populated]
+    Populated --> Reg{host<br/>registered?}
+    Reg -->|yes| Assigned[render with host's assigned profile]
+    Reg -->|no| ProposeReg[write register-this-host proposal<br/>render proceeds with default-profile]
+    Assigned --> Keys[deploy keys for additional repos<br/>per ADR-0018 step 5]
+    ProposeReg --> Keys
+    Keys --> KeysLoop[for each repo in this host's manifest:<br/>generate ssh keypair<br/>print public key for deploy-key add<br/>gh CLI used when backend=github]
+    KeysLoop --> Done([ready to use Claude Code])
 ```
 
 ---
 
 ## 2. Daily Claude Code session loop
 
+```mermaid
+flowchart TD
+    Start([start session]) --> Read[Claude Code reads ~/.claude/CLAUDE.md<br/>+ skills, agents, settings, hooks]
+    Read --> Context[Claude has full maury-managed context]
+    Context --> Work[user works in session]
+    Work --> Edits[sometimes user corrects Claude<br/>sometimes Claude writes via Write/Edit<br/>sometimes user hand-edits a file directly]
+    Edits --> End([session ends])
+    End --> Hook{Stop hook<br/>v1.1?}
+    Hook -->|yes| Status[invoke maury-status skill<br/>'(*) N captures pending; M drift items']
+    Hook -->|no| Manual
+    Status --> Manual[user notices pending work]
+    Manual --> RunSync[maury status or maury sync]
+    RunSync --> Drift[drift detected vs<br/>~/.claude/maury-state/last-render.json]
+    Drift --> Kind{drift<br/>kind?}
+    Kind -->|claude-write| Soft[soft-accepted, logged<br/>maury revert ID available]
+    Kind -->|hand-edit| Menu[blocking-review:<br/>adopt / adapt / mark-managed / revert / skip-once<br/>per ADR-0017]
 ```
-[start session]
-     │
-     │ Claude Code reads ~/.claude/CLAUDE.md
-     │ + skills, agents, settings, hooks
-     ▼
-[Claude has full maury-managed context]
-     │
-     │ user works in session
-     │ — sometimes user corrects Claude
-     │ — sometimes Claude writes via Write/Edit tool
-     │ — sometimes user hand-edits a file directly
-     ▼
-[session ends]
-     │
-     │ (v1.1) Stop hook fires and invokes
-     │   the (v1) maury-status skill, which outputs
-     │   "(*) N captures pending; M drift items"
-     │   (skill itself ships in v1; the auto-invocation Stop hook is v1.1)
-     ▼
-[user notices pending work]
-     │
-     │ maury status (or maury sync)
-     ▼
-[drift detected vs ~/.claude/maury-state/last-render.json]
-     │
-     ├──→ Claude-write drift   ──→ soft-accepted, logged
-     │       (see maury revert <id>)
-     │
-     └──→ human hand-edit      ──→ blocking-review:
-                                   adopt | adapt | mark-managed | revert | skip-once
-                                   (per ADR-0017)
-```
+
+The skill itself ships in v1; the auto-invocation Stop hook is v1.1.
 
 ---
 
 ## 3. Periodic mining + cross-reference + review
 
-```
-[user runs maury mine]
-     │
-     │ walk ~/.claude/projects/<hash>/*.jsonl
-     │ filter system-injected pseudo-user content
-     ▼
-[user-authored messages]
-     │
-     │ batch into windows (default 50 messages each)
-     ▼
-[per-window LLM extraction]                ─── via claude -p (default)
-     │                                          or anthropic SDK (opt-in)
-     │ each window -> JSONL of Findings
-     ▼
-[Findings: kind / scope_hint / text / evidence / confidence]
-     │
-     │ if --crossref: rule engine + LLM classify each finding
-     │                against current CLAUDE.md (and historical
-     │                CLAUDE.md from git when available)
-     ▼
-[four-state buckets per ADR-0020]
-     │
-     ├── PRESENT_AND_REINFORCED  (!)  rule exists, Claude wasn't following → investigate
-     ├── PRESENT_BUT_UNCLEAR          rule exists, wording suspect → rephrase
-     ├── NEW                          not in CLAUDE.md → propose
-     └── PRESENT_AND_CLEAR            already promoted → suppress
-     │
-     │ user runs maury review
-     ▼
-[per-finding accept / reject / reclassify]
-     │
-     │ accepted findings → proposals queue
-     │ reclassifications → rule-synthesis call;
-     │                     proposes a new rule for rules.yaml
-     ▼
-[proposals/ in synced repo]
-     │
-     │ if same trust boundary as origin:
-     │   commit + push directly
-     │ if cross-boundary (work-host insight → base):
-     │   land in proposals/promote-to-base/<id>.md
-     │   wait for curator on a host with both keys
-     ▼
-[next maury sync from another host]
-     │
-     │ git pull
-     ▼
-[updated CLAUDE.md / skills / rules render to ~/.claude/]
-     │
-     ▼
-[other hosts now have the same updated context — Tenet 2 satisfied]
+```mermaid
+flowchart TD
+    Start([user runs maury mine]) --> Walk[walk ~/.claude/projects/HASH/*.jsonl<br/>filter system-injected pseudo-user content]
+    Walk --> Auth[user-authored messages]
+    Auth --> Batch[batch into windows<br/>default 50 messages each]
+    Batch --> Extract[per-window LLM extraction<br/>via claude -p default<br/>or anthropic SDK opt-in]
+    Extract --> Findings[Findings:<br/>kind / scope_hint / text / evidence / confidence]
+    Findings --> CR{--crossref<br/>flag?}
+    CR -->|no| Branch
+    CR -->|yes| Classify[rule engine + LLM classify each finding<br/>vs current and historical CLAUDE.md]
+    Classify --> Buckets{four-state<br/>per ADR-0020}
+    Buckets -->|PRESENT_AND_REINFORCED| Investigate[rule exists, Claude wasn't following<br/>investigate]
+    Buckets -->|PRESENT_BUT_UNCLEAR| Rephrase[rule exists, wording suspect<br/>rephrase]
+    Buckets -->|NEW| Propose[not in CLAUDE.md → propose]
+    Buckets -->|PRESENT_AND_CLEAR| Suppress[already promoted → suppress]
+    Investigate --> Branch
+    Rephrase --> Branch
+    Propose --> Branch
+    Branch[create branch maury/run/RUN-ID with<br/>one commit per finding per ADR-0022] --> Review[user runs maury review RUN-ID]
+    Review --> Walk2[walk commits oldest-first<br/>show diff + parsed trailers<br/>accept / reject / edit / skip]
+    Walk2 --> Cherry[cherry-pick accepted commits<br/>onto maury/review/RUN-ID]
+    Cherry --> RejCommit[append no-op rejection commit<br/>with Rejected-Content-Hash trailers]
+    RejCommit --> Merge[merge maury/review/RUN-ID to main<br/>local merge or PR]
+    Merge --> Sync[other hosts pull on next maury sync]
+    Sync --> Done([all hosts have the same updated context — Tenet 2 satisfied])
 ```
 
 ---
 
 ## 4. Cross-host promotion (the ADR-0009 case)
 
-```
-[work-laptop session]
-     │
-     │ user expresses a base-worthy preference
-     ▼
-[mining produces NEW finding tagged scope_hint=base]
-     │
-     │ work-laptop has rw on maury-work, ro on maury-base
-     │ — cannot push to base directly
-     ▼
-[proposal lands at maury-work:proposals/promote-to-base/<id>.md]
-     │
-     │ work-laptop pushes to maury-work
-     ▼
-[<curator host> with rw on both repos]
-     │
-     │ maury promote-review
-     │ → reads proposals/promote-to-base/* across all reachable repos
-     ▼
-[per-proposal accept / reject]
-     │
-     │ accepted: copy into maury-base + commit
-     │           audit log records who approved + when
-     ▼
-[maury-base updated]
-     │
-     │ all hosts pull base on next sync
-     ▼
-[work-laptop sees the rule on next render — without the work-laptop
- ever having pushed to base]
+```mermaid
+flowchart TD
+    Start([work-laptop session]) --> Express[user expresses base-worthy preference]
+    Express --> Mine[mining produces NEW finding<br/>tagged scope_hint=base]
+    Mine --> Constraint[work-laptop has rw on maury-work, ro on maury-base<br/>cannot push to base directly]
+    Constraint --> RunBranch[finding lands as commit on<br/>maury/run/RUN-ID in maury-work]
+    RunBranch --> Push[work-laptop pushes maury-work]
+    Push --> Curator[curator host with rw on both repos]
+    Curator --> Promote[maury promote --from maury-work --to maury-base<br/>walks src branches with same review UI]
+    Promote --> Decide{accept or<br/>reject per finding}
+    Decide -->|accept| Cherry[cherry-pick onto maury/promoted/ID in maury-base<br/>add Promoted-From trailer<br/>preserve Content-Hash]
+    Decide -->|reject| RejCommit[no-op rejection commit<br/>so maury-base's dedup index covers it]
+    Cherry --> Merge[merge maury/promoted/ID to maury-base main]
+    RejCommit --> Merge
+    Merge --> AllPull[all hosts pull base on next sync]
+    AllPull --> Done([work-laptop sees the rule on next render —<br/>without ever having pushed to base])
 ```
 
 ---
