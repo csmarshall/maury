@@ -3,6 +3,16 @@
 **Status:** Accepted
 **Date:** 2026-05-06
 **Supersedes:** [ADR-0021](0021-promotion-changelog.md)
+**Amended:**
+- 2026-05-07 — dedup scan widens from `Content-Hash` (scalar) to
+  `(Content-Hash, Source-Profile)` tuple per
+  [ADR-0026 §"Cross-host case"](0026-profile-aware-mining.md#cross-host-case-multi-host-mining).
+  Same finding text from `personal` vs `work` are conceptually
+  different proposals and should not dedupe each other.
+  Implementation: `git log --grep="^Content-Hash:"` still
+  catches both, but the matcher reduces by `(hash, profile)`
+  pairs rather than hashes alone. Backward-compatible for
+  commits without `Source-Profile:` (treat as wildcard).
 
 ## Related tenets
 
