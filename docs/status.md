@@ -34,7 +34,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury reconcile` | ⏳ planned | Drift menu (5 reconcile actions). Phase 5.x per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md). |
 | `maury sessions prune` | ⏳ planned | Clean up stale `active-sessions.jsonl` entries. Per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | `maury verify-cc-contract` | ⏳ planned | Re-fetch cited Claude Code docs and diff against `docs/claude-code-snapshots/`. Drift detection for upstream documentation changes. |
-| `maury subscribe <url>` | ⏳ planned (v1.1+) | Subscribe to a published profile (gap K). Per planned ADR-0028 + ADR-0029. |
+| `maury subscribe <url>` | ⏳ planned (v1.1+) | Subscribe to a published profile (gap K). Per planned gap-K ADRs. |
 | `maury uninstall` | ⏳ planned | Strip maury hooks/scripts/state from a host. Per [ADR-0023 §8](adr/0023-hook-installation-and-tool-resolution.md). |
 
 Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ planned for v1 · ⏳ (v1.1+) deferred
@@ -63,7 +63,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | Host-local secrets w/ metadata sync | ⏳ deferred (v1.1) | Per [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md). |
 | Background drift watcher | ⏳ deferred (v1.1) | Per [ADR-0017 Followups](adr/0017-drift-detection-and-reconciliation.md#followups). |
 | `maury refactor promote-common` | ⏳ deferred (v2) | Replacement→refinement migration. Per [ADR-0019 Open questions](adr/0019-inheritance-semantics-refine-by-default.md#open-questions--followups). |
-| Published/subscribed profiles + `pr` repo mode | ⏳ planned (gap K) | Per planned ADR-0028 + ADR-0029. |
+| Published/subscribed profiles + `pr` repo mode | ⏳ planned (gap K) | Per planned gap-K ADRs. |
 
 ## Documentation
 

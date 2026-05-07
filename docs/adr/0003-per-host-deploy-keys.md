@@ -85,5 +85,6 @@ Host github-work
 promotes the deploy-key-derived `mode` field on repo entries to
 a first-class concept and adds a third value, `pr` (read + write
 via pull request), alongside the `ro` and `rw` defined in this
-ADR. The `pr` mode is forward-referenced to planned ADR-0028;
-this ADR enumerates the modes that exist today.
+ADR. The `pr` mode is forward-referenced to a planned gap-K ADR
+(number assigned when written); this ADR enumerates the modes
+that exist today.

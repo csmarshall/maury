@@ -290,7 +290,7 @@ that ADRs reach for when describing contribution flows.
 | Mode | Read | Write | Used when |
 |---|---|---|---|
 | **`ro`** | yes | none | Default. Child consumes parent content; no path to modify the parent's source directly from this host. |
-| **`pr`** *(planned)* | yes | via pull request, requires curator approval | Child can submit changes for review; curator merges. **Not yet expressible in the manifest schema** — ADR-0003 currently defines only `ro`/`rw`. The `pr` mode lands in planned ADR-0028 alongside the workflow tooling. Mechanically, `pr` is a workflow layered on top of `ro` deploy-key access plus a side channel (e.g., GitHub PR via `gh`); the mode value just makes the contract explicit in the manifest. |
+| **`pr`** *(planned)* | yes | via pull request, requires curator approval | Child can submit changes for review; curator merges. **Not yet expressible in the manifest schema** — ADR-0003 currently defines only `ro`/`rw`. The `pr` mode lands in a planned gap-K ADR alongside the workflow tooling. Mechanically, `pr` is a workflow layered on top of `ro` deploy-key access plus a side channel (e.g., GitHub PR via `gh`); the mode value just makes the contract explicit in the manifest. |
 | **`rw`** | yes | direct push | Full trust. Curator hosts have this on the repos they maintain. |
 
 The mode is a property of the **access path** — specifically the
@@ -523,7 +523,7 @@ that doesn't import OO baggage.
 | **Layer** | One source of content composed at render | [§4](#4-layer) |
 | **Host overlay** | Per-host slice of a profile's content | [§4](#4-layer) |
 | **Active profile** | The one profile a host is currently in | [§5](#5-active-profile) |
-| **Inheritance access mode** | What a child can do to a forebearer's canonical state: `ro` / `pr` / `rw` | [§6](#6-inheritance-access-mode), planned ADR-0028 |
+| **Inheritance access mode** | What a child can do to a forebearer's canonical state: `ro` / `pr` / `rw` | [§6](#6-inheritance-access-mode), planned gap-K ADR (pr mode) |
 | **`maury-status` skill** | Claude-invokable mid-session affordance that surfaces maury's view of host state (active profile, drift, pending captures/proposals, active sessions) | [ADR-0017 §"The `maury-status` skill"](adr/0017-drift-detection-and-reconciliation.md#the-maury-status-skill) |
 | **Context** | Active profile + its inheritance chain | [§5](#5-active-profile) (NOT Claude Code's "session context") |
 | **Render** | Compose all layers → write to `~/.claude/` | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
