@@ -1,0 +1,88 @@
+name: Bug report
+description: Something maury did that it shouldn't have, or didn't do that it should have.
+title: "[bug] "
+labels: ["bug", "triage"]
+assignees:
+  - csmarshall
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing! A bug report helps most when it's specific and reproducible.
+        Please redact anything sensitive (host names, paths, tokens) before submitting.
+
+  - type: input
+    id: maury-version
+    attributes:
+      label: maury version
+      description: Output of `maury --version`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: claude-code-version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Host OS
+      multiple: true
+      options:
+        - macOS (Intel)
+        - macOS (Apple Silicon)
+        - Ubuntu / Debian
+        - Other Linux
+        - FreeBSD
+        - Other (describe in "what happened")
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you see instead?
+      placeholder: |
+        Steps to reproduce:
+        1. ...
+        2. ...
+
+        Expected:
+        ...
+
+        Actual:
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: command-output
+    attributes:
+      label: Command output (if applicable)
+      description: Paste relevant output. Use a code block.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: maury-doctor
+    attributes:
+      label: `maury doctor` output (recommended)
+      description: Run `maury doctor` and paste the result. Helps with capability/probe issues.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Redaction
+      options:
+        - label: I have redacted any sensitive identifiers (host names, paths, tokens, internal project names) from this report.
+          required: true

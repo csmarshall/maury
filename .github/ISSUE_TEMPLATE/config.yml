@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/csmarshall/maury/tree/main/docs
+    about: Concepts, tenets, ADRs, operations reference, claude-code contract.
+  - name: Architecture decisions (ADRs)
+    url: https://github.com/csmarshall/maury/tree/main/docs/adr
+    about: Design decisions and their rationale. Read these before opening a design-question issue.
+  - name: Status snapshot
+    url: https://github.com/csmarshall/maury/blob/main/docs/status.md
+    about: Honest snapshot of which commands are shipped, partial, or planned.

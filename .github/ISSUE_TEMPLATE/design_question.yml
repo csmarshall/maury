@@ -1,0 +1,50 @@
+name: Design question
+description: Open-ended discussion about an architectural decision or trade-off.
+title: "[design] "
+labels: ["design", "discussion", "triage"]
+assignees:
+  - csmarshall
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For genuinely open questions ("how should we approach X?", "is the current
+        design right for Y?"). Likely to result in a new ADR or an amendment to
+        an existing one. If you already know what you want built, open a feature
+        request instead.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: What are you trying to figure out?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: |
+        What's the situation that surfaced this question? What constraints exist?
+        Have you read existing ADRs (`docs/adr/`) and tenets (`docs/tenets.md`)?
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options you're considering (if any)
+      description: Even rough ideas help frame the discussion.
+    validations:
+      required: false
+
+  - type: textarea
+    id: tenets
+    attributes:
+      label: Tenets in tension
+      description: |
+        Which of maury's 11 tenets (docs/tenets.md) feel relevant or in conflict?
+        Tenet-aware framing is much easier to reason about than abstract preference.
+    validations:
+      required: false

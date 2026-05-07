@@ -1,0 +1,62 @@
+name: Feature request
+description: Suggest a new capability or an extension to an existing one.
+title: "[feature] "
+labels: ["enhancement", "triage"]
+assignees:
+  - csmarshall
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The more specific the use case, the easier it is
+        to evaluate. If your request is more "how should we approach X" than
+        "implement Y," consider opening a Design question instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and why is the current behavior insufficient?
+      placeholder: |
+        I'm trying to ... but maury currently ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like maury to behave? CLI sketch is great if applicable.
+      placeholder: |
+        Add `maury <new-command> --flag` that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds did you try? Why aren't they sufficient?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: trust-model
+    attributes:
+      label: Trust-model implications
+      description: Does this change cross-boundary data flow, render targets, or proposal queues?
+      options:
+        - "No — purely local / cosmetic / single-host"
+        - "Maybe — could affect render or sync behavior"
+        - "Yes — touches trust boundary, promotion, or rendered targets"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: related-adrs
+    attributes:
+      label: Related ADRs (if you've read them)
+      description: Links to ADRs this would interact with or amend. Optional.
+    validations:
+      required: false
