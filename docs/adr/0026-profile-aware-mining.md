@@ -291,6 +291,16 @@ profile-aware mining before the hooks that produce
   long-running hosts will accumulate years of session records.
   v1: no pruning. v1.1: `maury sessions prune --older-than 1y`
   command (companion to the ghost-session pruner from ADR-0025).
+- **Commit-trailer schema versioning.** This ADR introduces
+  `Source-Profile` and `Source-Profile-Name` trailers on
+  mining-run commits. If trailer semantics ever evolve (e.g.,
+  a `Source-Profile` that means something different), the
+  same per-version-rename rule from
+  [ADR-0030](0030-manifest-schema-migrations.md) §"Schema-
+  changes constraints" applies — rename the trailer rather
+  than redefine its semantics. There's no manifest-style
+  `version:` field on commit messages; per-trailer renaming
+  is the equivalent.
 
 ## Claude Code references
 

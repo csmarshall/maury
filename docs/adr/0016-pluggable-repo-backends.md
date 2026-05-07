@@ -2,6 +2,12 @@
 
 **Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+- 2026-05-06 — addendum noting ADR-0022's git-substrate lock-in
+  rules out non-git backends (p4, hg, svn, s3-age, bundle).
+  Git-compatible alternatives (gitlab, gitea, codeberg,
+  self-hosted git) remain in scope. See bottom-of-ADR
+  Addendum (2026-05-06).
 
 ## Related tenets
 

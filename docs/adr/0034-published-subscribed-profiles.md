@@ -31,10 +31,11 @@ that engineers subscribe to.** Examples:
   practices" as a profile that anyone can subscribe to.
 
 The gap-K design discussion identified this pattern. ADR-0033
-shipped the mechanical primitive (`pr` repo mode). This ADR
-captures the **use case layer**: the curator-as-ongoing-role
-pattern, multi-user properties, discoverability, versioning,
-and the contribution flow back via PR.
+specifies the mechanical primitive (`pr` repo mode);
+implementation is Phase 7. This ADR captures the **use case
+layer**: the curator-as-ongoing-role pattern, multi-user
+properties, discoverability, versioning, and the contribution
+flow back via PR.
 
 ## Decision
 

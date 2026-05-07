@@ -1,8 +1,14 @@
 # ADR-0010: All three pillars in v1
 
-**Status:** Accepted; partially amended — subsequent ADRs added phases
-and deferred some pieces to v1.1. See "Amendment (2026-05-06)" below.
+**Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+- 2026-05-06 — phase additions + v1.1 deferrals captured in
+  "Amendment (2026-05-06)" section below: Phase 2.5 (`maury
+  doctor` per ADR-0011), Phase 6.5 (LLM backend abstraction
+  per ADR-0012); v1.1 deferrals for ADR-0013 active capture,
+  ADR-0014 secrets, ADR-0017 watch-mode drift, ADR-0019
+  refactor-promote-common, and ADR-0016 non-git backends.
 
 ## Context
 

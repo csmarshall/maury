@@ -166,14 +166,23 @@ For clarity by negative space:
   [ADR-0013](0013-active-in-session-capture.md). Conceptually
   related (also host-local, also never-sync-to-git) but a
   different directory because its lifecycle is different.
-  maury-staging holds two kinds of content: (1) user-reviewable
-  captures (`captures.jsonl` per ADR-0013) that the user
-  reviews via `maury review` and clears as they're processed,
-  and (2) maury-managed offline-mining material
-  (`pending-mining/` per ADR-0028) that maury writes during
-  `--store-only` and consumes during `--resume-pending`. Both
-  are user-visible work-in-progress, distinct from
-  maury-state's strictly-bookkeeping role.
+  maury-staging holds two kinds of content:
+  1. **User-reviewable captures** at
+     `~/.claude/maury-staging/captures.jsonl` (per ADR-0013)
+     — the user reviews via `maury review` and clears as
+     they're processed.
+  2. **Maury-managed offline-mining material** at
+     `~/.claude/maury-staging/pending-mining/` (per
+     [ADR-0028](0028-offline-behavior.md)) — maury writes
+     during `--store-only` (transcripts normalized + redacted
+     into windows) and consumes during `--resume-pending`
+     (LLM extraction runs over the staged windows).
+
+  Both are user-visible work-in-progress, distinct from
+  maury-state's strictly-bookkeeping role. Note specifically
+  that **`pending-mining/` lives under maury-staging, NOT
+  under maury-state** — it's offline work-in-progress, not
+  bookkeeping state.
 
 ### Future additions
 

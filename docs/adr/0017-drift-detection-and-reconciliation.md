@@ -104,6 +104,16 @@ Three flows from question Q10:
 | `maury sync --non-interactive` | **Flow C**: refuse on any drift, exit 1. Cron/CI safe. |
 | `maury sync --force` | **Flow A**: pull and clobber, with a loud warning to stderr. Rare manual override. |
 
+> **Note on `--force` semantics across maury:** this ADR (and
+> [ADR-0024](0024-manifest-concurrency-inclusive-merge.md)) treat
+> `--force` as a single-flag override. [ADR-0025](0025-profile-switching-session-safeguards.md)
+> §"Precondition 3" intentionally requires the obnoxious-by-design
+> `--force --i-understand-cross-boundary-risk` flag pair for
+> profile switch — its blast radius (cross-boundary context
+> leakage) is qualitatively different from the local
+> overwrite/refuse tradeoffs `--force` covers here. Reader who
+> notices the inconsistency: it's deliberate.
+
 ### Multi-source merge conflicts (per Q11)
 
 When the same line is touched by hand-edit, mined fragment, AND
@@ -263,17 +273,10 @@ v1.1 (deferred):
 - **Refactor-from-replacement (v2)** per ADR-0019 — the renderer's
   warnings during reconcile become actionable via `maury refactor`.
 
-## Addendum (2026-05-07)
-
-[ADR-0023](0023-hook-installation-and-tool-resolution.md) §6 locks
-down the concrete `claude-writes.jsonl` payload schema. The
-`{ts, session_id, tool, path, diff_hint}` shape sketched in this
-ADR's "Drift sources and treatment" section is extended (not
-replaced) with `before_sha`, `after_sha`, and `size_delta` — the
-SHA-pair enables the file-equality attribution this ADR's drift
-detection implies but did not specify the mechanism for.
-`diff_hint` is preserved verbatim. Implementers should follow the
-ADR-0023 schema as the authoritative reference.
+<!-- The 2026-05-07 schema-extension addendum was retired here;
+     its content is now captured in the **Amended:** field at
+     the top of this ADR. See ADR-0023 §6 for the authoritative
+     claude-writes.jsonl schema. -->
 
 ## Claude Code references
 

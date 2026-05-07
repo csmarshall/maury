@@ -136,6 +136,13 @@ maury service unregister <name>
   credential exists, not its value.
 - A `Stop` hook is added to remind: "secrets-pending: N credentials
   registered without values; run `maury secret set <name>` to populate."
+  Per [ADR-0025](0025-profile-switching-session-safeguards.md)'s
+  hook-cadence note, `Stop` fires once per *turn* (each
+  user-prompt → assistant-response cycle), not once per session.
+  For a low-noise reminder this is the right cadence ("remind me
+  after each exchange while there are pending secrets"); if it
+  proves too noisy in practice, switching to `SessionEnd`
+  (once-per-session) is the trivial alternative.
 
 ### Privacy of metadata itself
 
