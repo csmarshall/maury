@@ -18,6 +18,19 @@
   Closes audit finding M2 (skill referenced in 4 docs without
   being defined).
 
+## TL;DR
+
+Maury keeps a per-host SHA log of what it rendered
+(`~/.claude/maury-state/last-render.json`). Sync detects drift
+between rendered SHAs and current files, distinguishes hand-edits
+from Claude-tool writes via a `PostToolUse log_tool_use` hook, and
+surfaces a 5-action reconcile menu (adopt / adapt / mark-managed /
+revert / skip-once) instead of clobbering. `maury sync` is
+interactive by default; `--non-interactive` refuses on drift
+(cron-safe); `--force` clobbers (rare manual override). v1 ships a
+`maury-status` skill so Claude can mid-session warn about pending
+drift.
+
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
@@ -49,7 +62,8 @@ where the synced repo + manifest is the desired state, the host's
 actual `~/.claude/` is the actual state, and the user is the arbiter
 for differences.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (5 items — click to expand)</summary>
 
 - **Tenet 1:** first, do no harm. `maury sync` must never
   clobber the user's hand-edits without an explicit
@@ -67,7 +81,10 @@ for differences.
 - **Cron/CI must be safe.** Non-interactive sync needs a
   refuse-on-drift mode that exits cleanly.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (6 options — click to expand)</summary>
 
 - **Option A:** Forbid hand-edits via read-only files / FS
   locks / permissions tricks.
@@ -83,6 +100,8 @@ for differences.
   three Claude-write actions; sync detects drift and prompts
   by default, with `--non-interactive` (refuse) and
   `--force` (clobber) escape hatches.
+
+</details>
 
 ## Decision Outcome
 
@@ -298,9 +317,10 @@ v1.1 (deferred):
 - `maury sync` (Phase 5, shipped) checks drift before render
   and respects `--non-interactive` / `--force` flags.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Forbid hand-edits via FS locks / permissions
+#### Option A: Forbid hand-edits via FS locks / permissions
 
 - ✅ **Good:** No drift surface — files can't change.
 - ❌ **Bad:** Friction kills adoption; users will find
@@ -308,13 +328,13 @@ v1.1 (deferred):
 - ❌ **Bad:** Tenet 8 violation — hand-edits are first-class
   input; forbidding them inverts the principle.
 
-### Option B: Pull-and-clobber by default with warnings
+#### Option B: Pull-and-clobber by default with warnings
 
 - ✅ **Good:** Simple implementation; no reconcile UI.
 - ❌ **Bad:** Violates Tenet 1 (first, do no harm). Users
   would lose data they didn't realize they could lose.
 
-### Option C: Privileged Claude-write channel
+#### Option C: Privileged Claude-write channel
 
 - ✅ **Good:** Slightly simpler default treatment (Claude
   writes auto-accept).
@@ -322,7 +342,7 @@ v1.1 (deferred):
   same drift framework for all writers with different
   default actions.
 
-### Option D: Background watcher daemon as v1
+#### Option D: Background watcher daemon as v1
 
 - ✅ **Good:** Proactive surfacing of drift the moment it
   appears.
@@ -331,7 +351,7 @@ v1.1 (deferred):
 - ⚖️ **Neutral:** Deferred to v1.1; v1's "sync/status only"
   model is cheap, predictable, and easy to test.
 
-### Option E: Per-line provenance instead of per-file
+#### Option E: Per-line provenance instead of per-file
 
 - ✅ **Good:** Most precise routing for layer attribution.
 - ❌ **Bad:** Heavyweight to implement and store.
@@ -339,13 +359,15 @@ v1.1 (deferred):
   the right balance for v1; per-line is a v2 option if
   review-routing becomes a pain point.
 
-### Option F (chosen): SHA tracking + reconcile menu
+#### Option F (chosen): SHA tracking + reconcile menu
 
 - ✅ **Good:** No silent data loss; safe by default;
   cron/CI safe via `--non-interactive`.
 - ✅ **Good:** Single pipeline for all drift sources.
 - ❌ **Bad:** Non-trivial code surface (~500 LOC + hook +
   skill).
+
+</details>
 
 ## Followups
 
