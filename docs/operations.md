@@ -73,8 +73,8 @@ flowchart TD
     DriftKind -->|none| RenderStep
     DriftKind -->|claude-write| SoftAccept[soft-accept<br/>maury revert ID available]
     DriftKind -->|hand-edit| Mode{flag<br/>mode?}
-    Mode -->|--force| WarnForce[loud warning to stderr]
-    Mode -->|--non-interactive| FailNonInt([refuse — exit 1])
+    Mode -->|"--force"| WarnForce[loud warning to stderr]
+    Mode -->|"--non-interactive"| FailNonInt([refuse — exit 1])
     Mode -->|default| Reconcile[invoke reconcile menu<br/>see maury reconcile]
     SoftAccept --> RenderStep
     WarnForce --> RenderStep
@@ -96,6 +96,7 @@ Five actions per ADR-0017 §"The five reconcile actions for hand-edits".
 flowchart TD
     Start([drift detected on file F]) --> Show[show three views:<br/>last-rendered, current on-disk,<br/>what render would write]
     Show --> Prompt{user picks}
+    Next([continue to next drift item, then to render])
     Prompt -->|adopt| Adopt[capture diff hunk + 3-5 lines context<br/>classify via rule engine<br/>queue as commit on next mine run<br/>local file UNCHANGED]
     Prompt -->|adapt| Adapt[normalize first<br/>then same as adopt]
     Prompt -->|mark-managed| Mark[add path to hand-managed.json<br/>maury never renders here again on this host]
@@ -105,7 +106,7 @@ flowchart TD
     Adapt --> Next
     Mark --> Next
     Revert --> Next
-    Skip --> Next([continue to next drift item, then to render])
+    Skip --> Next
 ```
 
 For Claude-write drift, the menu is shorter: default = soft-accept
@@ -128,7 +129,7 @@ flowchart TD
     Extract --> Findings[Findings:<br/>kind / scope_hint / text / evidence / confidence]
     Findings --> Hash[compute Content-Hash per finding<br/>sha256 kind + scope + normalized_text]
     Hash --> Dedup[git log --all --grep Content-Hash<br/>git log --all --grep Rejected-Content-Hash<br/>build set, suppress matches]
-    Dedup --> CrossrefQ{--crossref<br/>flag?}
+    Dedup --> CrossrefQ{"--crossref<br/>flag?"}
     CrossrefQ -->|no| Branch
     CrossrefQ -->|yes| Crossref[classify each finding vs current<br/>and historical CLAUDE.md per ADR-0020]
     Crossref --> CrossrefDrop[drop PRESENT_AND_CLEAR<br/>already promoted]
@@ -150,6 +151,8 @@ flowchart TD
     CheckMain -->|no| MakeReview[create branch<br/>maury/review/RUN-ID off main]
     MakeReview --> Walk[walk commits oldest-first<br/>git log main..maury/run/RUN-ID]
     Walk --> ForEach[for each commit C:<br/>show diff and parsed trailers]
+    NextCommit{more<br/>commits?}
+    MergePrompt{merge<br/>now?}
     ForEach --> Choice{user picks}
     Choice -->|accept| Pick[git cherry-pick C onto review branch]
     Pick --> Conflict{conflict?}
@@ -162,12 +165,11 @@ flowchart TD
     Reject --> NextCommit
     Choice -->|skip| Skip[leave for next session<br/>recorded in run-state]
     Skip --> NextCommit
-    NextCommit{more<br/>commits?}
     NextCommit -->|yes| ForEach
     NextCommit -->|no| RejNonEmpty{any<br/>rejections?}
     RejNonEmpty -->|yes| RejCommit[append no-op metadata commit:<br/>Original-Run / Curator-Host /<br/>Rejected-Content-Hash * N]
     RejNonEmpty -->|no| MergePrompt
-    RejCommit --> MergePrompt{merge<br/>now?}
+    RejCommit --> MergePrompt
     MergePrompt -->|yes| Merge[git merge --no-ff<br/>or push + open PR via gh]
     MergePrompt -->|no| LeaveBranch([leave branch in place — user merges later])
     Merge --> Cleanup([delete maury/run/RUN-ID<br/>keep maury/review/RUN-ID until pruned])

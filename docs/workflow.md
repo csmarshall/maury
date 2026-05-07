@@ -56,7 +56,7 @@ flowchart TD
     Work --> Edits[sometimes user corrects Claude<br/>sometimes Claude writes via Write/Edit<br/>sometimes user hand-edits a file directly]
     Edits --> End([session ends])
     End --> Hook{Stop hook<br/>v1.1?}
-    Hook -->|yes| Status[invoke maury-status skill<br/>'(*) N captures pending; M drift items']
+    Hook -->|yes| Status["invoke maury-status skill<br/>'N captures pending; M drift items'"]
     Hook -->|no| Manual
     Status --> Manual[user notices pending work]
     Manual --> RunSync[maury status or maury sync]
@@ -64,6 +64,8 @@ flowchart TD
     Drift --> Kind{drift<br/>kind?}
     Kind -->|claude-write| Soft[soft-accepted, logged<br/>maury revert ID available]
     Kind -->|hand-edit| Menu[blocking-review:<br/>adopt / adapt / mark-managed / revert / skip-once<br/>per ADR-0017]
+    Soft --> Sync2([next maury sync])
+    Menu --> Sync2
 ```
 
 The skill itself ships in v1; the auto-invocation Stop hook is v1.1.
