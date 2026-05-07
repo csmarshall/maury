@@ -8,6 +8,18 @@
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
+## TL;DR
+
+claude-diary looks superficially like a vendor candidate, but on
+inspection has no library code (the "logic" is LLM prompts in
+slash-command markdown), is unmaintained, and outputs free-form
+markdown rather than the structured fragments maury's pipeline needs.
+Maury **reimplements mining in Python** while crediting claude-diary
+in the README and borrowing its proven ideas (2+/3+ pattern
+thresholds, PreCompact-hook capture trigger, observe-reflect-retrieve
+cadence). Trade-off: mining becomes a substantial in-tree component
+rather than a thin wrapper over a dependency.
+
 ## Context and Problem Statement
 
 [rlancemartin/claude-diary](https://github.com/rlancemartin/claude-diary)
@@ -33,7 +45,8 @@ Investigation revealed:
 - Two downstream projects (`claude-layered-learning`, `session-letter`)
   hit the same "nothing to extend" wall and built around it.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 7:** provenance is mandatory. Maury needs structured
   fragment output with provenance; claude-diary's natural-
@@ -48,7 +61,10 @@ Investigation revealed:
   PreCompact hook capture, observe-reflect-retrieve) are
   meaningful and worth crediting publicly.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** Vendor claude-diary into maury.
 - **Option B:** Submit a structural-improvement PR upstream and
@@ -57,6 +73,8 @@ Investigation revealed:
 - **Option D (chosen):** Reimplement in Python; credit
   claude-diary in README as a design reference; do not vendor or
   depend.
+
+</details>
 
 ## Decision Outcome
 
@@ -103,9 +121,10 @@ good-citizen gesture; we don't expect a reply.
 - Mining code (planned at `src/maury/mining/`, Phase 6) is
   pure-maury; no claude-diary imports.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Vendor claude-diary
+#### Option A: Vendor claude-diary
 
 - ✅ **Good:** Reuses an established tool's design verbatim.
 - ❌ **Bad:** No extractable library — the "code" is prompts.
@@ -113,7 +132,7 @@ good-citizen gesture; we don't expect a reply.
 - ❌ **Bad:** Output format is markdown-append to CLAUDE.md;
   doesn't fit our structured-fragment pipeline.
 
-### Option B: Submit a structural-improvement PR upstream
+#### Option B: Submit a structural-improvement PR upstream
 
 - ✅ **Good:** Improves the broader ecosystem.
 - ❌ **Bad:** Precedent (existing PR open 4 months unreviewed)
@@ -121,7 +140,7 @@ good-citizen gesture; we don't expect a reply.
 - ❌ **Bad:** Even if merged, we'd still be coupled to
   upstream's release cadence.
 
-### Option C: Recommend installing claude-diary alongside
+#### Option C: Recommend installing claude-diary alongside
 
 - ✅ **Good:** Zero code investment; user gets both tools.
 - ❌ **Bad:** Hard handoff between two tools with no shared
@@ -129,13 +148,15 @@ good-citizen gesture; we don't expect a reply.
 - ❌ **Bad:** No control over output structure or schema; we
   can't classify or audit what claude-diary produces.
 
-### Option D (chosen): Reimplement; credit upstream
+#### Option D (chosen): Reimplement; credit upstream
 
 - ✅ **Good:** Full control over output format and schema.
 - ✅ **Good:** Independent iteration cadence.
 - ✅ **Good:** Public credit preserves the ethical relationship.
 - ❌ **Bad:** Mining is a substantial code component to write
   and maintain.
+
+</details>
 
 ## Build-order placement
 

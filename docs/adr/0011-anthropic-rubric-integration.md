@@ -7,6 +7,19 @@
 
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
+## TL;DR
+
+Anthropic ships no API for evaluating CLAUDE.md content quality, but
+its best-practices doc encodes a clear ✅/❌ rubric and named
+anti-patterns (over-specification, self-evident platitudes, file-by-
+file descriptions, etc.). Maury adds a **`maury doctor` subcommand**
+with deterministic pattern-based checks seeded from that rubric, with
+each check citing its source URL. Mining proposals also run through
+the doctor's anti-pattern detectors so violations surface before the
+user sees them. Trade-off: maintenance coupling — when Anthropic
+updates the rubric, we update the pattern list (mitigated by recording
+source URLs).
+
 ## Context and Problem Statement
 
 Anthropic ships no public API or CLI for evaluating CLAUDE.md / settings
@@ -37,7 +50,8 @@ Building maury without acknowledging this rubric would mean we'd
 re-derive the same advice from scratch via the rule engine, with poor
 provenance. The rubric exists; we should consume it.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 9:** defer to the platform. Anthropic's documented
   rubric is *the* authoritative source for "what belongs in
@@ -53,7 +67,10 @@ provenance. The rubric exists; we should consume it.
 - **No new dependencies:** evaluator should ship as a small
   in-tree module, not a new external service.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Defer the evaluator to v2.
 - **Option B:** Shell out to `cclint` for structural validation.
@@ -64,6 +81,8 @@ provenance. The rubric exists; we should consume it.
 - **Option E (chosen):** Add a `maury doctor` subcommand with
   pattern-based checks seeded from Anthropic's best-practices
   doc.
+
+</details>
 
 ## Decision Outcome
 
@@ -137,9 +156,10 @@ v1 scope:
   rule it derives from (visible in both text and JSON
   output).
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Defer the evaluator to v2
+#### Option A: Defer the evaluator to v2
 
 - ✅ **Good:** Smaller v1 scope.
 - ❌ **Bad:** Mining produces CLAUDE.md proposals from day
@@ -148,7 +168,7 @@ v1 scope:
 - ❌ **Bad:** Cost of folding in is small — deferring
   trades a small effort for a real gap in v1.
 
-### Option B: Shell out to `cclint`
+#### Option B: Shell out to `cclint`
 
 - ✅ **Good:** Reuses an existing tool.
 - ❌ **Bad:** `cclint` is structural, not semantic — doesn't
@@ -156,7 +176,7 @@ v1 scope:
 - ⚖️ **Neutral:** Reasonable to add as a v2 pre-pass (cheap
   subprocess, JSON output) for the structural-validation slice.
 
-### Option C: Reuse the existing rule engine
+#### Option C: Reuse the existing rule engine
 
 - ✅ **Good:** One engine, one mental model.
 - ❌ **Bad:** The classification rule engine routes fragments
@@ -167,7 +187,7 @@ v1 scope:
   flags). Cleaner for v1 to keep them separate; revisit
   unification in v2 if patterns converge.
 
-### Option D: AI-only critique
+#### Option D: AI-only critique
 
 - ✅ **Good:** Could catch nuanced quality issues regex
   patterns miss.
@@ -177,13 +197,15 @@ v1 scope:
   ([ADR-0004](0004-rule-engine-classification.md)).
 - ❌ **Bad:** Adds an LLM round-trip on every doctor invocation.
 
-### Option E (chosen): Pattern-based doctor seeded from Anthropic's docs
+#### Option E (chosen): Pattern-based doctor seeded from Anthropic's docs
 
 - ✅ **Good:** Deterministic, auditable, cites sources.
 - ✅ **Good:** No new dependencies.
 - ✅ **Good:** Aligns with maury's rule-engine ethos.
 - ❌ **Bad:** Pattern-based checks may miss nuances; v2 can
   layer AI critique as an opt-in pre-pass.
+
+</details>
 
 ## Build-order placement
 

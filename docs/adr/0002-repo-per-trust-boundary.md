@@ -7,6 +7,17 @@
 
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 
+## TL;DR
+
+Client-side isolation tricks (sparse checkout, branch protection,
+per-directory permissions) don't actually stop a host from fetching
+content it shouldn't see — `git fetch --all` defeats them. Maury uses
+**one git repo per trust boundary**, with profiles in the same
+boundary sharing a repo. Server-side deploy keys (ADR-0003) make
+isolation unbypassable: the work laptop literally has no credential to
+clone the personal repo. Trade-off: ~3 repos for typical use, plus
+cross-repo promotion plumbing for cross-boundary content moves.
+
 ## Context and Problem Statement
 
 The work laptop must not have access to personal-context bytes. The
@@ -23,7 +34,8 @@ don't actually provide isolation:
 The only honest answer is repo-level isolation: the work laptop never
 holds the credentials to clone the personal repo.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 3:** trust boundaries are physical, not policy. The
   enforcement must be at a layer the user can't bypass.
@@ -37,7 +49,10 @@ holds the credentials to clone the personal repo.
   GitHub-style hosting determines what access primitives are
   available.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Single repo, per-directory permissions.
 - **Option B:** Branch-per-profile + branch protection.
@@ -45,6 +60,8 @@ holds the credentials to clone the personal repo.
 - **Option D:** Submodules — one parent repo with per-profile submodules.
 - **Option E (chosen):** One git repo per trust boundary; profiles
   within a boundary share the repo.
+
+</details>
 
 ## Decision Outcome
 
@@ -111,15 +128,16 @@ constrained by the inheritance graph ([ADR-0027](0027-cross-context-promotion-vi
   ([ADR-0003](0003-per-host-deploy-keys.md), [ADR-0018](0018-minimum-bootstrap-ux.md))
   enforce the repo-per-boundary structure operationally.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Single repo, per-directory permissions
+#### Option A: Single repo, per-directory permissions
 
 - ✅ **Good:** Conceptually simple — one place for all maury content.
 - ❌ **Bad:** Not supported by GitHub or any major git host; can't
   be made into a real boundary.
 
-### Option B: Branch-per-profile + branch protection
+#### Option B: Branch-per-profile + branch protection
 
 - ✅ **Good:** Reuses existing GitHub primitive (branch protection).
 - ❌ **Bad:** Branch protection limits **writes**, not reads; the
@@ -127,13 +145,13 @@ constrained by the inheritance graph ([ADR-0027](0027-cross-context-promotion-vi
   every byte.
 - ❌ **Bad:** Isolation is illusory; tenet-3 violation.
 
-### Option C: Sparse checkout
+#### Option C: Sparse checkout
 
 - ✅ **Good:** Lighter clones for hosts that don't need everything.
 - ❌ **Bad:** Client-side only; not a security boundary. A user
   who runs `git fetch --all --unshallow` defeats it.
 
-### Option D: Submodules
+#### Option D: Submodules
 
 - ✅ **Good:** Each submodule is a separate repo, so per-submodule
   access control is real.
@@ -141,7 +159,7 @@ constrained by the inheritance graph ([ADR-0027](0027-cross-context-promotion-vi
   detached HEAD pitfalls) without meaningful gain over plain
   repo-per-trust-boundary — same isolation, more rope.
 
-### Option E (chosen): Repo per trust boundary
+#### Option E (chosen): Repo per trust boundary
 
 - ✅ **Good:** Server-side enforcement of "this host can/can't
   see these bytes."
@@ -151,6 +169,8 @@ constrained by the inheritance graph ([ADR-0027](0027-cross-context-promotion-vi
 - ❌ **Bad:** No client-side ergonomics like sparse-checkout for
   reducing what each host pulls within a boundary (mitigated:
   trust boundaries are usually small).
+
+</details>
 
 ## Build-order placement
 

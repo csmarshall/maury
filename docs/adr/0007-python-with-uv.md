@@ -7,6 +7,18 @@
 
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
+## TL;DR
+
+The deciding question for Python vs Go/Rust was whether FreeBSD breaks
+the Python distribution story — investigation showed it doesn't
+(`pkg install uv` works via the `devel/uv` port). Maury uses
+**Python ≥3.11 with `uv`** for env/dep management on every host
+including FreeBSD, with the standard `pyproject.toml` + `uv sync`
+workflow throughout. Picks up first-class Anthropic SDK support and
+matches user fluency. Trade-off: no static-binary distribution, so
+each host needs Python 3.11+ installed (acceptable for typical fleets
+under ~10 hosts).
+
 ## Context and Problem Statement
 
 Implementation language and toolchain choice for maury. Candidates:
@@ -25,7 +37,8 @@ distribution story. Investigation showed it doesn't: `pkg install uv`
 works on FreeBSD via the `devel/uv` port, with one caveat (no FreeBSD
 artifacts for `uv python install`; use system Python instead).
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 9:** defer to the platform. Use the language and
   package manager the user already prefers and that has the
@@ -38,7 +51,10 @@ artifacts for `uv python install`; use system Python instead).
 - **User familiarity:** the user is fluent in Python; another
   language adds a learning tax for no proportional gain.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (6 options — click to expand)</summary>
 
 - **Option A:** Go — single static binary, trivial cross-compile.
 - **Option B:** Rust — same distribution story as Go.
@@ -48,6 +64,8 @@ artifacts for `uv python install`; use system Python instead).
   rendering).
 - **Option F (chosen):** Python ≥3.11 with `uv` for environment
   and dependency management on every host, including FreeBSD.
+
+</details>
 
 ## Decision Outcome
 
@@ -91,9 +109,10 @@ Standard `pyproject.toml` + `uv sync` workflow on every host
 - README documents the FreeBSD-specific install path
   (`pkg install python311 uv`).
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Go
+#### Option A: Go
 
 - ✅ **Good:** Single static binary, trivial cross-compile to
   FreeBSD via `GOOS=freebsd`.
@@ -103,7 +122,7 @@ Standard `pyproject.toml` + `uv sync` workflow on every host
 - ❌ **Bad:** uv-on-FreeBSD removed Go's main practical
   advantage (FreeBSD distribution).
 
-### Option B: Rust
+#### Option B: Rust
 
 - ✅ **Good:** Same distribution story as Go; great safety
   guarantees.
@@ -111,20 +130,20 @@ Standard `pyproject.toml` + `uv sync` workflow on every host
   workload.
 - ❌ **Bad:** Steeper learning curve for the user.
 
-### Option C: TypeScript (fork jean-claude)
+#### Option C: TypeScript (fork jean-claude)
 
 - ✅ **Good:** Reuses an existing tool's UX and code.
 - ❌ **Bad:** Against language preference.
 - ❌ **Bad:** jean-claude's two-profile assumption is baked in
   deeply; retrofit cost similar to clean rebuild.
 
-### Option D: Python via PEP 723 single-file scripts
+#### Option D: Python via PEP 723 single-file scripts
 
 - ✅ **Good:** Lightweight; no project scaffolding.
 - ❌ **Bad:** uv's standard project layout is clearer for a
   multi-module tool of this scope.
 
-### Option E: Python on top of chezmoi
+#### Option E: Python on top of chezmoi
 
 - ✅ **Good:** Reuses a mature dotfile manager.
 - ❌ **Bad:** chezmoi's design center is single-repo dotfile
@@ -133,12 +152,14 @@ Standard `pyproject.toml` + `uv sync` workflow on every host
 - ❌ **Bad:** Adds Go binary dep on every host without
   proportional code savings.
 
-### Option F (chosen): Python ≥3.11 + uv
+#### Option F (chosen): Python ≥3.11 + uv
 
 - ✅ **Good:** Best Anthropic SDK support; matches user
   preference; uniform workflow across hosts.
 - ❌ **Bad:** No static binary; per-host Python runtime
   required.
+
+</details>
 
 ## Build-order placement
 

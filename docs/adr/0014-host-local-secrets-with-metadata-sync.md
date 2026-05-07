@@ -11,6 +11,19 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
+## TL;DR
+
+Some hosts hold credentials Claude needs to use locally — but
+credential **values** must never cross hosts, while **metadata** (this
+service exists, this credential's last-rotated timestamp, what's
+running where) is genuinely useful for restore and migration. Maury
+splits these into two stores: a **host-local value store**
+(capability-driven backend: macOS Keychain / Linux Secret Service /
+age-encrypted file fallback) and a **synced metadata manifest**
+(`secrets.json` in the host overlay) carrying presence + endpoints +
+timestamps but never values. Trade-off: three backends to maintain and
+two stores for the user to reason about.
+
 ## Context and Problem Statement
 
 Some hosts run local services that require credentials Claude needs to
@@ -31,7 +44,8 @@ This is a clean two-tier separation that maury should support
 explicitly: **values are host-local**, **presence metadata is
 syncable**.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (6 items — click to expand)</summary>
 
 - **Tenet 3:** trust boundaries are physical. Credential
   values must never cross a host boundary; that has to be a
@@ -49,7 +63,10 @@ syncable**.
 - **Recovery use cases are real.** "I crashed; what
   credentials did I have?" needs an answer.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Sync values into encrypted git (chezmoi+age,
   git-crypt, etc.).
@@ -61,6 +78,8 @@ syncable**.
 - **Option E (chosen):** Two stores — host-local value store
   (capability-driven backend) + synced metadata manifest with
   no values, ever.
+
+</details>
 
 ## Decision Outcome
 
@@ -231,9 +250,10 @@ credential for service Y" can leak information. Three knobs:
 - `maury secret list` never displays values; `maury secret
   get` reads from the host backend at use time only.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Sync values into encrypted git
+#### Option A: Sync values into encrypted git
 
 - ✅ **Good:** One store; familiar tooling (chezmoi+age,
   git-crypt).
@@ -243,13 +263,13 @@ credential for service Y" can leak information. Three knobs:
 - ❌ **Bad:** Two-store separation is unconditionally safer
   for the same operational cost.
 
-### Option B: No metadata at all; rely on operator memory
+#### Option B: No metadata at all; rely on operator memory
 
 - ✅ **Good:** Zero new schema; zero leak surface.
 - ❌ **Bad:** Defeats the restore/migration use cases — the
   whole point of the feature.
 
-### Option C: Single uniform backend (age-file everywhere)
+#### Option C: Single uniform backend (age-file everywhere)
 
 - ✅ **Good:** One backend to test and document.
 - ❌ **Bad:** OS keychain where available is friendlier
@@ -259,7 +279,7 @@ credential for service Y" can leak information. Three knobs:
   uniformity where keychain isn't available — which is
   what Option E does.
 
-### Option D: External secrets manager (Vault, 1Password)
+#### Option D: External secrets manager (Vault, 1Password)
 
 - ✅ **Good:** Battle-tested storage with rich access
   controls.
@@ -268,7 +288,7 @@ credential for service Y" can leak information. Three knobs:
   platform.
 - ⚖️ **Neutral:** Could be added as a fourth backend in v2.
 
-### Option E (chosen): Two stores — host-local values + synced metadata
+#### Option E (chosen): Two stores — host-local values + synced metadata
 
 - ✅ **Good:** Trust boundary is structural — values
   literally never enter synced storage.
@@ -279,6 +299,8 @@ credential for service Y" can leak information. Three knobs:
 - ❌ **Bad:** Multi-backend complexity (three backends to
   maintain).
 - ❌ **Bad:** Two stores for the user to reason about.
+
+</details>
 
 ## Build-order placement
 

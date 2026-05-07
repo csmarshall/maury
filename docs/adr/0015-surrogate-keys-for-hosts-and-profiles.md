@@ -11,6 +11,19 @@
 
 - [Tenet 6 — Identity is not name](../tenets.md#6-identity-is-not-name)
 
+## TL;DR
+
+The original v1 manifest used human-readable names as primary keys for
+hosts and profiles — a textbook violation of the surrogate-vs-natural-
+key principle (Codd / DDD Entity Identity). Renaming a host or profile
+would have broken every reference: directory paths, audit log entries,
+rule targets, fragment provenance. Maury adds **`host_<32 hex>` and
+`profile_<32 hex>` surrogate IDs** for both entity types, with names
+demoted to mutable display labels. Directory paths still use names for
+navigability; renames are atomic operations that update manifest +
+`git mv` together. Trade-off: pre-commit hook needed to keep
+directory name in sync with the embedded `name` field.
+
 ## Context and Problem Statement
 
 The v1 manifest schema used the human-readable name as the dict key for
@@ -50,7 +63,8 @@ Same pattern shows up everywhere in well-designed systems:
 The principle: **never use a human-readable label as a primary identifier
 in your data layer.**
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 6:** identity is not name. Renaming a host or
   profile must not break references — names are mutable
@@ -66,7 +80,10 @@ in your data layer.**
   `cd profiles/profile_3f1a.../hosts/host_8a7f.../`. The
   schema choice should not force opaque directory layouts.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Keep names as keys; accept the rename pain.
 - **Option B (chosen):** Surrogate keys for hosts and
@@ -74,6 +91,8 @@ in your data layer.**
 - **Option C:** Surrogate keys AND ID-only directories.
 - **Option D:** ULID instead of UUID4 for surrogate IDs.
 - **Option E:** GUIDs without entity-type prefix.
+
+</details>
 
 ## Decision Outcome
 
@@ -240,30 +259,31 @@ and prints a mapping report. Existing seed manifest in
 - `~/.maury-host-id` is created exactly once at bootstrap
   and never modified by maury commands afterward.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Keep names as keys; accept the rename pain
+#### Option A: Keep names as keys; accept the rename pain
 
 - ✅ **Good:** Simplest schema; directly readable.
 - ❌ **Bad:** Every rename is a multi-file refactor.
 - ❌ **Bad:** Diverges from every well-designed identity
   system in production today.
 
-### Option B (chosen): Surrogate keys; names in directories
+#### Option B (chosen): Surrogate keys; names in directories
 
 - ✅ **Good:** Renaming is a one-command atomic operation.
 - ✅ **Good:** Directory navigability preserved.
 - ❌ **Bad:** Pre-commit hook needed to keep directory name
   in sync with embedded `name` field.
 
-### Option C: Surrogate keys AND ID-only directories
+#### Option C: Surrogate keys AND ID-only directories
 
 - ✅ **Good:** Maximally pure; no name-in-path coupling.
 - ❌ **Bad:** Trades navigability for purity that the
   manifest already enforces. Users can't `cd profiles/home/`
   without an ID lookup.
 
-### Option D: ULID instead of UUID4
+#### Option D: ULID instead of UUID4
 
 - ✅ **Good:** Sortable by creation time; shorter
   (26 vs 32 chars).
@@ -273,12 +293,14 @@ and prints a mapping report. Existing seed manifest in
   use case. Worth revisiting if directory listings of
   historical IDs become a thing.
 
-### Option E: GUIDs without entity-type prefix
+#### Option E: GUIDs without entity-type prefix
 
 - ✅ **Good:** Slightly shorter strings.
 - ❌ **Bad:** Prefixes (`host_`, `profile_`) make IDs
   self-describing in error messages and audit logs at
   trivial cost — opaque GUIDs lose that.
+
+</details>
 
 ## Build-order placement
 

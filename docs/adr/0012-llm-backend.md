@@ -7,6 +7,18 @@
 
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
+## TL;DR
+
+If the user already has Claude Code installed and authenticated,
+forcing a separate `ANTHROPIC_API_KEY` for mining and rule synthesis
+is rebuilding what's already there — and bills against a separate
+budget. Maury defaults to **`claude -p` (headless mode) for LLM
+calls**, with the Anthropic SDK as opt-in via
+`host.llm_backend: "cli" | "sdk"` in the manifest. Both backends
+implement a single `LLMClient` interface so callers don't care which
+runs. Trade-off: less control over prompt caching with the CLI
+default; two backends to maintain.
+
 ## Context and Problem Statement
 
 Several maury components require LLM calls:
@@ -32,7 +44,8 @@ For a personal-scale tool that the user is operating from machines that
 already have Claude Code installed and authenticated, defaulting to a
 separate API key feels backwards.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 9:** defer to the platform. If the user already has
   Claude Code authenticated, requiring a separate API key is
@@ -46,7 +59,10 @@ separate API key feels backwards.
 - **Auditability:** "which backend made this call?" should be
   answerable from configuration, not from runtime probing.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** SDK only — every host manages an `ANTHROPIC_API_KEY`.
 - **Option B:** CLI only — `claude -p` everywhere, no escape
@@ -55,6 +71,8 @@ separate API key feels backwards.
   and use whichever wins.
 - **Option D (chosen):** `claude -p` default with SDK opt-in
   per-host or per-call, behind a single `LLMClient` interface.
+
+</details>
 
 ## Decision Outcome
 
@@ -110,9 +128,10 @@ won't work, while keeping which-backend-was-used auditable.
   render engine consults this when `llm_backend: "cli"`.
 - Manifest schema validates `llm_backend ∈ {"cli", "sdk"}`.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: SDK only
+#### Option A: SDK only
 
 - ✅ **Good:** Full control over batching, caching, model
   choice.
@@ -121,7 +140,7 @@ won't work, while keeping which-backend-was-used auditable.
 - ❌ **Bad:** Separate billing relationship for what is
   already a Claude Code workload.
 
-### Option B: CLI only
+#### Option B: CLI only
 
 - ✅ **Good:** Single backend; less code.
 - ❌ **Bad:** Removes the escape hatch for environments where
@@ -129,7 +148,7 @@ won't work, while keeping which-backend-was-used auditable.
 - ❌ **Bad:** Hosts with explicit cost-tracking requirements
   can't switch to per-token billing.
 
-### Option C: Detect at runtime
+#### Option C: Detect at runtime
 
 - ✅ **Good:** No configuration needed.
 - ❌ **Bad:** Explicit configuration is clearer for an audit
@@ -138,7 +157,7 @@ won't work, while keeping which-backend-was-used auditable.
 - ❌ **Bad:** Detection-based fallback is the kind of silent
   precedence Tenet 5 warns against.
 
-### Option D (chosen): CLI default + SDK opt-in behind one interface
+#### Option D (chosen): CLI default + SDK opt-in behind one interface
 
 - ✅ **Good:** Best out-of-the-box ergonomics for the common
   case.
@@ -147,6 +166,8 @@ won't work, while keeping which-backend-was-used auditable.
 - ❌ **Bad:** Two backends to maintain.
 - ❌ **Bad:** Less control over caching/batching when running
   on the CLI default.
+
+</details>
 
 ## Build-order placement
 

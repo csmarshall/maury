@@ -7,6 +7,19 @@
 
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
+## TL;DR
+
+A raw-shell hook config that works on macOS will silently no-op or
+error on Linux/FreeBSD — sync of broken hooks defeats the value of
+sync. Maury splits hook handling into two layers: a per-host
+**capability probe** that records what tools/paths/flavors actually
+exist, and **named hook actions** (`notify`, `log_jsonl`,
+`run_script`, `append_session_state`) that the render engine resolves
+to host-specific commands. Render-time validation refuses to install
+hooks whose required capabilities are missing. Trade-off: an
+abstraction layer hook authors must learn, plus resolver changes for
+new OSes instead of just dropping in a snippet.
+
 ## Context and Problem Statement
 
 Per [Claude Code's hooks documentation][cc-hooks], hooks are shell
@@ -34,7 +47,8 @@ A raw-shell hook config that works on workstation will silently no-op or
 actively error on at least three of these. Synced config that breaks
 hooks defeats the value of sync.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 10:** modularity over hardcoding — hook definitions
   should not bake in one OS's command syntax.
@@ -48,7 +62,10 @@ hooks defeats the value of sync.
   needs enough information to refuse to install hooks whose
   required capabilities are absent.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** Raw shell + per-host hand-edits.
 - **Option B:** Single monolithic shell wrapper that does
@@ -57,6 +74,8 @@ hooks defeats the value of sync.
   itself.
 - **Option D (chosen):** Capability probe + named-action
   abstraction; render engine resolves actions per host.
+
+</details>
 
 ## Decision Outcome
 
@@ -124,16 +143,17 @@ under `~/.claude/proposed/` for the user to run.
 - `maury render --check` (per `docs/operations.md`) refuses to
   apply hook configs whose required capabilities are absent.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Raw shell + per-host hand-edits
+#### Option A: Raw shell + per-host hand-edits
 
 - ✅ **Good:** Maximum flexibility per host.
 - ❌ **Bad:** Defeats sync — every host needs hand-tweaking.
 - ❌ **Bad:** Drift is silent; "I forgot to update the work
   laptop's hook" is invisible until something breaks.
 
-### Option B: Single monolithic shell wrapper
+#### Option B: Single monolithic shell wrapper
 
 - ✅ **Good:** All branching logic in one place.
 - ❌ **Bad:** A giant POSIX-sh switch statement that does
@@ -143,7 +163,7 @@ under `~/.claude/proposed/` for the user to run.
   Python layer on top — strictly better separation of concerns
   than the monolith approach.
 
-### Option C: Conditional templating inside settings.json
+#### Option C: Conditional templating inside settings.json
 
 - ✅ **Good:** Keeps everything declarative in settings.json.
 - ❌ **Bad:** `settings.json` has no template engine; we'd be
@@ -152,7 +172,7 @@ under `~/.claude/proposed/` for the user to run.
   ignore our template syntax — fragile coupling to upstream
   schema changes.
 
-### Option D (chosen): Capability probe + named actions
+#### Option D (chosen): Capability probe + named actions
 
 - ✅ **Good:** One hook definition works across all OSes; sync
   is meaningful for hooks.
@@ -161,6 +181,8 @@ under `~/.claude/proposed/` for the user to run.
   (mining-host detection, doctor checks, etc.).
 - ❌ **Bad:** Abstraction layer to learn; new OS support
   requires resolver changes, not just shell snippets.
+
+</details>
 
 ## Build-order placement
 

@@ -7,6 +7,18 @@
 
 - [Tenet 4 — Sensitive data stays local](../tenets.md#4-sensitive-data-stays-local)
 
+## TL;DR
+
+Centralizing mining (SSH to each host, pull all transcripts, mine once)
+is operationally simple but defeats every trust-boundary guarantee —
+work-host transcripts would land on personal hosts. Maury runs the full
+miner + classifier locally on each host; raw transcripts never leave
+the host that produced them. Cross-host coordination happens via git
+only, carrying classified, sanitized fragments. Trade-off: no
+cross-host pattern dedup at extraction time; per-host LLM credentials
+to manage; misclassified cross-profile content quarantines locally
+instead of silently propagating.
+
 ## Context and Problem Statement
 
 A natural design would centralize mining: SSH to each host, pull all the
@@ -19,7 +31,8 @@ laptop's transcripts may contain employer-confidential content; pulling
 them to a personal host would create exactly the data flow we built the
 repo-per-trust-boundary structure (ADR-0002) to prevent.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 4:** sensitive data stays local. Raw transcripts are
   the most sensitive data maury touches; centralizing them
@@ -32,7 +45,10 @@ repo-per-trust-boundary structure (ADR-0002) to prevent.
 - **Simplicity of deployment:** each host should be self-
   contained for the mining pipeline.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** Centralized mining — pull raw transcripts to one
   workstation, mine there, push back.
@@ -43,6 +59,8 @@ repo-per-trust-boundary structure (ADR-0002) to prevent.
 - **Option D (chosen):** Local-only mining — each host mines its
   own transcripts; only sanitized, classified fragments cross via
   git.
+
+</details>
 
 ## Decision Outcome
 
@@ -98,9 +116,10 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
 - Anomaly detection rules live in `rules.yaml` as `forbid`
   rules (per [ADR-0004](0004-rule-engine-classification.md)).
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Centralized mining
+#### Option A: Centralized mining
 
 - ✅ **Good:** Cross-host pattern detection is trivial — the
   miner sees everything.
@@ -110,7 +129,7 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
 - ❌ **Bad:** Single point of compromise — if the central host
   is breached, every host's raw transcripts are exposed.
 
-### Option B: Centralized with redaction at extraction
+#### Option B: Centralized with redaction at extraction
 
 - ✅ **Good:** In principle satisfies the boundary if the
   redaction is correct.
@@ -120,7 +139,7 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
   network observer or a flaw in the transport breaks the
   boundary.
 
-### Option C: Push raw transcripts to per-profile repos
+#### Option C: Push raw transcripts to per-profile repos
 
 - ✅ **Good:** Storage in git gives versioning and audit.
 - ❌ **Bad:** Now the transcripts live in version-controlled
@@ -128,7 +147,7 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
 - ❌ **Bad:** Same boundary violation as Option A, plus
   permanence.
 
-### Option D (chosen): Local-only mining
+#### Option D (chosen): Local-only mining
 
 - ✅ **Good:** Trust boundary is structurally enforced — there
   is no code path that moves raw transcripts off-host.
@@ -138,6 +157,8 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
   pattern detection only.
 - ❌ **Bad:** Redaction step adds complexity to the work-host
   configuration.
+
+</details>
 
 ## Build-order placement
 

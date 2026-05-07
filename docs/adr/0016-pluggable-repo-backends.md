@@ -13,6 +13,19 @@
 
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
+## TL;DR
+
+The repo-per-trust-boundary model originally assumed git-on-GitHub
+everywhere; real users have one boundary on GitHub and another on
+GitLab/Gitea/Enterprise. Trust boundary and transport are orthogonal
+axes that the schema should keep independent. Maury adds a per-repo
+**`backend` field with an adapter interface**, shipping `git` and
+`github` adapters in v1; `gitlab`/`gitea`/`codeberg` adapters land
+post-v1. Per the 2026-05-06 addendum, ADR-0022's git-substrate lock-in
+rules out non-git backends (`p4`, `hg`, `svn`, `s3-age`, `bundle`).
+Trade-off: a small interface to design and one extra concept users
+learn (backends).
+
 ## Context and Problem Statement
 
 The repo-per-trust-boundary architecture
@@ -38,7 +51,8 @@ exactly the realistic case.
 Same instinct as [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md):
 don't bake an implementation detail into the schema.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (5 items — click to expand)</summary>
 
 - **Tenet 10:** modularity over hardcoding. Backend choice
   should be configuration, not code.
@@ -54,7 +68,10 @@ don't bake an implementation detail into the schema.
 - **Forward-compatibility:** adding the schema field now is
   cheap; retrofitting it later means breaking every manifest.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Hardcode git (and GitHub) everywhere.
 - **Option B:** Hardcode git, treat non-git as out-of-scope
@@ -65,6 +82,8 @@ don't bake an implementation detail into the schema.
   adapter interface; ship `git` and `github` adapters in v1;
   defer non-git backends; later constrained by ADR-0022 to
   git-compatible only.
+
+</details>
 
 ## Decision Outcome
 
@@ -235,29 +254,30 @@ backend — they call into the adapter through the interface.
   [ADR-0014](0014-host-local-secrets-with-metadata-sync.md)
   store.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Hardcode git everywhere
+#### Option A: Hardcode git everywhere
 
 - ✅ **Good:** Smallest schema; no adapter abstraction to
   design.
 - ❌ **Bad:** A user with a non-git work shop is locked out
   of the work boundary entirely.
 
-### Option B: Hardcode git, treat non-git as out-of-scope
+#### Option B: Hardcode git, treat non-git as out-of-scope
 
 - ✅ **Good:** Same simplicity as Option A.
 - ❌ **Bad:** The schema-only addition (Option E) is so cheap
   that there's no reason to refuse the future possibility.
 
-### Option C: Per-host backend instead of per-repo
+#### Option C: Per-host backend instead of per-repo
 
 - ✅ **Good:** Slightly simpler manifest.
 - ❌ **Bad:** A host can legitimately have one git repo and
   one different-backend repo; per-repo is the right
   granularity.
 
-### Option D: Bake auth into manifest URLs
+#### Option D: Bake auth into manifest URLs
 
 - ✅ **Good:** Self-contained URL strings.
 - ❌ **Bad:** Secrets in manifest is a layering violation.
@@ -265,7 +285,7 @@ backend — they call into the adapter through the interface.
   [ADR-0014](0014-host-local-secrets-with-metadata-sync.md)
   credential store.
 
-### Option E (chosen): Per-repo backend with adapter interface
+#### Option E (chosen): Per-repo backend with adapter interface
 
 - ✅ **Good:** Clean separation of trust boundary from
   transport.
@@ -273,6 +293,8 @@ backend — they call into the adapter through the interface.
   hosts.
 - ❌ **Bad:** Adapter interface to design and document.
 - ❌ **Bad:** Users learn one extra concept (backends).
+
+</details>
 
 ## Build-order placement
 

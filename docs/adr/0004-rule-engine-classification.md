@@ -8,6 +8,17 @@
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 
+## TL;DR
+
+A pure-LLM classifier is non-deterministic and opaque — wrong shape
+for routing fragments across trust boundaries; a pure hand-written
+ruleset is auditable but never learns. Maury splits the pipeline:
+**LLM-driven mining + deterministic rule engine** over a hand-readable
+YAML file. The ruleset *is* the learned artifact: corrections trigger
+AI-assisted rule synthesis, but every synthesized rule needs explicit
+user approval before landing. Trade-off: two-stage pipeline is more
+code than a single LLM call, and reviewers have to learn rule grammar.
+
 ## Context and Problem Statement
 
 Mining transcripts for preferences is genuinely fuzzy work — well-suited
@@ -26,7 +37,8 @@ Whatever we choose must be:
 A pure-LLM classifier fails on all three counts. A pure hand-written
 ruleset works on all three but doesn't learn.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 5:** the user arbitrates ambiguity. Classification
   decisions that aren't clear-cut must surface for review, not
@@ -40,7 +52,10 @@ ruleset works on all three but doesn't learn.
   memory as a readable, version-controlled artifact — not as
   weights or embeddings.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** Pure LLM classifier — ask the model "which profile?"
 - **Option B:** Pure hand-written rules — no learning component.
@@ -49,6 +64,8 @@ ruleset works on all three but doesn't learn.
 - **Option D (chosen):** Two-stage pipeline — AI extraction +
   deterministic rule engine, with rule **synthesis** from user
   corrections.
+
+</details>
 
 ## Decision Outcome
 
@@ -111,9 +128,10 @@ the ruleset.
   catch-all for unmatched fragments; no fragment can be silently
   classified without a rule firing.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Pure LLM classifier
+#### Option A: Pure LLM classifier
 
 - ✅ **Good:** Trivially flexible — handles novel patterns
   without rule changes.
@@ -124,7 +142,7 @@ the ruleset.
 - ❌ **Bad:** Unsuitable for a security boundary; gives the
   model authority over data isolation.
 
-### Option B: Pure hand-written rules
+#### Option B: Pure hand-written rules
 
 - ✅ **Good:** Deterministic, auditable, all the boundary
   guarantees.
@@ -133,7 +151,7 @@ the ruleset.
 - ❌ **Bad:** Becomes stale; institutional memory only grows
   through explicit user effort.
 
-### Option C: Embedding similarity
+#### Option C: Embedding similarity
 
 - ✅ **Good:** Adapts as the corpus grows without explicit
   rule writing.
@@ -144,7 +162,7 @@ the ruleset.
   centroids.
 - ❌ **Bad:** Same audit/boundary problems as a pure LLM.
 
-### Option D (chosen): Two-stage with rule synthesis
+#### Option D (chosen): Two-stage with rule synthesis
 
 - ✅ **Good:** All deterministic-rule benefits at the boundary.
 - ✅ **Good:** Learns from user corrections via synthesis,
@@ -155,6 +173,8 @@ the ruleset.
   learn.
 - ❌ **Bad:** Synthesis quality depends on LLM cooperation;
   bad synthesis = more user friction reviewing proposed rules.
+
+</details>
 
 ## Build-order placement
 

@@ -7,6 +7,17 @@
 
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
+## TL;DR
+
+Hardcoding `{home, work}` as the profile set forces a refactor every
+time the user adds a client engagement, research project, or other
+context. Maury instead supports **N user-defined profiles** registered
+in the manifest, with optional single-parent `extends` inheritance. A
+host is in exactly one profile at a time so trust-model questions
+("what context is active?") stay unambiguous. Trade-off: profile names
+are referenced as strings, so renames carry cross-file updates —
+mitigated by ADR-0015's surrogate keys.
+
 ## Context and Problem Statement
 
 Initial sketches assumed exactly two contexts: "home" and "work." Real
@@ -14,7 +25,8 @@ usage will likely add client engagements, research projects, and
 side-contract contexts over time. Hardcoding the profile set into schema,
 rules, and CLI commands creates a refactor every time the user adds one.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (3 items — click to expand)</summary>
 
 - **Tenet 10:** modularity over hardcoding — the schema shouldn't pin
   the user's vocabulary.
@@ -23,11 +35,16 @@ rules, and CLI commands creates a refactor every time the user adds one.
 - **Trust-model coherence:** "what context is active right now?" must be
   unambiguous for the cross-host promotion + access-control model.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (3 options — click to expand)</summary>
 
 - **Option A:** Hardcoded `{home, work}` pair.
 - **Option B (chosen):** N user-defined profiles registered in the manifest.
 - **Option C:** Tag-based profiles (a host carries a set of tags rather than one named profile).
+
+</details>
 
 ## Decision Outcome
 
@@ -69,16 +86,17 @@ profile can carry shared defaults that `acme-client` and
   ship with Phase 4 (Bootstrap commands); their status is
   tracked in `docs/status.md` rather than aspirated here.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Hardcoded {home, work}
+#### Option A: Hardcoded {home, work}
 
 - ✅ **Good:** Simplest possible schema; no profile validation needed.
 - ❌ **Bad:** Refactor cost grows with each new context the user wants
   (client engagements, research, side contracts).
 - ❌ **Bad:** Defeats Tenet 10 (modularity over hardcoding).
 
-### Option B (chosen): N user-defined profiles
+#### Option B (chosen): N user-defined profiles
 
 - ✅ **Good:** Profile vocabulary is the user's, not maury's.
 - ✅ **Good:** Single active profile per host means "where am I right
@@ -90,7 +108,7 @@ profile can carry shared defaults that `acme-client` and
 - ❌ **Bad:** Renames carry cross-file updates (mitigated by
   [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)).
 
-### Option C: Tag-based profiles
+#### Option C: Tag-based profiles
 
 - ✅ **Good:** Maximum flexibility — a host can be "research + client-A"
   simultaneously.
@@ -99,6 +117,8 @@ profile can carry shared defaults that `acme-client` and
 - ❌ **Bad:** Cross-host promotion (per
   [ADR-0009](0009-promotion-only-cross-boundary.md)) becomes much
   harder to specify when the active context is a set, not a singleton.
+
+</details>
 
 ## Build-order placement
 

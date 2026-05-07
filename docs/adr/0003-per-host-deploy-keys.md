@@ -7,6 +7,17 @@
 
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 
+## TL;DR
+
+The trust unit that matters is "can host X push to repo Y," not "can
+account A push to repo Y" — and PATs/account-collab introduce expiry,
+employer-policy ambiguity, and over-broad blast radius. Maury uses
+**per-host SSH deploy keys**, one keypair per (host, repo) tuple,
+routed via `~/.ssh/config` aliases. Revocation is surgical (one key =
+one host disabled), GitHub's audit trail names the machine, and
+nothing expires. Trade-off: more keys per host to manage, mitigated by
+bootstrap automation.
+
 ## Context and Problem Statement
 
 Once we settled on repo-per-trust-boundary (ADR-0002), we needed an
@@ -16,7 +27,8 @@ repo Y,"** not "can account A push to repo Y." Account-based access
 introduces a layer of indirection (and potential employer-policy
 friction over which GitHub account is authenticated where).
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 3:** trust boundaries are physical, not policy. Access
   enforcement must map onto the unit we actually care about (the
@@ -28,7 +40,10 @@ friction over which GitHub account is authenticated where).
 - **Employer-policy neutrality:** avoid questions about which
   GitHub account is authenticated on a managed device.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Single account-wide PAT (Personal Access Token).
 - **Option B:** Fine-grained PAT per host.
@@ -36,6 +51,8 @@ friction over which GitHub account is authenticated where).
   (host, repo) combination.
 - **Option D:** GitHub App.
 - **Option E:** Machine users — a separate GitHub account per host.
+
+</details>
 
 ## Decision Outcome
 
@@ -106,9 +123,10 @@ on GitHub, and updates both the SSH config and the manifest.
   SSH-aliased URL; pure HTTPS or `git@github.com` URLs are
   rejected because they couldn't differentiate between keys.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Single account-wide PAT
+#### Option A: Single account-wide PAT
 
 - ✅ **Good:** Trivial to set up — one token, paste it everywhere.
 - ❌ **Bad:** Blast radius too wide; loss of any host = compromise
@@ -116,7 +134,7 @@ on GitHub, and updates both the SSH config and the manifest.
 - ❌ **Bad:** Tokens expire and require rotation across all hosts
   simultaneously.
 
-### Option B: Fine-grained PAT per host
+#### Option B: Fine-grained PAT per host
 
 - ✅ **Good:** Better than wide PAT — per-host scope.
 - ✅ **Good:** Could be used as an escape hatch for hosts that
@@ -126,7 +144,7 @@ on GitHub, and updates both the SSH config and the manifest.
 - ❌ **Bad:** Authenticates as a GitHub *user* (the token
   owner), so the employer-policy ambiguity remains.
 
-### Option C (chosen): Per-host SSH deploy keys
+#### Option C (chosen): Per-host SSH deploy keys
 
 - ✅ **Good:** No expiry; no rotation cycle.
 - ✅ **Good:** Per-(host, repo) scope — exactly the trust unit.
@@ -137,7 +155,7 @@ on GitHub, and updates both the SSH config and the manifest.
 - ❌ **Bad:** Requires SSH config aliasing trick to route
   multiple keys to `github.com`.
 
-### Option D: GitHub App
+#### Option D: GitHub App
 
 - ✅ **Good:** Modern integration model with fine-grained
   permissions.
@@ -146,13 +164,15 @@ on GitHub, and updates both the SSH config and the manifest.
 - ❌ **Bad:** Adds an installation/UI surface that must be
   managed in the GitHub web UI.
 
-### Option E: Machine users (separate GitHub account per host)
+#### Option E: Machine users (separate GitHub account per host)
 
 - ✅ **Good:** Per-host isolation; per-host audit trail.
 - ❌ **Bad:** Account sprawl; each host needs its own GitHub
   account.
 - ❌ **Bad:** Deploy keys give the same per-host scoping without
   the account-management overhead.
+
+</details>
 
 ## Build-order placement
 

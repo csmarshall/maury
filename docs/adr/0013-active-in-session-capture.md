@@ -19,6 +19,19 @@
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
+## TL;DR
+
+Pure passive transcript mining is lossy: Claude knows in-session which
+paragraph is the durable insight, but the JSONL transcript carries no
+signal about it, so re-derivation later may miss it. Maury adds an
+**active capture pipeline** with two entry paths (Claude-initiated via
+the `maury-stage` skill + CLAUDE.md fragment; user-initiated via a
+`UserPromptSubmit` hook + `/maury-pin` slash command) writing to one
+shared per-host staging file the existing classification pipeline
+consumes. Cross-boundary safety is a three-layer guarantee (skill
+prompt + forbid rules + review step). Trade-off: four artifacts to
+ship and version-track from base/.
+
 ## Context and Problem Statement
 
 The original mining design ([ADR-0005](0005-local-only-mining.md),
@@ -45,7 +58,8 @@ initiated capture** (where the user explicitly tells Claude or
 maury to remember something). Both paths feed the same staging
 pipeline; they're two entry points, not two systems.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (5 items — click to expand)</summary>
 
 - **Tenet 1:** first, do no harm. Cross-boundary capture leaks
   are the chief risk; defense must be multi-layered (skill
@@ -65,7 +79,10 @@ pipeline; they're two entry points, not two systems.
   feed the same downstream pipeline; otherwise we have two
   classification systems.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** Pure passive mining (the original plan before
   this ADR).
@@ -76,6 +93,8 @@ pipeline; they're two entry points, not two systems.
   fragment + UserPromptSubmit hook + slash command, all
   feeding a single staging file consumed by the existing
   mining pipeline.
+
+</details>
 
 ## Decision Outcome
 
@@ -312,9 +331,10 @@ quietly failing or producing a confusing error.
   [Agent Skills specification](https://agentskills.io/specification)
   per [ADR-0036](0036-open-standards-alignment.md).
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Pure passive mining
+#### Option A: Pure passive mining
 
 - ✅ **Good:** Simpler — one extraction pipeline.
 - ❌ **Bad:** Lossy. Insights Claude already had in-session
@@ -324,7 +344,7 @@ quietly failing or producing a confusing error.
   ("remember this") to live; user must wait for the next
   mining cycle and hope.
 
-### Option B: Anthropic auto-memory (v2.1.59+)
+#### Option B: Anthropic auto-memory (v2.1.59+)
 
 - ✅ **Good:** Built into Claude Code; no integration needed.
 - ❌ **Bad:** Per-project, machine-local — doesn't propagate
@@ -333,7 +353,7 @@ quietly failing or producing a confusing error.
   Maury could consume from the auto-memory tree in v2; not
   a substitute for active capture.
 
-### Option C: A new MCP server hosted by maury
+#### Option C: A new MCP server hosted by maury
 
 - ✅ **Good:** First-class integration via Anthropic's
   documented protocol.
@@ -342,7 +362,7 @@ quietly failing or producing a confusing error.
 - ❌ **Bad:** Would need its own deployment surface; doesn't
   arrive via the render engine the rest of maury uses.
 
-### Option D (chosen): Skill + CLAUDE.md fragment + hook + slash command
+#### Option D (chosen): Skill + CLAUDE.md fragment + hook + slash command
 
 - ✅ **Good:** All four artifacts arrive via the existing
   render engine — no new distribution mechanism.
@@ -353,6 +373,8 @@ quietly failing or producing a confusing error.
 - ❌ **Bad:** Four artifacts to author and version-track.
 - ❌ **Bad:** Relies on Claude following the skill's prompt
   instructions; mitigated by review step.
+
+</details>
 
 ## Build-order placement
 

@@ -15,6 +15,19 @@
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+Shipping sync first and mining later defers the answer to the riskiest
+question (does mining produce useful output?) and locks in interface
+assumptions before they're tested against real cross-component
+outputs. Maury ships **all three pillars together as v1** — sync,
+profile isolation, and learning — designed as one coherent system
+internally phased rule-engine → manifest → render → bootstrap → sync →
+mining → review → synthesis → promotion → audit. Trade-off: largest
+upfront build and longest time to first release; risk concentrated at
+one launch point. Escape hatch: ship sync+isolation as v0.5 if mining
+quality slips during dogfooding.
+
 ## Context and Problem Statement
 
 The maury design spans three pillars: sync (across hosts), profile
@@ -23,7 +36,8 @@ with rule-engine classification and proposal queue). Each is
 independently large. The question for v1 is: do we ship one pillar
 at a time and grow, or do we ship all three together?
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Mining-quality risk:** the riskiest piece of the design is
   whether mining produces useful output at all. Deferring it to
@@ -39,12 +53,17 @@ at a time and grow, or do we ship all three together?
 - **Retrofit cost:** v1-to-v2 schema and CLI changes are more
   expensive than v0-to-v1 changes inside an unreleased tool.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (3 options — click to expand)</summary>
 
 - **Option A:** Sync first, mining in v2.
 - **Option B:** Mining-only spike first.
 - **Option C (chosen):** All three pillars together as one
   coherent v1.
+
+</details>
 
 ## Decision Outcome
 
@@ -84,9 +103,10 @@ three" intent without forcing a bad mining release.
 - The Amendment section below tracks phase additions and v1.1
   deferrals as the design has evolved.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Sync first, mining in v2
+#### Option A: Sync first, mining in v2
 
 - ✅ **Good:** Fastest path to a useful daily-driver tool
   (multi-host config sync alone is valuable).
@@ -96,7 +116,7 @@ three" intent without forcing a bad mining release.
 - ❌ **Bad:** Sync schema would have to be retrofitted when
   mining lands.
 
-### Option B: Mining-only spike first
+#### Option B: Mining-only spike first
 
 - ✅ **Good:** Lowest risk for "is this whole thing worth
   building" — answers the value question first.
@@ -107,7 +127,7 @@ three" intent without forcing a bad mining release.
   unique; deferring it means the spike is only a partial
   signal.
 
-### Option C (chosen): All three together
+#### Option C (chosen): All three together
 
 - ✅ **Good:** All interfaces exercised against real
   cross-component outputs from day one.
@@ -116,6 +136,8 @@ three" intent without forcing a bad mining release.
   release.
 - ❌ **Bad:** Risk concentrated at one release point — if
   mining doesn't work, the whole release slips.
+
+</details>
 
 ## Build-order placement
 

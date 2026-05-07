@@ -9,6 +9,19 @@
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 
+## TL;DR
+
+A work host with read-only access to base will sometimes mine
+fragments that genuinely belong in base — but giving it write access
+to base would defeat the trust boundary. Maury uses a
+**promotion-only flow**: the work host writes proposals into its own
+profile repo (`proposals/promote-to-base/`), and any host with rw on
+both source and destination runs `maury promote-review` to copy
+approved proposals across. No source-host feedback channel — that's
+intentional, as the signal could leak content classification.
+Trade-off: latency between insight and base update, plus a curator
+step.
+
 ## Context and Problem Statement
 
 A host with rw access only to its own profile's repo (e.g., a work
@@ -21,7 +34,8 @@ session).
 We need a path for those insights to propagate without violating the
 read/write asymmetry that gives us our trust boundary.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 1:** first, do no harm. Cross-boundary writes that
   bypass user review can leak context-specific content into a
@@ -34,7 +48,10 @@ read/write asymmetry that gives us our trust boundary.
 - **Threat model:** a compromised work host should not be able to
   silently inject content into shared base.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (4 options — click to expand)</summary>
 
 - **Option A:** Direct cross-repo writes from work hosts.
 - **Option B:** Grant work hosts write access to base.
@@ -43,6 +60,8 @@ read/write asymmetry that gives us our trust boundary.
 - **Option D (chosen):** Promotion-only flow — work host writes
   to a `proposals/promote-to-base/` queue in its own repo;
   curator reviews and copies across.
+
+</details>
 
 ## Decision Outcome
 
@@ -110,16 +129,17 @@ the local quarantine, never to git.
   adds the inheritance-graph constraint on top of this ADR's
   mechanics.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Direct cross-repo writes from work hosts
+#### Option A: Direct cross-repo writes from work hosts
 
 - ✅ **Good:** Lowest latency from insight to base update.
 - ❌ **Bad:** Violates the data-isolation premise.
 - ❌ **Bad:** A misclassification immediately leaks context-
   specific content into shared base.
 
-### Option B: Grant work hosts write access to base
+#### Option B: Grant work hosts write access to base
 
 - ✅ **Good:** Simple — no proposal queue plumbing.
 - ⚖️ **Neutral:** Available as an opt-in deployment posture if
@@ -128,7 +148,7 @@ the local quarantine, never to git.
 - ❌ **Bad:** Rejected as default — same boundary-violation
   risk as Option A.
 
-### Option C: Implicit promotion via maury's own logic
+#### Option C: Implicit promotion via maury's own logic
 
 - ✅ **Good:** Fully automated; no curator step.
 - ❌ **Bad:** Requires the tool to make trust decisions about
@@ -137,7 +157,7 @@ the local quarantine, never to git.
 - ❌ **Bad:** A misclassified fragment would silently cross
   the boundary.
 
-### Option D (chosen): Promotion-only flow with curator review
+#### Option D (chosen): Promotion-only flow with curator review
 
 - ✅ **Good:** Trust boundary preserved; curator review
   catches misclassifications.
@@ -149,6 +169,8 @@ the local quarantine, never to git.
 - ❌ **Bad:** No feedback channel back to source host —
   intentional, to prevent classification side-channels (see
   Consequences).
+
+</details>
 
 ## Build-order placement
 
