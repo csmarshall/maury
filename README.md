@@ -66,6 +66,55 @@ Three pillars:
    rule engine. Proposals queue for review; reclassifications synthesize
    new rules.
 
+## Teams
+
+Maury was designed for individuals juggling multiple machines, but
+the same architecture solves a problem teams have today: **how does
+a team share a Claude Code setup, let engineers extend it, and keep
+contributions flowing back through review without the curator
+losing control?**
+
+Anthropic has documented how their own teams use Claude Code
+(search for "How Anthropic teams use Claude Code"): shared
+CLAUDE.md content, skill libraries, hook conventions, and common
+settings — all needing distribution to engineers who then extend
+locally and (sometimes) contribute back. Today that's typically a
+private dotfiles repo passed around by `git clone` + manual
+install, with no enforced structure for who-can-write-what or how
+contributions land.
+
+Maury serves this directly:
+
+- **Curator(s)** publish a team profile from a repo they hold
+  `rw` on
+  ([ADR-0034](docs/adr/0034-published-subscribed-profiles.md)).
+- **Subscribers** consume it from a repo configured with `pr` mode
+  ([ADR-0033](docs/adr/0033-pr-repo-mode.md)) — they read freely
+  and inherit-and-extend in their own profile, but writes flow
+  through pull requests for curator review.
+- **Cross-boundary contributions** (a useful insight from a
+  client-engagement profile that belongs in the team base) are
+  routed via the promotion flow
+  ([ADR-0009](docs/adr/0009-promotion-only-cross-boundary.md)),
+  not direct pushes — an engineer holding `rw` on their own
+  client-engagement repo still has only `ro` or `pr` on the shared
+  team base, so the boundary holds.
+- **Personal layers** sit on top of team-published profiles. An
+  engineer's machine-specific overrides, secrets metadata, and
+  per-host capability overrides stay personal and don't pollute
+  the team repo.
+
+So when the team's tech lead adds a new "review every commit
+against this rubric" hook, it ships to every engineer's
+`~/.claude/` on next sync. When an engineer hand-tunes a CLAUDE.md
+fragment that turned out useful for the whole team, it's a one-line
+`maury promote` to open a PR back. No hand-passing of dotfiles, no
+ambient drift between team members.
+
+For the concrete recipe — repo layout, manifest examples,
+day-in-the-life walkthroughs for both curator and subscriber —
+see [`docs/patterns/team-upstream.md`](docs/patterns/team-upstream.md).
+
 ## Why "Maury"?
 
 Maury Sline is the talent agent in *The Blues Brothers* who books Jake
