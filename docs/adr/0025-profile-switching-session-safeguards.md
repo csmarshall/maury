@@ -7,7 +7,7 @@
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
-- [Tenet 5 — User arbitrates ambiguity](../tenets.md#5-user-arbitrates-ambiguity)
+- [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 
 ## Context
 

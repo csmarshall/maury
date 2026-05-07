@@ -16,7 +16,7 @@
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
-- [Tenet 5 — User arbitrates ambiguity](../tenets.md#5-user-arbitrates-ambiguity)
+- [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
 ## Context
