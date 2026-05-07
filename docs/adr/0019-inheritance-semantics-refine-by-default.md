@@ -8,11 +8,12 @@
 - [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
-## Context
+## Context and Problem Statement
 
-ADR-0001 introduced N profiles with optional `extends` inheritance.
-ADR-0002 introduced the layering `base + profile chain + host overlay
-→ ~/.claude/`. The render engine resolves these layers into a single
+[ADR-0001](0001-n-profiles.md) introduced N profiles with optional
+`extends` inheritance. [ADR-0002](0002-repo-per-trust-boundary.md)
+introduced the layering `base + profile chain + host overlay →
+~/.claude/`. The render engine resolves these layers into a single
 output tree.
 
 What's never been pinned down: **when a child layer touches a thing
@@ -32,15 +33,49 @@ That's *refinement*, not *replacement*. Treating every layer as
 "later wins" silently throws away parent rules every time a child
 mentions the same file.
 
-## Decision
+## Decision Drivers
 
-**Refinement is the destination. Replacement is sometimes the
-starting state, but the system actively helps you migrate from
-replacement to refinement when the moment comes.**
+- **Tenet 2:** consistency within a profile. The user's
+  mental model of inheritance must hold — child *adds to*
+  parent, doesn't silently throw it away.
+- **Tenet 8:** hand-edits are first-class input. Suppressions
+  must be loud (visible in render output), not silent.
+- **Per-content-type semantics:** CLAUDE.md, settings.json,
+  agents, skills, hooks all have different "merge means
+  what" answers; one global rule fits none of them.
+- **Migration ergonomics matter:** real users start with
+  replacements (it's what they already have); the system
+  must help them get to refinement without forcing it on
+  day one.
 
-The well-formed end state of any maury config is "every child layer
-refines the parent; replacement is rare and intentional, never
-accidental." Two consequences:
+## Considered Options
+
+- **Option A:** Naive file-overlay everywhere ("later wins").
+- **Option B:** Pure refinement everywhere — no replacement
+  at all.
+- **Option C:** JSON-merge-style `$op` annotations
+  (RFC 7396) for all content types.
+- **Option D:** Layer-policy declarations in `profile.yaml`
+  (per-content-type policy override at the profile level).
+- **Option E (chosen):** Per-content-type defaults
+  (refinement for additive content, replacement for
+  monolithic content) + per-file frontmatter overrides +
+  per-line suppression annotations + a curator-controlled
+  `persist: required` escape hatch.
+
+## Decision Outcome
+
+**Chosen option:** Option E — refinement is the destination.
+Replacement is sometimes the starting state, but the system
+actively helps you migrate from replacement to refinement
+when the moment comes. The well-formed end state of any
+maury config is "every child layer refines the parent;
+replacement is rare and intentional, never accidental." This
+is the only option that matches the user's mental model
+without forcing replacement-style content (agents, skills,
+bin scripts) into a merge mode that produces mush.
+
+Two consequences:
 
 - **Default semantics is refinement (additive / mergeable).**
   Replacement is explicit, by content type or by per-file annotation.
@@ -49,7 +84,9 @@ accidental." Two consequences:
   arbitrates whether to migrate (see the
   *Promotion-and-refinement workflow* section below).
 
-### Default semantics, per content type
+### Implementation details
+
+#### Default semantics, per content type
 
 | Content | Default merge | Why |
 |---|---|---|
@@ -61,7 +98,7 @@ accidental." Two consequences:
 | `skills/*/SKILL.md` | **File-overlay (child wins)** with loud warning | Same as agents. |
 | `bin/*` | **File-overlay (child wins)** | Wrapper scripts; replacement is the normal case. |
 
-### Override mechanisms
+#### Override mechanisms
 
 For content types that **default to additive** (CLAUDE.md, hooks,
 keybindings), the child can:
@@ -107,7 +144,7 @@ the child can:
   - `extend-section` — split parent at named section markers; child
     fills in named slots (most flexible, most complex)
 
-### "Keep for persistence" — the user's specific use case
+#### "Keep for persistence" — the user's specific use case
 
 When a parent's content should propagate to children even when the
 child has its own version of the same file:
@@ -127,7 +164,7 @@ identity-defining content the curator wants pinned.
 A weaker form, `persist: default`, marks content that auto-persists
 unless the child explicitly sets `extends-policy: replace`.
 
-### Provenance in the rendered output
+#### Provenance in the rendered output
 
 Every rendered file carries a provenance comment block at the top:
 
@@ -145,7 +182,7 @@ This makes it obvious which layer contributed which content, and
 shows when something has been suppressed. The audit log keeps the
 full record.
 
-### What the renderer warns vs. what it errors
+#### What the renderer warns vs. what it errors
 
 - **Warns (continues):** child silently replacing a file by file-overlay
   default (agents/, skills/, bin/). Output prints: "warning:
@@ -158,7 +195,7 @@ full record.
   base. Either lift the persistence flag in base or remove the
   suppression in home."
 
-### Promotion-and-refinement workflow (replacement → refinement migration)
+#### Promotion-and-refinement workflow (replacement → refinement migration)
 
 A common lifecycle:
 
@@ -205,48 +242,93 @@ This is also the path for retroactively cleaning up a config that
 grew up as replacements: run `maury refactor` against the whole tree
 and migrate to refinement-everywhere.
 
-## Consequences
+### Consequences
 
-- **Default behavior is what the user mental-model expects:** layers
-  refine, nothing silently disappears.
-- **Replacement is still possible** — just explicit. Per-file
-  frontmatter for replaceable content; per-line annotations for
-  suppressions in additive content.
-- **`persist: required` provides a curator-controlled escape hatch**
-  for content that must propagate across all child contexts.
-- **The renderer becomes the authoritative source for "what's
-  actually applied,"** with provenance comments visible in every
-  output file.
-- **Implementation cost:** the render engine gains merge logic per
-  content type, suppression-annotation parsing, and the persist-flag
-  enforcement. Each piece is small but adds up. Worth it because the
-  alternative is the user discovering after the fact that "later
-  wins" silently lost their parent rules.
-- **Relationship to drift detection (ADR-0017):** the renderer's
-  provenance comments are key for `maury reconcile` to know what each
-  layer contributed, so when a hand-edit is captured as a proposal
-  it can be routed to the right layer (base vs profile vs host
-  overlay) based on the line(s) that were modified.
+- ✅ **Good:** Default behavior matches the user's mental
+  model — layers refine, nothing silently disappears.
+- ✅ **Good:** Replacement is still possible — just
+  explicit. Per-file frontmatter for replaceable content;
+  per-line annotations for suppressions in additive content.
+- ✅ **Good:** `persist: required` provides a curator-
+  controlled escape hatch for content that must propagate
+  across all child contexts.
+- ✅ **Good:** The renderer becomes the authoritative source
+  for "what's actually applied," with provenance comments
+  visible in every output file.
+- ✅ **Good:** Renderer's provenance comments are key for
+  `maury reconcile`
+  ([ADR-0017](0017-drift-detection-and-reconciliation.md))
+  to know what each layer contributed, so when a hand-edit
+  is captured as a proposal it can be routed to the right
+  layer.
+- ❌ **Bad:** Implementation cost — render engine gains
+  merge logic per content type, suppression-annotation
+  parsing, and persist-flag enforcement. Each piece is small
+  but adds up. Worth it because the alternative is the user
+  discovering after the fact that "later wins" silently lost
+  their parent rules.
 
-## Alternatives considered
+### Confirmation
 
-- **Naive file-overlay everywhere ("later wins").** Rejected: the
-  whole point of the user's question. Silently throws away parent
-  content the moment a child mentions the same file.
-- **Pure refinement everywhere (no replacement).** Rejected: agents
-  and skills don't compose cleanly when concatenated; the user
-  legitimately needs the ability to fully shadow one in some
-  contexts.
-- **JSON-merge style "$op" annotations** (e.g., JSON Merge Patch
-  RFC 7396 with `null` = remove). Considered for settings.json.
-  Rejected as too obscure for hand-authored content; we want
-  annotations to be readable in the source files.
-- **Layer-policy declarations in `profile.yaml`** (per-content-type
-  merge policy override). Considered. The defaults-with-per-file-
-  annotation model is more local and easier to audit. Profile-level
+- The render engine (Phase 3, shipped) implements per-
+  content-type merge per the table above.
+- Provenance comments appear at the top of every rendered
+  file (verifiable by inspecting `~/.claude/CLAUDE.md`
+  after a sync).
+- `persist: required` violations error out at render time
+  with the documented message format.
+
+## Pros and Cons of the Options
+
+### Option A: Naive file-overlay everywhere ("later wins")
+
+- ✅ **Good:** Trivially simple to implement.
+- ❌ **Bad:** Silently throws away parent content the
+  moment a child mentions the same file — the whole point
+  of the user's question.
+
+### Option B: Pure refinement everywhere — no replacement
+
+- ✅ **Good:** Single uniform semantics.
+- ❌ **Bad:** Agents and skills don't compose cleanly when
+  concatenated; the user legitimately needs the ability to
+  fully shadow one in some contexts.
+
+### Option C: JSON-merge `$op` annotations (RFC 7396)
+
+- ✅ **Good:** Standardized; well-known to JSON tooling.
+- ❌ **Bad:** Too obscure for hand-authored content; we
+  want annotations to be readable in the source files.
+
+### Option D: Profile-level layer-policy declarations
+
+- ✅ **Good:** One declaration per profile, less per-file
+  noise.
+- ⚖️ **Neutral:** The defaults-with-per-file-annotation
+  model is more local and easier to audit. Profile-level
   policies could be added later if a real need emerges.
 
-## Open questions / followups
+### Option E (chosen): Per-content-type defaults + frontmatter overrides + suppression annotations + persist flag
+
+- ✅ **Good:** Matches the user's mental model out of the
+  box.
+- ✅ **Good:** Per-file ergonomics; no global config to
+  reason about.
+- ✅ **Good:** Suppressions are loud; persist is enforceable.
+- ❌ **Bad:** Implementation surface is non-trivial (per-
+  type merge + annotation parsing + persist enforcement).
+
+## Build-order placement
+
+Phase 3 (Render engine) — the per-content-type merge logic
+ships with the render engine and was already shipped in
+that phase. Per-line suppression annotations and the
+`persist: required` enforcement lock down once an
+inheritance chain longer than two layers has real content.
+
+## Followups
+
+This ADR's open questions are forward-tracked here:
 
 - **Section markers for `extend-section` policy.** What's the
   delimiter syntax? Markdown headings? Custom comments? Punt to

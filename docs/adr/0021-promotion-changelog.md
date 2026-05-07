@@ -27,6 +27,14 @@ of the design pivot; do not implement.
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
+> **Status note:** the sections below are preserved from the
+> original (pre-supersession) ADR as a breadcrumb of the design
+> pivot. They use the older Nygard-style section names
+> (Context / Decision / Consequences / Alternatives considered)
+> rather than the MADR/Nygard hybrid format the rest of the ADR
+> set uses; this is intentional. Do not implement; see
+> [ADR-0022](0022-branch-per-mining-run.md).
+
 ## Context
 
 Today, when a rule is promoted from a profile-scoped repo into base

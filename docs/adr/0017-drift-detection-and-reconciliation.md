@@ -23,7 +23,7 @@
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
-## Context
+## Context and Problem Statement
 
 Earlier ADRs implicitly assumed config flows in one direction: from
 synced repos → render engine → `~/.claude/`. Reality is messier:
@@ -49,13 +49,54 @@ where the synced repo + manifest is the desired state, the host's
 actual `~/.claude/` is the actual state, and the user is the arbiter
 for differences.
 
-## Decision
+## Decision Drivers
 
-Maury maintains a per-host `last-render.json` (path + sha256 for every
-file it has rendered) at `~/.claude/maury-state/last-render.json`.
-Drift is the diff between actual file SHAs and the rendered SHAs.
+- **Tenet 1:** first, do no harm. `maury sync` must never
+  clobber the user's hand-edits without an explicit
+  reconciliation step.
+- **Tenet 8:** hand-edits are first-class input. The drift
+  framework must treat them as proposals to consider, not
+  noise to suppress.
+- **Multiple writers exist:** the user, Claude Code itself
+  (via Write/Edit/MultiEdit tools), and the render engine
+  all touch the same files. Attribution matters.
+- **GitOps reconciliation is the right mental model.** The
+  repo is desired state; `~/.claude/` is actual state; the
+  user is the arbiter. Maury observes and proposes; never
+  silently overwrites.
+- **Cron/CI must be safe.** Non-interactive sync needs a
+  refuse-on-drift mode that exits cleanly.
 
-### Drift sources and treatment
+## Considered Options
+
+- **Option A:** Forbid hand-edits via read-only files / FS
+  locks / permissions tricks.
+- **Option B:** Pull-and-clobber by default with warnings.
+- **Option C:** Treat Claude-writes as a privileged channel
+  that bypasses reconcile entirely.
+- **Option D:** Background watcher daemon as v1's primary
+  drift-detection mechanism.
+- **Option E:** Per-line provenance instead of per-file +
+  diff-hunk.
+- **Option F (chosen):** Per-host `last-render.json` SHA
+  tracking + reconcile menu with five hand-edit actions and
+  three Claude-write actions; sync detects drift and prompts
+  by default, with `--non-interactive` (refuse) and
+  `--force` (clobber) escape hatches.
+
+## Decision Outcome
+
+**Chosen option:** Option F — maury maintains a per-host
+`last-render.json` (path + sha256 for every file it has
+rendered) at `~/.claude/maury-state/last-render.json`. Drift
+is the diff between actual file SHAs and the rendered SHAs.
+This is the only option that preserves Tenet 1 and Tenet 8
+together — every hand-edit is detected and surfaced; nothing
+silently disappears; cron/CI users opt into refusal.
+
+### Implementation details
+
+#### Drift sources and treatment
 
 Every drift carries a **source attribution**:
 
@@ -74,7 +115,7 @@ size_delta}` — see [ADR-0023](0023-hook-installation-and-tool-resolution.md)
 §6 for the full schema and the stdin-JSON-payload mechanics by
 which the hook script receives data from Claude Code.
 
-### The five reconcile actions for hand-edits
+#### The five reconcile actions for hand-edits
 
 When `maury reconcile` surfaces a hand-edit, the user picks one:
 
@@ -94,7 +135,7 @@ For Claude-write drift, the affordance is shorter:
 | **revert** | `maury revert <change-id>`, `maury revert --session <sid>`, or `maury revert --last`. |
 | **promote** | `maury promote <change-id>` — convert the soft-accepted change into a proposal (same path as `adopt`). Useful when Claude wrote something good and you want to propagate it. |
 
-### Sync flow with drift
+#### Sync flow with drift
 
 Three flows from question Q10:
 
@@ -114,14 +155,14 @@ Three flows from question Q10:
 > overwrite/refuse tradeoffs `--force` covers here. Reader who
 > notices the inconsistency: it's deliberate.
 
-### Multi-source merge conflicts (per Q11)
+#### Multi-source merge conflicts
 
 When the same line is touched by hand-edit, mined fragment, AND
 upstream peer-host change: **three-way merge with user as arbiter.**
 No silent precedence rules. Reconcile UI presents all three sources
 plus the common ancestor; the user picks one or composes a fourth.
 
-### Inheritance interaction (per ADR-0019)
+#### Inheritance interaction (per ADR-0019)
 
 When the reconcile pipeline captures a hand-edit as a proposal, it
 needs to choose which layer to land it in (base, profile, host
@@ -133,7 +174,7 @@ When the captured proposal would create a "child replaces parent"
 situation, the renderer flags it and offers `maury refactor
 promote-common` (v2 — see ADR-0019) as a follow-up.
 
-### What v1 ships vs. defers
+#### What v1 ships vs. defers
 
 v1 (in scope):
 - `last-render.json` tracking
@@ -146,7 +187,7 @@ v1 (in scope):
 - **`maury-status` skill** — see §"The `maury-status` skill"
   below for the definition.
 
-### The `maury-status` skill
+#### The `maury-status` skill
 
 Claude-invokable mid-session affordance that surfaces maury's
 view of the current host's state. Distributed via the render
@@ -221,46 +262,90 @@ v1.1 (deferred):
   rather than only on `sync`/`status`).
 - `maury refactor promote-common` (per ADR-0019).
 
-## Consequences
+### Consequences
 
-- **No silent data loss.** Every hand-edit and every Claude-write is
-  either preserved-with-reversion-path or explicitly handled by the
-  user.
-- **Sync is safe by default.** `maury sync` doesn't clobber; it asks.
-  Cron/CI users opt into the non-interactive refusal mode.
-- **`maury-status` skill is part of v1.** Claude in any session can
-  invoke it to remind the user of pending drift — gentle proactive
-  nag without the full active-capture pipeline.
-- **Cross-host coordination of overrides** via synced
-  `hand-managed.json`: if you mark a path hand-managed on workstation, linux-server
-  knows that's a workstation-local choice and doesn't try to render it
-  there.
-- **One shared reconcile pipeline** for all drift sources —
-  hand-edits, Claude-writes, mined fragments, active captures (when
-  v1.1 lands) all flow through the same proposal queue + classifier
-  + audit log.
-- **Implementation complexity is non-trivial:** a ~500-line module
-  for drift detection + reconcile UI, plus the `PostToolUse` hook
-  ship, plus the `maury-status` skill. Justified by the safety story.
+- ✅ **Good:** No silent data loss. Every hand-edit and
+  every Claude-write is either preserved-with-reversion-path
+  or explicitly handled by the user.
+- ✅ **Good:** Sync is safe by default. `maury sync` doesn't
+  clobber; it asks. Cron/CI users opt into the
+  non-interactive refusal mode.
+- ✅ **Good:** `maury-status` skill is part of v1. Claude in
+  any session can invoke it to remind the user of pending
+  drift — gentle proactive nag without the full active-
+  capture pipeline.
+- ✅ **Good:** Cross-host coordination of overrides via
+  synced `hand-managed.json`: if you mark a path hand-managed
+  on one host, peer hosts know that's a host-local choice and
+  don't try to render it there.
+- ✅ **Good:** One shared reconcile pipeline for all drift
+  sources — hand-edits, Claude-writes, mined fragments,
+  active captures (when v1.1 lands) all flow through the
+  same proposal queue + classifier + audit log.
+- ❌ **Bad:** Implementation complexity is non-trivial — a
+  ~500-line module for drift detection + reconcile UI, plus
+  the `PostToolUse` hook ship, plus the `maury-status`
+  skill. Justified by the safety story.
 
-## Alternatives considered
+### Confirmation
 
-- **Read-only files / file-system locks.** Rejected: friction kills
-  adoption; users will find escape hatches anyway.
-- **Pull-and-clobber by default with warnings.** Rejected: violates
-  tenet #1 (first, do no harm). Users would lose data they didn't
-  realize they could lose.
-- **Treat Claude-writes as a privileged channel that bypasses
-  reconcile entirely.** Rejected (per Q8): non-uniform; hard to
-  audit; user wants the same drift framework for all writers with
-  different default actions.
-- **Background watcher daemon as v1.** Considered, deferred to v1.1.
-  v1's "sync/status only" model is cheap, predictable, and easy to
-  test.
-- **Per-line provenance instead of per-file.** Considered for the
-  layer-routing question. Per-file with diff-hunk granularity (Q12)
-  is the right balance for v1; per-line provenance is a v2 option
-  if review-routing becomes a pain point.
+- `~/.claude/maury-state/last-render.json` is written after
+  every successful render; SHAs are sha256 per the schema in
+  [ADR-0029](0029-maury-state-layout-contract.md).
+- `src/maury/drift.py` (Phase 5.x.a slice 1, shipped) and
+  `src/maury/reconcile.py` (slice 3, shipped) implement the
+  detection + menu.
+- `maury sync` (Phase 5, shipped) checks drift before render
+  and respects `--non-interactive` / `--force` flags.
+
+## Pros and Cons of the Options
+
+### Option A: Forbid hand-edits via FS locks / permissions
+
+- ✅ **Good:** No drift surface — files can't change.
+- ❌ **Bad:** Friction kills adoption; users will find
+  escape hatches anyway.
+- ❌ **Bad:** Tenet 8 violation — hand-edits are first-class
+  input; forbidding them inverts the principle.
+
+### Option B: Pull-and-clobber by default with warnings
+
+- ✅ **Good:** Simple implementation; no reconcile UI.
+- ❌ **Bad:** Violates Tenet 1 (first, do no harm). Users
+  would lose data they didn't realize they could lose.
+
+### Option C: Privileged Claude-write channel
+
+- ✅ **Good:** Slightly simpler default treatment (Claude
+  writes auto-accept).
+- ❌ **Bad:** Non-uniform; hard to audit; user wants the
+  same drift framework for all writers with different
+  default actions.
+
+### Option D: Background watcher daemon as v1
+
+- ✅ **Good:** Proactive surfacing of drift the moment it
+  appears.
+- ❌ **Bad:** Daemon to install, monitor, restart, log;
+  expensive for v1.
+- ⚖️ **Neutral:** Deferred to v1.1; v1's "sync/status only"
+  model is cheap, predictable, and easy to test.
+
+### Option E: Per-line provenance instead of per-file
+
+- ✅ **Good:** Most precise routing for layer attribution.
+- ❌ **Bad:** Heavyweight to implement and store.
+- ⚖️ **Neutral:** Per-file with diff-hunk granularity is
+  the right balance for v1; per-line is a v2 option if
+  review-routing becomes a pain point.
+
+### Option F (chosen): SHA tracking + reconcile menu
+
+- ✅ **Good:** No silent data loss; safe by default;
+  cron/CI safe via `--non-interactive`.
+- ✅ **Good:** Single pipeline for all drift sources.
+- ❌ **Bad:** Non-trivial code surface (~500 LOC + hook +
+  skill).
 
 ## Followups
 

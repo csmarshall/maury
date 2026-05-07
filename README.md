@@ -1,10 +1,23 @@
 <p align="center">
-  <img src="docs/masthead.svg" alt="maury — On a mission from Claude." width="900">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo.svg" alt="" width="96">
+  </picture>
 </p>
 
-# maury
+<h1 align="center">
+  <img src="docs/wordmark.svg" alt="maury" height="72">
+</h1>
 
-> *"On a mission from Claude."*
+<p align="center">
+  <img src="docs/tagline.svg" alt="On a mission from Claude." height="28">
+</p>
+
+<p align="center">
+  <sub><img src="docs/proprietor.svg" alt="Sline & Co. — Talent & Configurations — Est. 1974 — M. Sline, prop." height="14"></sub>
+</p>
+
+---
 
 Multi-host Claude Code configuration sync, profile isolation, and
 learned-rule mining. Maury keeps `~/.claude/` consistent across machines,
@@ -226,14 +239,3 @@ Maury stands on shoulders. Credit:
 ## License
 
 MIT. See `LICENSE`.
-
----
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
-    <img src="docs/logo.svg" alt="maury" width="84">
-  </picture>
-</p>
-
-<p align="center"><sub><code>m. sline · prop.</code></sub></p>

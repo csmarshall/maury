@@ -9,15 +9,18 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
-## Context
+## Context and Problem Statement
 
-Earlier ADRs (0005, 0008, 0011, 0013) treated mining as a single
-operation: scan transcripts since the last watermark, propose updates.
-That's the *maintenance* case — and it's correct for it. But it
-silently misses an equally important case: a user with months or years
-of pre-maury Claude Code usage who has never had a curated CLAUDE.md
-or skills library, and wants maury to *bootstrap* their config from
-their existing transcript history.
+Earlier ADRs ([0005](0005-local-only-mining.md),
+[0008](0008-claude-diary-reference.md),
+[0011](0011-anthropic-rubric-integration.md),
+[0013](0013-active-in-session-capture.md)) treated mining as a
+single operation: scan transcripts since the last watermark,
+propose updates. That's the *maintenance* case — and it's correct
+for it. But it silently misses an equally important case: a user
+with months or years of pre-maury Claude Code usage who has never
+had a curated CLAUDE.md or skills library, and wants maury to
+*bootstrap* their config from their existing transcript history.
 
 These are genuinely different problems:
 
@@ -35,12 +38,51 @@ takes hours, drowns in noise, and gives the user 800 fragments to
 review one-by-one. That's not a tool, it's a punishment. The bulk
 case needs different orchestration.
 
-## Decision
+## Decision Drivers
 
-Maury supports **two distinct mining modes** with shared infrastructure
-underneath:
+- **Tenet 7:** provenance is mandatory. Cluster-level
+  proposals must carry "12 occurrences across 8 sessions"
+  evidence so the curator can judge.
+- **Tenet 9:** defer to the platform. Use git history (free)
+  for the temporal axis of cross-reference, not a separate
+  storage system.
+- **Tenet 11:** explicit beats implicit. Two clearly named
+  modes (`maury mine` vs `maury mine --bulk`) beat a single
+  command that silently switches behavior based on input
+  size.
+- **Bulk-case orchestration is genuinely different** from
+  maintenance — clustering and resumability aren't optional;
+  they're load-bearing.
+- **Prototype validation** (see "Prototype findings" below)
+  showed lexical clustering pre-LLM-extraction was the wrong
+  order; clustering must happen *after* LLM extraction.
 
-### Bulk onboarding (`maury mine --bulk`)
+## Considered Options
+
+- **Option A:** Single mining mode that scales to bulk via
+  parameters.
+- **Option B:** Bulk mining as a one-time wizard, not a
+  re-runnable command.
+- **Option C:** Skip clustering; do per-fragment LLM
+  extraction at bulk scale.
+- **Option D:** LLM-based clustering in v1 (not lexical).
+- **Option E (chosen):** Two distinct modes (`maury mine`
+  for maintenance, `maury mine --bulk` for onboarding) with
+  shared extraction/cross-reference infrastructure
+  underneath; clustering is post-LLM-extraction, not pre.
+
+## Decision Outcome
+
+**Chosen option:** Option E — maury supports **two distinct
+mining modes** with shared infrastructure underneath. The
+orchestration shapes are genuinely different (clustering is
+mandatory for bulk, optional for incremental; review UX is
+bulk-grouped vs streaming); forcing one mode to handle both
+produces a worst-of-both-worlds CLI.
+
+### Implementation details
+
+#### Bulk onboarding (`maury mine --bulk`)
 
 Walks all transcripts under `~/.claude/projects/*.jsonl`, extracts
 preference candidates, **clusters similar candidates**, applies a
@@ -67,7 +109,7 @@ Required components:
   example excerpts") and lets the user accept/reject the cluster as
   one operation.
 
-### Incremental maintenance (`maury mine`)
+#### Incremental maintenance (`maury mine`)
 
 Reads the per-project watermark from
 `<repo>/profiles/<profile>/hosts/<host>/watermarks.json`, processes
@@ -83,7 +125,7 @@ Differences from bulk:
 - **Cheap enough to invoke from a hook** — designed for periodic
   invocation without user attention.
 
-### Shared infrastructure
+#### Shared infrastructure
 
 Both modes use:
 
@@ -104,7 +146,7 @@ Both modes use:
 - The rule engine (Phase 1, already done) for classification.
 - The proposal queue (Phase 7).
 
-### Cross-reference: the four-state model + temporal awareness
+#### Cross-reference: the four-state model + temporal awareness
 
 For each candidate finding emerging from extraction, the cross-
 reference step decides which of **four states** it's in relative to
@@ -147,7 +189,7 @@ axis:
 - Rule was in historical AND user mentioned consistently → CLEAR.
 - Rule isn't in current at all → NEW.
 
-### Two distinct temporal mechanisms
+#### Two distinct temporal mechanisms
 
 Mining needs two unrelated kinds of timestamps. They get conflated
 easily; calling them out:
@@ -165,43 +207,93 @@ otherwise mark findings without temporal classification and let the
 user judge during review. Future incremental runs (after the first
 sync) get full temporal awareness.
 
-## Consequences
+### Consequences
 
-- Phase 6 splits into **6a (incremental)** and **6b (bulk)**. 6a is
-  the simpler chunk; build it first to validate the extraction
-  pipeline. 6b layers clustering + batching + resumability + progress
-  on top of 6a's foundations.
-- Phase 6.5 (LLM backend abstraction) is a hard prereq for both
-  sub-phases. Without it we'd hardcode `claude -p` calls everywhere.
-- Phase 7 (proposal review UI) needs **two paths**: cluster-level
-  review for bulk output, per-fragment review for incremental.
-- The bulk case's clustering and frequency thresholds are the
-  *architecturally novel* part. Without them, mining-at-scale produces
-  noise; with them, it surfaces durable patterns.
-- A user can re-run `maury mine --bulk` at any time. Re-runs detect
-  and skip already-promoted patterns. Useful when significant new
-  history accumulates (e.g., after working on a new domain for a
-  month).
+- ✅ **Good:** Each mode's orchestration matches its
+  workload. Bulk gets clustering + batching + resumability;
+  incremental stays cheap and hook-invocable.
+- ✅ **Good:** Shared extraction + cross-reference
+  infrastructure means one set of tests covers the
+  classification logic for both modes.
+- ✅ **Good:** Re-running `maury mine --bulk` is safe —
+  re-runs detect and skip already-promoted patterns. Useful
+  when significant new history accumulates.
+- ✅ **Good:** The bulk case's clustering and frequency
+  thresholds are the *architecturally novel* part. Without
+  them, mining-at-scale produces noise; with them, it
+  surfaces durable patterns.
+- ⚖️ **Neutral:** Phase 7 (proposal review UI) needs two
+  paths — cluster-level review for bulk output, per-
+  fragment review for incremental.
+- ❌ **Bad:** Phase 6 is bigger than originally scoped (6a
+  incremental + 6b bulk). Mitigated by 6a being the simpler
+  chunk built first.
 
-## Alternatives considered
+### Confirmation
 
-- **Single mining mode that scales to bulk via parameters.**
-  Rejected: the orchestration shapes are genuinely different
-  (clustering is mandatory for bulk, optional for incremental; review
-  UX is bulk-grouped vs streaming). Forcing one mode to handle both
-  produces a worst-of-both-worlds CLI.
-- **Bulk mining as a one-time wizard, not a re-runnable command.**
-  Rejected: users will want to run bulk again after a major shift in
-  how they're using Claude Code (new project domain, new tooling). It
-  must be idempotent and re-runnable.
-- **Skip clustering; do per-fragment LLM extraction at bulk scale.**
-  Rejected: 14k user messages × LLM call is expensive in time and
-  money, and produces 14k fragments to review. Clustering before
-  extraction is the order-of-magnitude win.
-- **LLM-based clustering in v1.** Considered. n-gram + Jaccard is
-  cheap, deterministic, and good enough for the validation question
-  (does the corpus contain real patterns at all). Embedding-based
-  clustering is a v2 upgrade if v1 has visible misses.
+- `maury mine` and `maury mine --bulk` are documented as
+  separate commands in `docs/operations.md`.
+- The four-state cross-reference (NEW / PRESENT_AND_CLEAR /
+  PRESENT_BUT_UNCLEAR / PRESENT_AND_REINFORCED) is the
+  contract between the extractor and the review UI;
+  validated by the third prototype script.
+- Watermarks live at
+  `<repo>/profiles/<profile>/hosts/<host>/watermarks.json`.
+
+## Pros and Cons of the Options
+
+### Option A: Single mining mode
+
+- ✅ **Good:** One command to learn.
+- ❌ **Bad:** Orchestration shapes genuinely differ;
+  forcing one mode produces worst-of-both-worlds CLI.
+
+### Option B: Bulk mining as one-time wizard
+
+- ✅ **Good:** Cleaner first-time UX framing.
+- ❌ **Bad:** Users will want to run bulk again after
+  significant shifts (new domain, new tooling); idempotent
+  re-runnable is required.
+
+### Option C: Skip clustering; per-fragment LLM at bulk scale
+
+- ✅ **Good:** Simpler pipeline.
+- ❌ **Bad:** 14k user messages × LLM call is expensive in
+  time and money, and produces 14k fragments to review.
+  Clustering is the order-of-magnitude win.
+
+### Option D: LLM-based clustering in v1
+
+- ✅ **Good:** Catches semantic similarity lexical methods
+  miss.
+- ❌ **Bad:** n-gram + Jaccard is cheap, deterministic, and
+  good enough for the v1 validation question (does the
+  corpus contain real patterns at all).
+- ⚖️ **Neutral:** Embedding-based clustering is a v2
+  upgrade if v1 has visible misses.
+
+### Option E (chosen): Two modes + post-LLM clustering
+
+- ✅ **Good:** Each mode's shape matches its workload.
+- ✅ **Good:** Order (LLM extract → cluster) is the
+  prototype-validated order, not the original (cluster →
+  LLM) order.
+- ❌ **Bad:** Phase 6 surface is larger (6a + 6b).
+
+## Build-order placement
+
+Phase 6 splits into:
+- **6a (incremental)** — the simpler chunk; build first to
+  validate the extraction pipeline against real
+  transcripts.
+- **6b (bulk)** — layers clustering + batching +
+  resumability + progress on top of 6a's foundations.
+- **6.5 (LLM backend abstraction,
+  [ADR-0012](0012-llm-backend.md))** — hard prereq for
+  both sub-phases.
+
+Phase 7 (proposal review UI) consumes both modes' output
+and needs two review paths.
 
 ## Prototype findings (validated 2026-05-06)
 

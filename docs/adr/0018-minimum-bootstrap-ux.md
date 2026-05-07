@@ -7,7 +7,7 @@
 
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
-## Context
+## Context and Problem Statement
 
 Self-directed onboarding for a new host needs to work with the
 absolute minimum the user has to bring. Every extra step is friction;
@@ -16,9 +16,48 @@ every undocumented assumption is a future support burden.
 The realistic minimum is **one credential + one URL**, plus
 maury itself installed. We design around that.
 
-## Decision
+## Decision Drivers
 
-### `maury init` is the user's first command on a new host
+- **Tenet 11:** explicit beats implicit, with conservative
+  defaults. The init flow asks for what it needs (URL + key),
+  doesn't assume.
+- **Friction kills adoption.** Every extra step on first-host
+  setup is a place users give up. The "what's the minimum?"
+  framing is the right starting question.
+- **Air-gap is real.** Work environments with no path from
+  the new host to GitHub need a first-class tarball/dir
+  ingestion path.
+- **Curator vs. new-host commands are different audiences.**
+  Conflating `maury init` and `maury bootstrap` makes both
+  worse.
+
+## Considered Options
+
+- **Option A:** `maury setup` (verb name choice).
+- **Option B:** Auto-detect and install pipx as part of init.
+- **Option C:** Sync the bootstrap info via maury itself
+  (chicken-and-egg).
+- **Option D:** Web-based "bootstrap server" with one-time
+  tokens.
+- **Option E:** Single hardcoded auth flavor across all
+  backends.
+- **Option F (chosen):** `maury init <base-repo-url>` (or
+  `--from-tarball` / `--from-dir`) — one credential + one URL
+  is the user's only mandatory input; pipx is a documented
+  prereq; auth flavor is per-backend.
+
+## Decision Outcome
+
+**Chosen option:** Option F — `maury init` is the user's first
+command on a new host. The minimum input is one URL (or one
+tarball path, for air-gap) plus an SSH key already on the host.
+This is the only option that preserves "minimum input" while
+keeping bootstrap-info storage out of maury (a
+chicken-and-egg problem maury can't solve cleanly).
+
+### Implementation details
+
+#### `maury init` is the user's first command on a new host
 
 ```sh
 maury init <base-repo-url>
@@ -64,7 +103,7 @@ maury init --from-dir /mnt/usb/maury-base/
 6. **Run probe + first render.** `maury probe` + render under
    `~/.claude/`.
 
-### `maury bootstrap-snippet` for from-existing-host onboarding
+#### `maury bootstrap-snippet` for from-existing-host onboarding
 
 To shortcut step 1 above, run on any existing host (e.g., workstation):
 
@@ -80,7 +119,7 @@ generated line includes:
 - `maury init <base-repo-url>` filled in with this fleet's actual
   base URL.
 
-### Pre-maury install paths (per question Q1)
+#### Pre-maury install paths
 
 The canonical path is `pipx install maury`. The README's install
 section leads with OS-specific instructions for getting pipx itself,
@@ -101,7 +140,7 @@ then converges on the same `pipx install` line:
 have `uv` installed (and on FreeBSD it's actually one binary fewer
 to track since `uv` is what we already use for development).
 
-### CLI verb separation (per Q4)
+#### CLI verb separation
 
 - **`maury init`** — user's first command on a new machine.
 - **`maury bootstrap`** — curator-side ops: `bootstrap repo`
@@ -111,7 +150,7 @@ to track since `uv` is what we already use for development).
 
 Different verbs, different audiences, no overlap.
 
-### Cold-start recovery (per Q3)
+#### Cold-start recovery
 
 The user is responsible for remembering or storing the base repo URL
 and one auth credential. Recommended: password manager entry
@@ -126,7 +165,7 @@ For air-gapped recovery, the tarball form (`--from-tarball` /
 `maury bundle base` (also v1 scope, small command) and store
 wherever the user backs up sensitive data.
 
-### Auth flavor (per Q2)
+#### Auth flavor
 
 V1 default for the `git` and `github` backends is **SSH key**. The
 user generates a keypair (or uses an existing one), pastes the
@@ -137,7 +176,7 @@ are candidates for v2 niceness but not v1 scope.
 For non-git backends per ADR-0016 (Perforce, S3+age, etc.), each
 adapter brings its own auth model.
 
-### What the init flow *doesn't* do (v1)
+#### What the init flow *doesn't* do (v1)
 
 - **It does not auto-install `claude` itself.** maury depends on
   Claude Code already being installed and configured.
@@ -147,44 +186,88 @@ adapter brings its own auth model.
   existing base; it doesn't bootstrap a fleet from scratch. For
   that, see `maury bootstrap repo base` (curator command, Phase 4).
 
-## Consequences
+### Consequences
 
-- **One credential + one URL** is the minimum the user must bring,
-  plus pipx-installable maury.
-- **Clean separation of new-user vs curator commands** — `maury
-  init` always means "I'm a new host wanting to join an existing
-  fleet"; `maury bootstrap` always means "I'm setting up new fleet
-  infrastructure."
-- **Air-gapped path is first-class**, via `--from-tarball` and
-  `--from-dir`. Critical for work environments where the new host
-  can't directly reach GitHub.
-- **bootstrap-snippet** removes friction for the from-existing-host
-  case — paste one line, get a working maury install + first sync.
-- **Manifest-from-base is the source of truth** for everything else
-  about the new host. Once init's step 3 completes, maury knows
-  which other repos to clone, what deploy keys to generate, etc.
+- ✅ **Good:** One credential + one URL is the minimum the
+  user must bring, plus pipx-installable maury.
+- ✅ **Good:** Clean separation of new-user vs curator
+  commands — `maury init` always means "I'm a new host
+  wanting to join an existing fleet"; `maury bootstrap`
+  always means "I'm setting up new fleet infrastructure."
+- ✅ **Good:** Air-gapped path is first-class, via
+  `--from-tarball` and `--from-dir`. Critical for work
+  environments where the new host can't directly reach
+  GitHub.
+- ✅ **Good:** `bootstrap-snippet` removes friction for the
+  from-existing-host case — paste one line, get a working
+  maury install + first sync.
+- ✅ **Good:** Manifest-from-base is the source of truth for
+  everything else about the new host. Once init's step 3
+  completes, maury knows which other repos to clone, what
+  deploy keys to generate, etc.
+- ❌ **Bad:** User must remember/store the base repo URL +
+  one auth credential out-of-band (password manager
+  recommended). Maury can't solve this without a chicken-
+  and-egg.
+
+### Confirmation
+
+- `maury init <url>`, `maury init --from-tarball <path>`, and
+  `maury init --from-dir <path>` ship in Phase 4.
+- `bootstrap-snippet` emits a one-liner with the fleet's
+  base URL filled in.
+- README install table covers the documented pipx-install
+  paths per OS.
+
+## Pros and Cons of the Options
+
+### Option A: `maury setup` (verb name)
+
+- ✅ **Good:** Slightly more descriptive of "first-time
+  configuration."
+- ❌ **Bad:** `init` is shorter and well-known from
+  `git init`/`npm init`/etc. Lower learning tax.
+
+### Option B: Auto-detect and install pipx
+
+- ✅ **Good:** One fewer step on first install.
+- ❌ **Bad:** Too much OS-detection logic for a one-time
+  operation; documentation + bootstrap-snippet per OS is
+  enough.
+
+### Option C: Sync the bootstrap info via maury itself
+
+- ✅ **Good:** Self-contained recovery story.
+- ❌ **Bad:** Chicken-and-egg — where would the info live
+  *before* maury exists? Falls apart at the first cold
+  bootstrap.
+
+### Option D: Web-based "bootstrap server" with one-time tokens
+
+- ✅ **Good:** "Scan from your phone" UX is genuinely nice.
+- ❌ **Bad:** Scope creep for v1; pipx + URL + SSH key
+  already works.
+- ⚖️ **Neutral:** Worth revisiting in v2 once core ships.
+
+### Option E: Single hardcoded auth flavor across all backends
+
+- ✅ **Good:** Less per-backend variation.
+- ❌ **Bad:** Conflicts with [ADR-0016](0016-pluggable-repo-backends.md)
+  — auth is per-backend by design.
+
+### Option F (chosen): `maury init` + per-backend auth
+
+- ✅ **Good:** Minimum input; clean verb separation;
+  air-gap first-class.
+- ❌ **Bad:** User stores bootstrap info themselves; no
+  built-in recovery.
 
 ## Build-order placement
 
-`maury init` lands in **Phase 4 (bootstrap commands)** alongside
-`maury bootstrap repo` and `maury bootstrap host`. The probe
-mechanism (Phase 2 — already shipped) and the render engine (Phase
-3 — next up) are prerequisites.
-
-## Alternatives considered
-
-- **`maury setup` instead of `maury init`.** Considered. `init` is
-  shorter, well-known from `git init`/`npm init`/etc. Won.
-- **Auto-detect and install pipx.** Rejected: too much OS-detection
-  logic for a one-time operation; documentation + bootstrap-snippet
-  per OS is enough.
-- **Sync the bootstrap info via maury itself.** Chicken-and-egg.
-  Rejected.
-- **Web-based "bootstrap server" with one-time tokens.** Considered
-  for v2 (the "scan from your phone" UX). Real but rejected for v1
-  as scope creep — pipx + URL + SSH key works fine.
-- **Single hard-coded auth flavor across all backends.** Rejected
-  per ADR-0016: auth is per-backend by design.
+`maury init` lands in **Phase 4 (bootstrap commands)**
+alongside `maury bootstrap repo` and `maury bootstrap host`.
+The probe mechanism (Phase 2 — already shipped) and the
+render engine (Phase 3 — already shipped) are prerequisites.
 
 ## Followups
 

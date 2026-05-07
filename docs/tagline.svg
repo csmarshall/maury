@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 48" width="520" height="48" role="img" aria-label="On a mission from Claude.">
+  <title>On a mission from Claude.</title>
+  <line x1="0" y1="24" x2="60" y2="24" stroke="#1a1714" stroke-width="1" opacity="0.5"></line>
+  <text x="260" y="32" text-anchor="middle" font-family="Georgia, &#39;Playfair Display&#39;, serif" font-style="italic" font-size="22" fill="#a02824">“On a mission from Claude.”</text>
+  <line x1="460" y1="24" x2="520" y2="24" stroke="#1a1714" stroke-width="1" opacity="0.5"></line>
+</svg>
