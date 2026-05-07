@@ -331,6 +331,48 @@ contribution flow depends entirely on mode.
 
 ---
 
+## What maury assumes about its substrate
+
+Maury is built on **git**, not "any version-controlled storage."
+This is foundational and worth calling out plainly: **you cannot
+substitute S3, Dropbox, NFS/CIFS/AFS, raw filesystem-via-rsync,
+Perforce, Mercurial, or SVN underneath maury and have it work.**
+Git provides specific properties maury depends on at the design
+level, not at the implementation level:
+
+| Git property | What maury uses it for |
+|---|---|
+| **Commit log as immutable history** | The proposal queue, the audit trail, the rule-changelog (per [ADR-0022](adr/0022-branch-per-mining-run.md)). `git log --grep` is the dedup index. `maury why <rule>` is `git log --follow`. |
+| **Branches as in-flight work** | Mining runs land as `maury/run/<run-id>` branches; review produces `maury/review/<run-id>` cherry-picks; promotion produces `maury/promoted/<id>`. The whole proposal lifecycle is git-branch lifecycle (per [ADR-0022](adr/0022-branch-per-mining-run.md), [ADR-0033](adr/0033-pr-repo-mode.md)). |
+| **Commit-message trailers (RFC 822)** | Structured rationale on each finding (`Kind:`, `Scope-Hint:`, `Confidence:`, `Crossref-State:`, `Content-Hash:`, `Source-Profile:`, …). Queryable via `git log --grep` (per [ADR-0022](adr/0022-branch-per-mining-run.md), [ADR-0026](adr/0026-profile-aware-mining.md)). |
+| **Content-addressing via SHA** | `last-render.json` records SHA per file (per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md)); `Content-Hash:` trailer is the dedup primitive (per [ADR-0022](adr/0022-branch-per-mining-run.md)); commit SHAs are themselves promotion-lineage references (`Promoted-From: <repo>@<sha>`). |
+| **Three-way merge** | Manifest concurrency resolution (per [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md)) leans on git's stock 3-way merge as the substrate that the structured-merge tool composes with. |
+| **Distributed model with deploy-key access** | Per-host trust boundaries (per [ADR-0002](adr/0002-repo-per-trust-boundary.md), [ADR-0003](adr/0003-per-host-deploy-keys.md)) — independent push/pull cycles, no central coordinator, server-side enforcement of "this host can read/write these repos." |
+| **Cherry-pick across repos** | Cross-trust-boundary promotion (per [ADR-0009](adr/0009-promotion-only-cross-boundary.md)) is `git cherry-pick` from source repo onto destination repo's branch. |
+| **PR mechanism (via the host's git provider)** | `pr` repo mode (per [ADR-0033](adr/0033-pr-repo-mode.md)) routes contributions through the provider's PR/MR review flow. |
+
+**What "git-compatible" means:** any system that implements the
+git wire protocol AND supports branches, commits, content-
+addressing, RFC 822 trailers, and three-way merge. In practice:
+GitHub (initial implementation), GitLab, Gitea, Codeberg,
+self-hosted git (per [ADR-0016](adr/0016-pluggable-repo-backends.md)'s
+2026-05-06 addendum). NOT: object stores (S3, B2), filesystems
+(NFS/CIFS/Dropbox), other VCS (p4, hg, svn).
+
+**Why this matters for the conceptual model:** when you read
+"the proposal queue" or "the audit log" or "the changelog," the
+answer is always "it's git, in some form" — a branch, a commit
+message, a `git log --grep` scan. There is no parallel
+data-structure to maintain. This is not just an implementation
+choice; it's why most of maury's design is as small as it is.
+
+If the substrate ever needed to change, every ADR in the gap-A
+through gap-K series would need fundamental rework. Picking git
+once was the load-bearing decision; the rest of the design
+follows.
+
+---
+
 ## Two terms maury intentionally avoids re-defining
 
 ### "Context" (Claude Code's usage)

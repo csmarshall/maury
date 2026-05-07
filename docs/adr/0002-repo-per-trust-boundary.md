@@ -29,6 +29,17 @@ profiles that can see each other. Profiles within a boundary live in the
 same repo as separate `profiles/<name>/` directories. Base lives in its
 own repo so work hosts can consume it without seeing personal content.
 
+> **A note on the "git" in "git repo":** maury assumes git as the
+> substrate, not "any version-controlled storage." S3, NFS/CIFS/AFS,
+> Dropbox, raw filesystem-via-rsync, Perforce, Mercurial, SVN are NOT
+> drop-in alternatives. Git provides specific properties maury depends
+> on at the design level (commit log as proposal queue, branches as
+> in-flight work, content-addressing for SHAs, three-way merge, deploy-
+> key access enforcement). See [`concepts.md` §"What maury assumes
+> about its substrate"](../concepts.md#what-maury-assumes-about-its-substrate)
+> for the full inventory. Git-compatible alternatives (GitLab, Gitea,
+> Codeberg, self-hosted git) work; other storage backends do not.
+
 For the project owner's likely use:
 
 | Repo | Contents | Read | Write |
