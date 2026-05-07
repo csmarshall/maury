@@ -1,0 +1,325 @@
+# ADR-0023: Hook installation lifecycle and capability-driven tool resolution
+
+**Status:** Accepted
+**Date:** 2026-05-07
+
+## Related tenets
+
+- [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
+- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile)
+- [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
+
+## Context
+
+[ADR-0006](0006-capability-probe-hook-abstraction.md) established
+that hooks are written against named **actions** (`notify`,
+`log_tool_use`, `run_script`) and that the render engine resolves
+those actions to platform-specific commands using each host's
+capability probe.
+
+[ADR-0017](0017-drift-detection-and-reconciliation.md) makes the
+`PostToolUse log_tool_use` hook **load-bearing**: without it, maury
+can't distinguish a Claude-tool write from a hand-edit, and drift
+attribution falls apart.
+
+Both ADRs hand-wave over the install lifecycle: when does maury
+write the hook into `~/.claude/settings.json`? What happens if the
+user already has hand-added hooks? What about uninstall? What about
+profile switch? What happens if the host is missing a tool one of
+the rendered scripts needs?
+
+ADR-0006 also stops one level too high in its abstraction: it talks
+about platform branching at the *hook action* level, but most of
+the platform pain in cross-OS scripting is actually at the
+*command-line tool* level — `sed` vs `gsed`, `notify-send` vs
+`osascript`, `readlink -f` vs `greadlink -f`. Without a layer below
+hooks, every shipped script ends up with `if [ "$OS" = "Darwin" ]`
+branches.
+
+## Decision
+
+### 1. Marker-based hook ownership
+
+Maury claims ownership of every hook entry it places by adding a
+sentinel comment to the command string itself. Claude Code's hooks
+schema groups hook entries by event name and matcher; maury's marker
+lives on the inner command string:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/<user>/.claude/bin/maury-log-tool-use # maury-managed"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The trailing `# maury-managed` makes the entry a single shell line
+that runs the maury script (the comment is stripped by the shell).
+Render finds maury entries by string-matching the marker; user-added
+entries without the marker pass through untouched, including their
+`matcher` grouping context.
+
+On render, maury computes:
+
+```
+new_hooks = (existing_hooks_without_marker) + (current_render's_maury_hooks)
+```
+
+Hand-editing a maury-marked hook becomes a hand-edit drift like any
+other file (per [ADR-0017](0017-drift-detection-and-reconciliation.md)),
+not a special case.
+
+### 2. Hooks are part of the render pipeline
+
+Hooks live in `settings.json`. `settings.json` is already a render
+output. Therefore: hooks install on every `maury sync`, and there
+is no separate `maury hooks install` command.
+
+This means:
+
+- Adding a hook to the synced base/profile: lands on every host on
+  next sync. No bespoke install step.
+- Profile switch: `maury profile use work` calls the same render
+  pipeline, which writes a new `settings.json` with the work
+  profile's hooks. The marker scheme means we cleanly replace
+  maury's previous entries without touching user entries.
+- Uninstall: `maury uninstall` strips marker-bearing entries from
+  `settings.json` and removes maury-installed scripts under
+  `~/.claude/bin/maury-*`. User content is untouched.
+
+### 3. Capability-driven tool resolution
+
+The capability probe today writes a `tools` map keyed by **real
+binary names** (`sed`, `gsed`, `awk`, `gawk`, `osascript`, …) — see
+`src/maury/capability/probe.py`. We extend that probe with a second
+map, `resolved_tools`, keyed by **logical tool names** with values
+that are concrete absolute paths derived from the existing `tools`
+map:
+
+```json
+{
+  "tools": {
+    "sed":         { "present": true,  "path": "/usr/bin/sed" },
+    "gsed":        { "present": true,  "path": "/opt/homebrew/bin/gsed" },
+    "gawk":        { "present": true,  "path": "/opt/homebrew/bin/gawk" },
+    "greadlink":   { "present": true,  "path": "/opt/homebrew/bin/greadlink" },
+    "osascript":   { "present": true,  "path": "/usr/bin/osascript" }
+  },
+  "resolved_tools": {
+    "sed_gnu":     "/opt/homebrew/bin/gsed",
+    "awk_gnu":     "/opt/homebrew/bin/gawk",
+    "readlink_f":  "/opt/homebrew/bin/greadlink",
+    "notify_cli":  "/usr/bin/osascript",
+    "log_writer":  "/bin/sh"
+  }
+}
+```
+
+A logical tool with value `null` in `resolved_tools` means no
+acceptable implementation was found on this host. The two maps
+coexist deliberately: `tools` is the raw "what's installed where"
+inventory; `resolved_tools` is the "which of those should we use
+for logical operation X" decision. Renaming `tools` would churn
+existing probe consumers; adding `resolved_tools` alongside is
+non-breaking.
+
+Render generates a per-host wrapper at `~/.claude/bin/maury-tools.sh`:
+
+```sh
+# maury-managed — do not hand-edit; regenerated on every sync
+export MAURY_SED=/opt/homebrew/bin/gsed
+export MAURY_AWK=/opt/homebrew/bin/gawk
+export MAURY_READLINK_F=/opt/homebrew/bin/greadlink
+export MAURY_NOTIFY=/usr/bin/osascript
+```
+
+Maury-shipped scripts source `maury-tools.sh` and use `"$MAURY_SED"`
+instead of bare `sed`. User-written scripts in `bin/` can do the
+same. Platform branching collapses to one resolution layer.
+
+Logical tool names are a vocabulary maintained in
+`base-template/.meta/tools.yaml` so users can extend the catalog
+without forking maury.
+
+### 4. Capability failure = render-time refusal (with one exception)
+
+Per [ADR-0006](0006-capability-probe-hook-abstraction.md): if a
+shipped script declares it needs `sed_gnu` and the probe says
+`null`, render fails loud with a message like:
+
+```
+ERROR: hook 'notify_on_drift' requires logical tool 'sed_gnu' but
+this host's capability probe found no acceptable implementation.
+Install GNU sed (e.g., `brew install gnu-sed` on macOS, `pkg install
+gsed` on FreeBSD) or remove the hook from the host's profile.
+```
+
+**Exception: `log_tool_use` has a no-deps guarantee.** It uses only
+POSIX shell constructs (`>>` append, `printf`, `sha256sum` or
+`shasum`) so it always installs successfully on every supported
+host. Without this guarantee, a missing tool on one host would
+disable drift attribution everywhere — and drift attribution is the
+one feature where graceful degradation is the wrong answer.
+
+### 5. Absolute paths in `settings.json`
+
+Hook commands in the rendered `settings.json` are absolute paths
+resolved at render time per host. We do not embed `$HOME` or `~`
+because Claude Code's hook subprocess may not expand env vars and
+may not run with the same `HOME` as the parent.
+
+Since `settings.json` is already host-specific (host overlay layer)
+this is not a portability regression — the file is regenerated on
+every sync.
+
+### 6. `log_tool_use` payload schema (locked)
+
+Extends the schema from
+[ADR-0017](0017-drift-detection-and-reconciliation.md) §"Drift
+sources and treatment". 0017 specified `{ts, session_id, tool, path,
+diff_hint}` as the goal shape. This ADR locks down the concrete
+fields needed to make drift attribution work:
+
+```json
+{"ts":"2026-05-07T17:42:11Z","session_id":"abc...","tool":"Edit",
+ "path":"CLAUDE.md","before_sha":"sha256:...","after_sha":"sha256:...",
+ "size_delta":47,"diff_hint":"L42: 'old' → 'new'"}
+```
+
+Rationale per field:
+
+- `before_sha` / `after_sha` let drift detection cleanly attribute
+  "this file's current SHA matches a Claude-write event's
+  `after_sha`" without re-reading the file. **The load-bearing pair
+  for drift attribution.**
+- `size_delta` (signed integer) is for terse human status output.
+- `diff_hint` (preserved from ADR-0017) is a short human-readable
+  preview — typically `"L<line>: <truncated old> → <truncated new>"`
+  — for `maury status` so the user can recognize the change at a
+  glance without `git show`.
+
+ADR-0017's "diff_hint" goal is satisfied by the field with that
+name retained verbatim. The `before_sha` / `after_sha` / `size_delta`
+fields are additive — they enable the SHA-equality attribution
+that ADR-0017 §"Drift sources and treatment" implies but never
+specified the mechanism for.
+
+**Caveat:** lines must be ≤ 4 KB to ensure POSIX `O_APPEND` atomic-
+write guarantees on collision. `diff_hint` must be truncated to
+keep this bound; the convention is "≤ 200 bytes." Any path that
+exceeds 4 KB is its own pathology we don't try to handle.
+
+Lines must be ≤ 4 KB to ensure POSIX `O_APPEND` atomic-write
+guarantees on collision (multiple Claude Code sessions writing
+simultaneously). The schema's fields are bounded; only `path` is
+variable, and any path that exceeds 4 KB is its own pathology we
+don't try to handle.
+
+### 7. Concurrent sessions
+
+Multiple Claude Code sessions appending to `claude-writes.jsonl` is
+expected. POSIX guarantees `O_APPEND` writes ≤ `PIPE_BUF` (4 KB on
+Linux/macOS) are atomic. Per the schema in §6, every line stays
+under that bound. No file lock is needed.
+
+### 8. Uninstall command
+
+`maury uninstall` does:
+
+1. Strip every `# maury-managed`-marked entry from `settings.json`'s
+   `hooks` block. Leave non-marked entries untouched.
+2. Delete `~/.claude/bin/maury-*` and `~/.claude/bin/maury-tools.sh`.
+3. Delete `~/.claude/maury-state/`.
+4. Print "removed maury hooks; left N user hooks intact; clones
+   under <repos_root> were not touched (delete them manually if
+   desired)".
+5. Exit 0.
+
+The clones aren't auto-deleted because the user may still want
+their git history.
+
+## Consequences
+
+- **Hooks ride the render pipeline.** No second code path; tested
+  alongside everything else `maury sync` does.
+- **Coexistence with hand-set hooks is safe.** The marker scheme
+  means a user with their own `PostToolUse` linter hook keeps it.
+- **Profile switch is just a re-render.** No special teardown logic
+  to test or maintain.
+- **Tool resolution is one layer.** Adding FreeBSD support means
+  adding probe entries, not editing every script. Same for any
+  future BusyBox / Alpine / WSL host.
+- **`log_tool_use` is the one hook with a no-deps contract.** This
+  is the price of making drift attribution reliable everywhere.
+  Other hooks fail loud per ADR-0006 if their tools are missing.
+- **Uninstall is real.** A user can revert the host to "no maury
+  here" with one command. This matters for adoption — irreversible
+  setup is a barrier.
+- **The `tools` vocabulary becomes a versioned schema.** Adding
+  `tools.yaml` entries is a manifest-schema-version event (per
+  [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) v2/v3
+  convention).
+
+## Alternatives considered
+
+- **Replace the entire `hooks` block on render.** Rejected:
+  destroys user hand-set hooks. Violates tenet 1.
+- **Refuse to render if unfamiliar hooks are present.** Rejected:
+  too aggressive; users have legitimate reasons to hand-add hooks
+  for one-off debugging or for tools maury doesn't know about.
+- **Separate `maury hooks install` command.** Rejected: ceremony
+  for no benefit; sync already does this work.
+- **PATH-relative script references** (`claude-notify` instead of
+  absolute path). Rejected: Claude Code's hook subprocess PATH is
+  not guaranteed to include `~/.claude/bin`.
+- **Render-time string substitution for tool names** (`{{sed_gnu}}`
+  expanded into hook commands at render time). Considered. Rejected
+  because it forces every script through the maury renderer; the
+  env-var approach lets user-written scripts in `bin/` use the same
+  resolution by sourcing `maury-tools.sh`.
+- **File lock on `claude-writes.jsonl`.** Rejected: POSIX `O_APPEND`
+  + ≤4 KB lines is sufficient and lock-free. Locks would also be
+  fragile across Claude Code processes that don't know about each
+  other.
+- **Per-tool sentinel comments inside scripts** (`# maury:tool=sed_gnu`)
+  instead of env vars. Rejected: scripts would need to be parsed by
+  the resolver before each run; env-var resolution is cheaper and
+  the standard Unix idiom.
+
+## Build-order placement
+
+- **Marker scheme + sync-rendered hooks** land in Phase 3
+  (render engine extension; settings.json renderer already exists).
+- **Tool resolution** extends the existing capability probe (already
+  shipped) with a new `resolved_tools` map alongside the existing
+  `tools` inventory. Probe gains a logical-name resolution pass that
+  reads `tools.yaml` and writes `resolved_tools` into the host's
+  `capabilities.json`. Plus the `maury-tools.sh` generator at render
+  time. New work in this ADR — not free off the existing probe.
+- **`log_tool_use` script + payload schema** lands as part of
+  Phase 5.x (drift detection — currently in progress) since drift
+  detection is the consumer.
+- **`maury uninstall`** is a small Phase 4-adjacent task; can land
+  any time after the marker scheme is in.
+
+## Followups
+
+- **`tools.yaml` initial vocabulary.** Seed with: `sed_gnu`,
+  `awk_gnu`, `readlink_f`, `find_gnu`, `notify_cli`, `clipboard_cli`,
+  `sha256_cli`. Extend as scripts demand.
+- **Per-tool fallback chains.** A script could declare it'd take
+  `sed_gnu` OR `sed_bsd_with_dash_i_workaround`. Not in v1 — wait
+  for a real script that needs it.
+- **A `maury hooks doctor` command** (or extension of `maury doctor`)
+  to validate that every installed hook's commands exist + every
+  `MAURY_*` env var resolves to a real binary on this host.

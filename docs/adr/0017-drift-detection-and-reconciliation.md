@@ -178,3 +178,15 @@ v1.1 (deferred):
   and surfaces drift count proactively.
 - **Refactor-from-replacement (v2)** per ADR-0019 — the renderer's
   warnings during reconcile become actionable via `maury refactor`.
+
+## Addendum (2026-05-07)
+
+[ADR-0023](0023-hook-installation-and-tool-resolution.md) §6 locks
+down the concrete `claude-writes.jsonl` payload schema. The
+`{ts, session_id, tool, path, diff_hint}` shape sketched in this
+ADR's "Drift sources and treatment" section is extended (not
+replaced) with `before_sha`, `after_sha`, and `size_delta` — the
+SHA-pair enables the file-equality attribution this ADR's drift
+detection implies but did not specify the mechanism for.
+`diff_hint` is preserved verbatim. Implementers should follow the
+ADR-0023 schema as the authoritative reference.
