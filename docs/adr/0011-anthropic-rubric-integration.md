@@ -43,8 +43,9 @@ Add a `maury doctor` subcommand and seed an evaluator with rules
 derived directly from Anthropic's best-practices doc. v1 scope:
 
 1. **`maury doctor` command** that reads a CLAUDE.md file (default
-   `~/.claude/CLAUDE.md`) and emits a report of best-practice violations
-   based on the Anthropic rubric. Text and JSON output modes.
+   `~/.claude/CLAUDE.md` per [Claude Code memory documentation][cc-memory])
+   and emits a report of best-practice violations based on the
+   Anthropic rubric. Text and JSON output modes.
 2. **Hard-coded checks for v1** corresponding directly to the named
    anti-patterns in the doc:
    - **Length / over-specification.** Flag when CLAUDE.md exceeds a

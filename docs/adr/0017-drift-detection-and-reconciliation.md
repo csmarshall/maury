@@ -52,9 +52,12 @@ Every drift carries a **source attribution**:
 | User-added file in managed dir | Path not in `last-render.json` at all | **Prompt to claim** — user picks: add to repo, mark hand-managed, or leave untracked |
 
 The Claude-write log lives at `~/.claude/maury-state/claude-writes.jsonl`,
-populated by a `PostToolUse` hook (action `log_tool_use`) that maury
-ships and the render engine installs. Each line:
-`{ts, session_id, tool, path, diff_hint}`.
+populated by a [`PostToolUse`][cc-hooks] hook (action `log_tool_use`)
+that maury ships and the render engine installs. Each line:
+`{ts, session_id, tool, path, diff_hint, before_sha, after_sha,
+size_delta}` — see [ADR-0023](0023-hook-installation-and-tool-resolution.md)
+§6 for the full schema and the stdin-JSON-payload mechanics by
+which the hook script receives data from Claude Code.
 
 ### The five reconcile actions for hand-edits
 
@@ -190,3 +193,13 @@ SHA-pair enables the file-equality attribution this ADR's drift
 detection implies but did not specify the mechanism for.
 `diff_hint` is preserved verbatim. Implementers should follow the
 ADR-0023 schema as the authoritative reference.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-hooks`][cc-hooks] — `PostToolUse` event semantics and
+  payload structure (full schema in ADR-0023's references).
+
+[cc-hooks]: https://code.claude.com/docs/en/hooks

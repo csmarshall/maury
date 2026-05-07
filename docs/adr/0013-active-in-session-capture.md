@@ -35,16 +35,23 @@ consumes alongside passive mining.
 Distributed via the normal render engine, all from `base/`:
 
 1. **A skill `base/skills/maury-stage/SKILL.md`** that Claude invokes
-   when it observes something the user may want to persist. The skill's
-   prompt content tells Claude what to capture and what not to capture
-   (mirrors the Anthropic CLAUDE.md ✅/❌ rubric — see ADR-0011), and
-   the format to use.
+   when it observes something the user may want to persist. Per
+   [Claude Code skills documentation][cc-skills], skills are
+   invokable units in `~/.claude/skills/<name>/SKILL.md`. The
+   skill's prompt content tells Claude what to capture and what not
+   to capture (mirrors the Anthropic CLAUDE.md ✅/❌ rubric — see
+   ADR-0011), and the format to use.
 2. **A `base/CLAUDE.md` fragment** instructing Claude to invoke
    `maury-stage` when it observes durable preferences, voice cues,
    workflow patterns, anti-patterns, or new host-facts.
-3. **A Stop hook** (action `run_script` resolving to a shipped wrapper
-   `claude-maury-pending`) that prints `📌 maury: N capture(s) pending.
-   Run \`maury review\` to inspect.` if the staging file is non-empty.
+3. **A `Stop` hook** (action `run_script` resolving to a shipped
+   wrapper `claude-maury-pending`) that prints `📌 maury: N
+   capture(s) pending. Run \`maury review\` to inspect.` if the
+   staging file is non-empty. Per [Claude Code hooks][cc-hooks],
+   `Stop` fires once per turn (after each assistant response) —
+   exactly the cadence wanted here, since the user wants the
+   pending-capture nudge surfaced after they finish each assistant
+   exchange, not just at session end.
 
 The staging file lives at `~/.claude/maury-staging/captures.jsonl`. It
 is **per-host**, **never synced to git**. Each line:
@@ -110,3 +117,16 @@ Cannot ship before Phase 3 (render engine) and Phase 5 (sync workflow).
 - **A new MCP server hosted by maury.** Considered. Skill + hook is
   simpler and arrives via the same render engine the rest of maury
   uses. MCP would be over-engineered for this.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-hooks`][cc-hooks] — `Stop` event semantics (fires once
+  per turn).
+- [`cc-skills`][cc-skills] — skills location (`~/.claude/skills/`)
+  and SKILL.md invocation pattern.
+
+[cc-hooks]: https://code.claude.com/docs/en/hooks
+[cc-skills]: https://code.claude.com/docs/en/skills

@@ -9,8 +9,13 @@
 
 ## Context
 
-Hooks are shell commands that Claude Code runs on tool events. The same
-hook config must work on:
+Per [Claude Code's hooks documentation][cc-hooks], hooks are shell
+commands that Claude Code runs at named events (`PreToolUse`,
+`PostToolUse`, `SessionStart`, `SessionEnd`, `Stop`,
+`UserPromptSubmit`, etc.). Hook configuration lives in the
+[`settings.json` file][cc-settings] alongside other Claude Code
+settings. The same hook config (rendered via maury's render engine
+into each host's `~/.claude/settings.json`) must work on:
 
 - **workstation / personal-laptop / work-laptop (macOS).** GNU tools prefixed
   with `g` (gsed, gfind), Homebrew under `/opt/homebrew/bin` on Apple
@@ -75,3 +80,15 @@ capabilities are missing on the current host, with a clear report.
   entirely is cleaner than maintaining a giant Python-shells-out shim.
 - **Conditional templating in settings.json.** Rejected: settings.json
   has no template engine; we'd be inventing one.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-hooks`][cc-hooks] — hook events, schema, when hooks fire.
+- [`cc-settings`][cc-settings] — settings.json layout and
+  precedence (project vs user vs system levels).
+
+[cc-hooks]: https://code.claude.com/docs/en/hooks
+[cc-settings]: https://code.claude.com/docs/en/settings
