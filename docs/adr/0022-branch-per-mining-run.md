@@ -20,12 +20,26 @@
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
-## Context
+## TL;DR
 
-Earlier ADRs hand-waved over the proposal queue. ADR-0021 proposed a
-sidecar `.meta/changelog.jsonl`. Both were over-engineering: git
-already provides everything we need — branches for in-flight work,
-commits for individual changes with rationale in the message body,
+Mining produces a **branch with one commit per finding**: the
+diff IS the proposed change, the message body IS the rationale, the
+SHA IS the finding identity. `maury review` walks the branch with
+cherry-pick prompts; rejections land as a single trailing no-op
+commit on the review branch whose body lists `Rejected-Content-Hash`
+trailers. Dedup is `git log --grep` over both accepted and rejected
+hashes — sub-second on years of history.
+[Supersedes ADR-0021](0021-promotion-changelog.md)'s sidecar
+changelog. Trade-off: locks maury to git as the substrate forever
+(non-git backends ruled out per ADR-0016 addendum).
+
+## Context and Problem Statement
+
+Earlier ADRs hand-waved over the proposal queue.
+[ADR-0021](0021-promotion-changelog.md) proposed a sidecar
+`.meta/changelog.jsonl`. Both were over-engineering: git already
+provides everything we need — branches for in-flight work, commits
+for individual changes with rationale in the message body,
 `git log` for history queries. Inventing a parallel data structure
 duplicates what git is designed to do, and creates two sources of
 truth for "what changed and why."
@@ -34,13 +48,66 @@ Per the project owner's explicit feedback: *"use git as a tool for
 what it's designed for — tracking change and using the commit log to
 explain the change. No sidecars. No extra tracking files."*
 
-## Decision
+<details>
+<summary><b>Decision drivers</b> (5 items — click to expand)</summary>
 
-A mining run produces a **branch with one commit per finding**. The
-commit's diff IS the proposed change. The commit's message body IS
-the rationale. The commit's SHA IS the finding's identity.
+- **Tenet 1:** first, do no harm. Rejection memory must be
+  permanent and dedup must work; otherwise users see the same
+  rejected finding repeatedly (a kind of harm-by-papercut).
+- **Tenet 7:** provenance is mandatory. Every finding must
+  carry rationale (commit body), evidence (transcript window
+  reference), and lineage (branch → main → promoted-to).
+- **Tenet 8:** hand-edits are first-class. Git is the user's
+  native tool for editing diffs; making proposals real
+  commits means cherry-pick / rebase / `git commit --amend`
+  all just work.
+- **Single source of truth:** the commit log already
+  captures everything ADR-0021 proposed; sidecar files
+  create divergence.
+- **No extra dependencies:** branches, trailers, log-grep
+  are stdlib git operations. No custom data store to
+  maintain.
 
-### Branch lifecycle
+</details>
+
+<details>
+<summary><b>Considered options</b> (7 options — click to expand)</summary>
+
+- **Option A:** Sidecar `.meta/changelog.jsonl` per
+  [ADR-0021](0021-promotion-changelog.md) (which this ADR
+  supersedes).
+- **Option B:** One branch per finding instead of one per
+  run.
+- **Option C:** Track rejections as commit SHAs in the next
+  accepted commit's body; look up the rejected commit's diff
+  later.
+- **Option D:** Don't track rejections at all; re-mine and
+  re-show.
+- **Option E:** Refs namespace for rejected commits
+  (`refs/maury/rejected/...`).
+- **Option F:** PR workflow as primary instead of local CLI.
+- **Option G (chosen):** Branch-per-run with one commit per
+  finding; rejections land as a single trailing no-op
+  metadata commit on the review branch; dedup via
+  `git log --grep` on `Content-Hash` and
+  `Rejected-Content-Hash` trailers.
+
+</details>
+
+## Decision Outcome
+
+**Chosen option:** Option G — a mining run produces a
+**branch with one commit per finding**. The commit's diff IS
+the proposed change. The commit's message body IS the
+rationale. The commit's SHA IS the finding's identity. This
+is the only option that uses git as designed, makes
+`maury why` a `git log --grep` one-liner, and keeps
+rejection memory permanent and dedup-queryable across all
+hosts via the merged-to-main no-op rejection commit.
+
+### Implementation details
+
+#### Branch lifecycle
 
 ```
 maury mine
@@ -63,7 +130,7 @@ merge `maury/review/<run-id>` to main
   └─ deletes the as-mined `maury/run/<run-id>` branch
 ```
 
-### Commit message format (the source of truth)
+#### Commit message format (the source of truth)
 
 Every maury-generated commit has a structured trailer block — RFC 822
 key/value pairs that `git interpret-trailers` understands and that
@@ -91,7 +158,7 @@ normalized_text)` where `normalized_text` lowercases, collapses
 whitespace, and strips punctuation. Two findings with slightly
 different wording but the same idea hash to the same value.
 
-### Rejection: a no-op metadata commit
+#### Rejection: a no-op metadata commit
 
 When `maury review` rejects findings during a session, the rejections
 land as a **single trailing no-op commit** on the review branch — it
@@ -122,7 +189,7 @@ is allowed to be garbage-collected. We don't need to keep it alive
 because everything semantic about it lives in the rejection record's
 `Rejected-Content-Hash` line.
 
-### Dedup at next mining run
+#### Dedup at next mining run
 
 Before creating a commit for a new candidate, the miner runs:
 
@@ -140,7 +207,7 @@ Cache point: if total findings ever exceeds 10k (we don't expect
 this), maury caches the set keyed by main's HEAD SHA in
 `refs/maury/dedup-cache`. Until then, recompute every run.
 
-### Cross-repo promotion
+#### Cross-repo promotion
 
 When the curator host has rw on both source and destination repos
 (per [ADR-0009](0009-promotion-only-cross-boundary.md)):
@@ -163,72 +230,132 @@ maury promote --from <source-repo> --to <dest-repo>
   └─ rejected commits get the same no-op rejection commit treatment
 ```
 
-### Stale base handling
+#### Stale base handling
 
 If main has moved between mining and review, `maury review` refuses
 to start until you `maury rebase-run <run-id>` (which is just
 `git rebase main` on the run branch with conflict re-prompting). We
 will not silently rebase mid-review.
 
-## Consequences
+### Consequences
 
-- **Single source of truth.** No sidecar files compete with the
-  commit log. `git log` is the proposal queue, the changelog, the
-  audit trail, and the dedup index.
-- **`maury why <rule>` is just `git log`.** `git log --follow
-  --grep="<rule-text>" -- CLAUDE.md` finds the maury commit that
-  added the rule; reading its body gives you everything ADR-0021
+- ✅ **Good:** Single source of truth. No sidecar files
+  compete with the commit log. `git log` is the proposal
+  queue, the changelog, the audit trail, and the dedup
+  index.
+- ✅ **Good:** `maury why <rule>` is just `git log`.
+  `git log --follow --grep="<rule-text>" -- CLAUDE.md` finds
+  the maury commit that added the rule; reading its body
+  gives you everything [ADR-0021](0021-promotion-changelog.md)
   promised plus the actual diff for free.
-- **Cross-repo lineage is visible.** A `Promoted-From:` trailer on
-  the destination commit links back to the source repo's commit SHA.
-  `git log --grep="Promoted-From:"` on base shows everything ever
-  promoted in.
-- **Rejection memory is permanent and cheap.** The no-op commit on
-  main is forever; the dedup hash is the same across all hosts
-  (because main is the same across all hosts).
-- **Removes ADR-0021's `rule_<hex>` migration.** No surrogate ID for
-  rules; commit SHA is the identity. ADR-0015's "rules keep their
-  slug `id:`" stands as written.
-- **Performance is bounded by commit count, not file size.** Sub-
-  second log-grep on years of history. If we ever exceed it, cache
-  in a refs namespace.
-- **Implementation surface is small.** Mining writes commits;
-  `maury review` is a wrapper around `git log` + `git cherry-pick`;
-  `maury why` is `git log --grep`. No proposal data model, no queue
+- ✅ **Good:** Cross-repo lineage is visible. A
+  `Promoted-From:` trailer on the destination commit links
+  back to the source repo's commit SHA.
+  `git log --grep="Promoted-From:"` on base shows everything
+  ever promoted in.
+- ✅ **Good:** Rejection memory is permanent and cheap. The
+  no-op commit on main is forever; the dedup hash is the
+  same across all hosts (because main is the same across
+  all hosts).
+- ✅ **Good:** Removes [ADR-0021](0021-promotion-changelog.md)'s
+  `rule_<hex>` migration. No surrogate ID for rules; commit
+  SHA is the identity.
+  [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)'s
+  "rules keep their slug `id:`" stands as written.
+- ✅ **Good:** Performance is bounded by commit count, not
+  file size. Sub-second log-grep on years of history. If we
+  ever exceed it, cache in a refs namespace.
+- ✅ **Good:** Implementation surface is small. Mining
+  writes commits; `maury review` is a wrapper around
+  `git log` + `git cherry-pick`; `maury why` is
+  `git log --grep`. No proposal data model, no queue
   schema, no JSON files to validate.
-- **Lock-in to git.** This commits maury to git as the backend in
-  perpetuity. ADR-0016 (pluggable backends) is now constrained to
-  git-compatible systems (gitea, gitlab, codeberg) — no Perforce,
-  no Mercurial. Acceptable given target-user reality.
+- ❌ **Bad:** Lock-in to git. This commits maury to git as
+  the backend in perpetuity.
+  [ADR-0016](0016-pluggable-repo-backends.md) is now
+  constrained to git-compatible systems (gitea, gitlab,
+  codeberg) — no Perforce, no Mercurial. Acceptable given
+  target-user reality (codified in ADR-0016's 2026-05-06
+  addendum).
 
-## Alternatives considered
+### Confirmation
 
-- **Sidecar `.meta/changelog.jsonl`** ([ADR-0021](0021-promotion-changelog.md),
-  superseded). Rejected: duplicates git, two sources of truth, file
-  format to maintain, no win over commit log.
-- **One branch per finding instead of one per run.** Rejected:
-  N branches per mining session is queue clutter; mining-run cohesion
-  (seeing all of one session's insights together) is genuinely
-  useful for curator review. Per-run also keeps cherry-pick conflicts
-  rare (commits within a run are author-ordered to minimize overlap).
-- **Track rejections as commit SHAs in the next accepted commit's
-  body, then look up the rejected commit's diff.** Considered with
-  the project owner; rejected as too processing-intensive over time
-  (would scale O(history) on every mining run with fuzzy diff
-  comparison). Content-hash dedup avoids the fuzzy match entirely.
-- **Don't track rejections at all; re-mine and re-show.** Rejected:
-  re-seeing the same rejected finding on every run is the kind of
-  papercut that makes people stop using the tool.
-- **Refs namespace for rejected commits** (`refs/maury/rejected/...`).
-  Rejected: refs are git-managed but invisible to most tools and
-  workflows. The no-op metadata commit on main is more discoverable
-  and rides for free with the merge.
-- **PR workflow as primary instead of local CLI.** Rejected as
-  primary: requires GitHub access for every host that mines, which
-  defeats the local-only mining property of [ADR-0005](0005-local-only-mining.md).
-  PR is available as the *output* of `maury review` (the cleaned-up
-  `maury/review/<run-id>` branch can be pushed and a PR opened),
-  but it's not the review interface itself.
+- Mining (Phase 6) writes branches under `maury/run/`.
+- `maury review` walks `git log main..maury/run/<run-id>`
+  oldest-first per the documented branch lifecycle.
+- Dedup uses `git log --grep="^Content-Hash:"` and
+  `git log --grep="^Rejected-Content-Hash:"`; reduce by
+  `(hash, source-profile)` per the 2026-05-07 amendment.
+
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
+
+#### Option A: Sidecar `.meta/changelog.jsonl` (ADR-0021)
+
+- ✅ **Good:** Structured queryable JSON.
+- ❌ **Bad:** Duplicates git; two sources of truth; file
+  format to maintain; no win over commit log.
+
+#### Option B: One branch per finding
+
+- ✅ **Good:** Most granular branch lifecycle.
+- ❌ **Bad:** N branches per mining session is queue
+  clutter; mining-run cohesion (seeing all of one
+  session's insights together) is genuinely useful for
+  curator review.
+
+#### Option C: Track rejections as SHAs in next commit body
+
+- ✅ **Good:** Rejection-record lives next to acceptance.
+- ❌ **Bad:** Too processing-intensive over time — would
+  scale O(history) on every mining run with fuzzy diff
+  comparison. Content-hash dedup avoids the fuzzy match
+  entirely.
+
+#### Option D: Don't track rejections; re-mine and re-show
+
+- ✅ **Good:** Simplest possible implementation.
+- ❌ **Bad:** Re-seeing the same rejected finding on every
+  run is the kind of papercut that makes people stop using
+  the tool.
+
+#### Option E: Refs namespace for rejected commits
+
+- ✅ **Good:** Git-native; doesn't pollute main.
+- ❌ **Bad:** Refs are git-managed but invisible to most
+  tools and workflows. The no-op metadata commit on main is
+  more discoverable and rides for free with the merge.
+
+#### Option F: PR workflow as primary
+
+- ✅ **Good:** Familiar GitHub UX.
+- ❌ **Bad:** Requires GitHub access for every host that
+  mines, which defeats the local-only mining property of
+  [ADR-0005](0005-local-only-mining.md).
+- ⚖️ **Neutral:** PR is available as the *output* of
+  `maury review` (the cleaned-up `maury/review/<run-id>`
+  branch can be pushed and a PR opened), but it's not the
+  review interface itself.
+
+#### Option G (chosen): Branch-per-run with rejection no-op commit
+
+- ✅ **Good:** Uses git as designed; no new data layer.
+- ✅ **Good:** Permanent rejection memory; sub-second
+  dedup via `git log --grep`.
+- ✅ **Good:** Implementation surface is tiny — wrapper
+  around `git log` and `git cherry-pick`.
+- ❌ **Bad:** Locks maury to git substrate forever.
+
+</details>
+
+## Build-order placement
+
+- **Phase 6 (Mining)** writes the run branches and commit
+  trailers.
+- **Phase 7 (Proposal queue + review UI)** is the
+  branch-walk wrapper around `git log` + `git cherry-pick`.
+- **Phase 9 (Promotion)** adds the cross-repo cherry-pick
+  flow with `Promoted-From:` trailers.
 
 ## Followups
 

@@ -7,6 +7,17 @@
 
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+A new host adopting maury should need the absolute minimum: one URL
+(or a tarball for air-gap) plus an SSH key already on the host, with
+`pipx install maury` as the only prereq. `maury init` pulls the base
+repo, reads its manifest, self-identifies (or proposes a new host
+entry), and bootstraps additional deploy keys. `maury bootstrap` is a
+separate verb for curator-side fleet ops. Trade-off: the user must
+remember the base URL + auth credential out-of-band (password
+manager) — maury can't solve that without a chicken-and-egg.
+
 ## Context and Problem Statement
 
 Self-directed onboarding for a new host needs to work with the
@@ -16,7 +27,8 @@ every undocumented assumption is a future support burden.
 The realistic minimum is **one credential + one URL**, plus
 maury itself installed. We design around that.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 11:** explicit beats implicit, with conservative
   defaults. The init flow asks for what it needs (URL + key),
@@ -31,7 +43,10 @@ maury itself installed. We design around that.
   Conflating `maury init` and `maury bootstrap` makes both
   worse.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (6 options — click to expand)</summary>
 
 - **Option A:** `maury setup` (verb name choice).
 - **Option B:** Auto-detect and install pipx as part of init.
@@ -45,6 +60,8 @@ maury itself installed. We design around that.
   `--from-tarball` / `--from-dir`) — one credential + one URL
   is the user's only mandatory input; pipx is a documented
   prereq; auth flavor is per-backend.
+
+</details>
 
 ## Decision Outcome
 
@@ -219,48 +236,51 @@ adapter brings its own auth model.
 - README install table covers the documented pipx-install
   paths per OS.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: `maury setup` (verb name)
+#### Option A: `maury setup` (verb name)
 
 - ✅ **Good:** Slightly more descriptive of "first-time
   configuration."
 - ❌ **Bad:** `init` is shorter and well-known from
   `git init`/`npm init`/etc. Lower learning tax.
 
-### Option B: Auto-detect and install pipx
+#### Option B: Auto-detect and install pipx
 
 - ✅ **Good:** One fewer step on first install.
 - ❌ **Bad:** Too much OS-detection logic for a one-time
   operation; documentation + bootstrap-snippet per OS is
   enough.
 
-### Option C: Sync the bootstrap info via maury itself
+#### Option C: Sync the bootstrap info via maury itself
 
 - ✅ **Good:** Self-contained recovery story.
 - ❌ **Bad:** Chicken-and-egg — where would the info live
   *before* maury exists? Falls apart at the first cold
   bootstrap.
 
-### Option D: Web-based "bootstrap server" with one-time tokens
+#### Option D: Web-based "bootstrap server" with one-time tokens
 
 - ✅ **Good:** "Scan from your phone" UX is genuinely nice.
 - ❌ **Bad:** Scope creep for v1; pipx + URL + SSH key
   already works.
 - ⚖️ **Neutral:** Worth revisiting in v2 once core ships.
 
-### Option E: Single hardcoded auth flavor across all backends
+#### Option E: Single hardcoded auth flavor across all backends
 
 - ✅ **Good:** Less per-backend variation.
 - ❌ **Bad:** Conflicts with [ADR-0016](0016-pluggable-repo-backends.md)
   — auth is per-backend by design.
 
-### Option F (chosen): `maury init` + per-backend auth
+#### Option F (chosen): `maury init` + per-backend auth
 
 - ✅ **Good:** Minimum input; clean verb separation;
   air-gap first-class.
 - ❌ **Bad:** User stores bootstrap info themselves; no
   built-in recovery.
+
+</details>
 
 ## Build-order placement
 

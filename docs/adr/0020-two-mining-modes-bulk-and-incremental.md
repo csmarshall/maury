@@ -9,6 +9,19 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+Mining a maintenance trickle (tens of new transcripts) and bootstrap
+mining of pre-maury history (hundreds of MB) are genuinely different
+workloads — clustering and resumability are load-bearing for bulk,
+not for incremental. Maury ships two distinct verbs (`maury mine` for
+maintenance, `maury mine --bulk` for onboarding) over shared
+extraction + four-state cross-reference infrastructure (NEW /
+PRESENT_AND_CLEAR / PRESENT_BUT_UNCLEAR / PRESENT_AND_REINFORCED),
+with clustering happening *after* LLM extraction per prototype
+findings. Trade-off: Phase 6 splits into 6a + 6b — more surface to
+build and test than a single mode would have been.
+
 ## Context and Problem Statement
 
 Earlier ADRs ([0005](0005-local-only-mining.md),
@@ -38,7 +51,8 @@ takes hours, drowns in noise, and gives the user 800 fragments to
 review one-by-one. That's not a tool, it's a punishment. The bulk
 case needs different orchestration.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (5 items — click to expand)</summary>
 
 - **Tenet 7:** provenance is mandatory. Cluster-level
   proposals must carry "12 occurrences across 8 sessions"
@@ -57,7 +71,10 @@ case needs different orchestration.
   showed lexical clustering pre-LLM-extraction was the wrong
   order; clustering must happen *after* LLM extraction.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Single mining mode that scales to bulk via
   parameters.
@@ -70,6 +87,8 @@ case needs different orchestration.
   for maintenance, `maury mine --bulk` for onboarding) with
   shared extraction/cross-reference infrastructure
   underneath; clustering is post-LLM-extraction, not pre.
+
+</details>
 
 ## Decision Outcome
 
@@ -240,29 +259,30 @@ sync) get full temporal awareness.
 - Watermarks live at
   `<repo>/profiles/<profile>/hosts/<host>/watermarks.json`.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Single mining mode
+#### Option A: Single mining mode
 
 - ✅ **Good:** One command to learn.
 - ❌ **Bad:** Orchestration shapes genuinely differ;
   forcing one mode produces worst-of-both-worlds CLI.
 
-### Option B: Bulk mining as one-time wizard
+#### Option B: Bulk mining as one-time wizard
 
 - ✅ **Good:** Cleaner first-time UX framing.
 - ❌ **Bad:** Users will want to run bulk again after
   significant shifts (new domain, new tooling); idempotent
   re-runnable is required.
 
-### Option C: Skip clustering; per-fragment LLM at bulk scale
+#### Option C: Skip clustering; per-fragment LLM at bulk scale
 
 - ✅ **Good:** Simpler pipeline.
 - ❌ **Bad:** 14k user messages × LLM call is expensive in
   time and money, and produces 14k fragments to review.
   Clustering is the order-of-magnitude win.
 
-### Option D: LLM-based clustering in v1
+#### Option D: LLM-based clustering in v1
 
 - ✅ **Good:** Catches semantic similarity lexical methods
   miss.
@@ -272,13 +292,15 @@ sync) get full temporal awareness.
 - ⚖️ **Neutral:** Embedding-based clustering is a v2
   upgrade if v1 has visible misses.
 
-### Option E (chosen): Two modes + post-LLM clustering
+#### Option E (chosen): Two modes + post-LLM clustering
 
 - ✅ **Good:** Each mode's shape matches its workload.
 - ✅ **Good:** Order (LLM extract → cluster) is the
   prototype-validated order, not the original (cluster →
   LLM) order.
 - ❌ **Bad:** Phase 6 surface is larger (6a + 6b).
+
+</details>
 
 ## Build-order placement
 

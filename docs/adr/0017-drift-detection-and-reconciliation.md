@@ -27,9 +27,10 @@ from Claude-tool writes via a `PostToolUse log_tool_use` hook, and
 surfaces a 5-action reconcile menu (adopt / adapt / mark-managed /
 revert / skip-once) instead of clobbering. `maury sync` is
 interactive by default; `--non-interactive` refuses on drift
-(cron-safe); `--force` clobbers (rare manual override). v1 ships a
-`maury-status` skill so Claude can mid-session warn about pending
-drift.
+(cron-safe); `--force` clobbers (rare manual override).
+Trade-off: ~500 LOC of drift+reconcile module plus a load-bearing
+hook that must succeed on every supported OS — a non-trivial
+implementation surface, justified by the safety story.
 
 ## Related tenets
 

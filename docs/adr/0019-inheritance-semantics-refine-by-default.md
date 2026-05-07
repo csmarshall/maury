@@ -8,6 +8,20 @@
 - [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
+## TL;DR
+
+When a child layer touches something the parent already defined, does
+it refine or replace? Naive "later wins" silently throws away parent
+content. Maury picks per-content-type defaults — refinement
+(concatenate / deep-merge) for additive content like CLAUDE.md,
+settings.json, hooks; replacement (file-overlay) for monolithic
+content like agents and skills — with per-file frontmatter overrides,
+loud per-line suppression annotations, and a `persist: required`
+escape hatch. Trade-off: per-content-type merge logic +
+suppression-annotation parsing + persist-flag enforcement is a
+non-trivial render-engine surface that has to stay correct as new
+content types are added.
+
 ## Context and Problem Statement
 
 [ADR-0001](0001-n-profiles.md) introduced N profiles with optional
@@ -33,7 +47,8 @@ That's *refinement*, not *replacement*. Treating every layer as
 "later wins" silently throws away parent rules every time a child
 mentions the same file.
 
-## Decision Drivers
+<details>
+<summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
 - **Tenet 2:** consistency within a profile. The user's
   mental model of inheritance must hold — child *adds to*
@@ -48,7 +63,10 @@ mentions the same file.
   must help them get to refinement without forcing it on
   day one.
 
-## Considered Options
+</details>
+
+<details>
+<summary><b>Considered options</b> (5 options — click to expand)</summary>
 
 - **Option A:** Naive file-overlay everywhere ("later wins").
 - **Option B:** Pure refinement everywhere — no replacement
@@ -62,6 +80,8 @@ mentions the same file.
   monolithic content) + per-file frontmatter overrides +
   per-line suppression annotations + a curator-controlled
   `persist: required` escape hatch.
+
+</details>
 
 ## Decision Outcome
 
@@ -278,29 +298,30 @@ and migrate to refinement-everywhere.
 - `persist: required` violations error out at render time
   with the documented message format.
 
-## Pros and Cons of the Options
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
 
-### Option A: Naive file-overlay everywhere ("later wins")
+#### Option A: Naive file-overlay everywhere ("later wins")
 
 - ✅ **Good:** Trivially simple to implement.
 - ❌ **Bad:** Silently throws away parent content the
   moment a child mentions the same file — the whole point
   of the user's question.
 
-### Option B: Pure refinement everywhere — no replacement
+#### Option B: Pure refinement everywhere — no replacement
 
 - ✅ **Good:** Single uniform semantics.
 - ❌ **Bad:** Agents and skills don't compose cleanly when
   concatenated; the user legitimately needs the ability to
   fully shadow one in some contexts.
 
-### Option C: JSON-merge `$op` annotations (RFC 7396)
+#### Option C: JSON-merge `$op` annotations (RFC 7396)
 
 - ✅ **Good:** Standardized; well-known to JSON tooling.
 - ❌ **Bad:** Too obscure for hand-authored content; we
   want annotations to be readable in the source files.
 
-### Option D: Profile-level layer-policy declarations
+#### Option D: Profile-level layer-policy declarations
 
 - ✅ **Good:** One declaration per profile, less per-file
   noise.
@@ -308,7 +329,7 @@ and migrate to refinement-everywhere.
   model is more local and easier to audit. Profile-level
   policies could be added later if a real need emerges.
 
-### Option E (chosen): Per-content-type defaults + frontmatter overrides + suppression annotations + persist flag
+#### Option E (chosen): Per-content-type defaults + frontmatter overrides + suppression annotations + persist flag
 
 - ✅ **Good:** Matches the user's mental model out of the
   box.
@@ -317,6 +338,8 @@ and migrate to refinement-everywhere.
 - ✅ **Good:** Suppressions are loud; persist is enforceable.
 - ❌ **Bad:** Implementation surface is non-trivial (per-
   type merge + annotation parsing + persist enforcement).
+
+</details>
 
 ## Build-order placement
 

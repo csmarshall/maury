@@ -9,7 +9,22 @@
 - [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
-## Context
+## TL;DR
+
+Maury claims its hook entries via a `# maury-managed` shell-comment
+marker in the command string; sync re-renders all marked entries and
+leaves user-added hooks untouched. Hooks ride the existing render
+pipeline (no separate `install` command). Capability probe writes a
+`resolved_tools` map (logical name → absolute path) that gets sourced
+into hook scripts as `$MAURY_SED` etc., collapsing platform branching
+to one layer. Missing tools fail loud at render time — except
+`log_tool_use`, which has a no-deps POSIX-shell guarantee because
+drift attribution can't gracefully degrade. Trade-off: eight
+load-bearing decisions to test together, plus three empirical claims
+about Claude Code shell behavior that need verification before relying
+on them.
+
+## Context and Problem Statement
 
 [ADR-0006](0006-capability-probe-hook-abstraction.md) established
 that hooks are written against named **actions** (`notify`,
@@ -36,9 +51,64 @@ the platform pain in cross-OS scripting is actually at the
 hooks, every shipped script ends up with `if [ "$OS" = "Darwin" ]`
 branches.
 
-## Decision
+<details>
+<summary><b>Decision drivers</b> (5 items — click to expand)</summary>
 
-### 1. Marker-based hook ownership
+- **Tenet 1:** first, do no harm. Coexistence with user-set
+  hooks is mandatory — clobbering hand-added hooks is a
+  data-loss event.
+- **Tenet 2:** consistency within a profile. Hooks should
+  install identically on every host through normal sync; no
+  host-specific install ceremony.
+- **Tenet 8:** hand-edits are first-class input. A hand-
+  edited maury hook becomes a drift signal like any other
+  edited file, not a special case.
+- **Drift attribution depends on `log_tool_use`.** Without
+  it, the entire ADR-0017 reconcile flow has nothing to
+  distinguish Claude writes from hand-edits.
+- **Cross-OS pain is at the *tool* layer**, not the *action*
+  layer — `sed`/`gsed`, `notify-send`/`osascript`,
+  `readlink -f`/`greadlink -f` need resolution before
+  scripts run.
+
+</details>
+
+<details>
+<summary><b>Considered options</b> (8 options — click to expand)</summary>
+
+- **Option A:** Replace the entire `hooks` block on render.
+- **Option B:** Refuse to render if unfamiliar hooks are
+  present.
+- **Option C:** Separate `maury hooks install` command.
+- **Option D:** PATH-relative script references in hook
+  commands.
+- **Option E:** Render-time string substitution for tool
+  names (`{{sed_gnu}}`).
+- **Option F:** File lock on `claude-writes.jsonl`.
+- **Option G:** Per-tool sentinel comments inside scripts
+  (`# maury:tool=sed_gnu`).
+- **Option H (chosen):** Marker-based hook ownership +
+  hooks-as-render-output + capability-driven tool resolution
+  via `resolved_tools` map + render-time refusal on missing
+  tools (with a no-deps exception for `log_tool_use`).
+
+</details>
+
+## Decision Outcome
+
+**Chosen option:** Option H — eight load-bearing decisions,
+one composite design. The marker scheme makes coexistence
+with user hooks safe; rendering hooks as part of the normal
+sync pipeline removes a separate install ceremony;
+capability-driven tool resolution collapses platform
+branching to one layer; render-time refusal makes missing-
+tool failures loud. The `log_tool_use` no-deps exception is
+the only graceful-degradation carve-out, justified by
+drift-attribution being load-bearing.
+
+### Implementation details
+
+#### 1. Marker-based hook ownership
 
 Maury claims ownership of every hook entry it places by adding a
 sentinel comment to the command string itself. Per [Claude Code's
@@ -90,7 +160,7 @@ Hand-editing a maury-marked hook becomes a hand-edit drift like any
 other file (per [ADR-0017](0017-drift-detection-and-reconciliation.md)),
 not a special case.
 
-### 2. Hooks are part of the render pipeline
+#### 2. Hooks are part of the render pipeline
 
 Hooks live in `settings.json`. `settings.json` is already a render
 output. Therefore: hooks install on every `maury sync`, and there
@@ -108,7 +178,7 @@ This means:
   `settings.json` and removes maury-installed scripts under
   `~/.claude/bin/maury-*`. User content is untouched.
 
-### 3. Capability-driven tool resolution
+#### 3. Capability-driven tool resolution
 
 The capability probe today writes a `tools` map keyed by **real
 binary names** (`sed`, `gsed`, `awk`, `gawk`, `osascript`, …) — see
@@ -162,7 +232,7 @@ Logical tool names are a vocabulary maintained in
 `base-template/.meta/tools.yaml` so users can extend the catalog
 without forking maury.
 
-### 4. Capability failure = render-time refusal (with one exception)
+#### 4. Capability failure = render-time refusal (with one exception)
 
 Per [ADR-0006](0006-capability-probe-hook-abstraction.md): if a
 shipped script declares it needs `sed_gnu` and the probe says
@@ -182,7 +252,7 @@ host. Without this guarantee, a missing tool on one host would
 disable drift attribution everywhere — and drift attribution is the
 one feature where graceful degradation is the wrong answer.
 
-### 5. Absolute paths in `settings.json`
+#### 5. Absolute paths in `settings.json`
 
 Hook commands in the rendered `settings.json` are absolute paths
 resolved at render time per host. We do not embed `$HOME` or `~`
@@ -201,7 +271,7 @@ Since `settings.json` is already host-specific (host overlay layer)
 this is not a portability regression — the file is regenerated on
 every sync.
 
-### 6. `log_tool_use` payload schema (locked)
+#### 6. `log_tool_use` payload schema (locked)
 
 #### How the hook receives data from Claude Code
 
@@ -275,14 +345,14 @@ simultaneously, which is explicitly supported per
 truncated to keep this bound; the convention is "≤ 200 bytes." Any
 path that exceeds 4 KB is its own pathology we don't try to handle.
 
-### 7. Concurrent sessions
+#### 7. Concurrent sessions
 
 Multiple Claude Code sessions appending to `claude-writes.jsonl` is
 expected. POSIX guarantees `O_APPEND` writes ≤ `PIPE_BUF` (4 KB on
 Linux/macOS) are atomic. Per the schema in §6, every line stays
 under that bound. No file lock is needed.
 
-### 8. Uninstall command
+#### 8. Uninstall command
 
 `maury uninstall` does:
 
@@ -298,53 +368,104 @@ under that bound. No file lock is needed.
 The clones aren't auto-deleted because the user may still want
 their git history.
 
-## Consequences
+### Consequences
 
-- **Hooks ride the render pipeline.** No second code path; tested
-  alongside everything else `maury sync` does.
-- **Coexistence with hand-set hooks is safe.** The marker scheme
-  means a user with their own `PostToolUse` linter hook keeps it.
-- **Profile switch is just a re-render.** No special teardown logic
-  to test or maintain.
-- **Tool resolution is one layer.** Adding FreeBSD support means
-  adding probe entries, not editing every script. Same for any
-  future BusyBox / Alpine / WSL host.
-- **`log_tool_use` is the one hook with a no-deps contract.** This
-  is the price of making drift attribution reliable everywhere.
-  Other hooks fail loud per ADR-0006 if their tools are missing.
-- **Uninstall is real.** A user can revert the host to "no maury
-  here" with one command. This matters for adoption — irreversible
-  setup is a barrier.
-- **The `tools` vocabulary becomes a versioned schema.** Adding
-  `tools.yaml` entries is a manifest-schema-version event (per
-  [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) v2/v3
-  convention).
+- ✅ **Good:** Hooks ride the render pipeline. No second
+  code path; tested alongside everything else `maury sync`
+  does.
+- ✅ **Good:** Coexistence with hand-set hooks is safe. The
+  marker scheme means a user with their own `PostToolUse`
+  linter hook keeps it.
+- ✅ **Good:** Profile switch is just a re-render. No
+  special teardown logic to test or maintain.
+- ✅ **Good:** Tool resolution is one layer. Adding FreeBSD
+  support means adding probe entries, not editing every
+  script. Same for any future BusyBox / Alpine / WSL host.
+- ✅ **Good:** Uninstall is real. A user can revert the
+  host to "no maury here" with one command. This matters
+  for adoption — irreversible setup is a barrier.
+- ⚖️ **Neutral:** `log_tool_use` is the one hook with a
+  no-deps contract. This is the price of making drift
+  attribution reliable everywhere. Other hooks fail loud
+  per [ADR-0006](0006-capability-probe-hook-abstraction.md)
+  if their tools are missing.
+- ❌ **Bad:** The `tools` vocabulary becomes a versioned
+  schema. Adding `tools.yaml` entries is a
+  manifest-schema-version event (per
+  [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)
+  v2/v3 convention).
 
-## Alternatives considered
+### Confirmation
 
-- **Replace the entire `hooks` block on render.** Rejected:
-  destroys user hand-set hooks. Violates tenet 1.
-- **Refuse to render if unfamiliar hooks are present.** Rejected:
-  too aggressive; users have legitimate reasons to hand-add hooks
-  for one-off debugging or for tools maury doesn't know about.
-- **Separate `maury hooks install` command.** Rejected: ceremony
-  for no benefit; sync already does this work.
-- **PATH-relative script references** (`claude-notify` instead of
-  absolute path). Rejected: Claude Code's hook subprocess PATH is
-  not guaranteed to include `~/.claude/bin`.
-- **Render-time string substitution for tool names** (`{{sed_gnu}}`
-  expanded into hook commands at render time). Considered. Rejected
-  because it forces every script through the maury renderer; the
-  env-var approach lets user-written scripts in `bin/` use the same
-  resolution by sourcing `maury-tools.sh`.
-- **File lock on `claude-writes.jsonl`.** Rejected: POSIX `O_APPEND`
-  + ≤4 KB lines is sufficient and lock-free. Locks would also be
-  fragile across Claude Code processes that don't know about each
-  other.
-- **Per-tool sentinel comments inside scripts** (`# maury:tool=sed_gnu`)
-  instead of env vars. Rejected: scripts would need to be parsed by
-  the resolver before each run; env-var resolution is cheaper and
-  the standard Unix idiom.
+- Hook installation is part of `settings.json` rendering;
+  no separate `maury hooks install` command exists.
+- Marker scheme uses the `# maury-managed` comment;
+  empirical-test debt below tracks the unverified shell-
+  comment behavior.
+- `resolved_tools` map ships in `capabilities.json`
+  alongside the existing `tools` inventory.
+- `claude-writes.jsonl` lines stay ≤ 4 KB to satisfy
+  POSIX `O_APPEND` atomicity (per the schema).
+
+<details>
+<summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
+
+#### Option A: Replace entire `hooks` block on render
+
+- ✅ **Good:** Trivial implementation.
+- ❌ **Bad:** Destroys user hand-set hooks. Tenet 1 violation.
+
+#### Option B: Refuse to render if unfamiliar hooks present
+
+- ✅ **Good:** Forces explicit acknowledgement.
+- ❌ **Bad:** Too aggressive — users have legitimate
+  reasons to hand-add hooks for one-off debugging or for
+  tools maury doesn't know about.
+
+#### Option C: Separate `maury hooks install` command
+
+- ✅ **Good:** Explicit lifecycle event.
+- ❌ **Bad:** Ceremony for no benefit; sync already does
+  this work.
+
+#### Option D: PATH-relative script references
+
+- ✅ **Good:** Less verbose hook commands.
+- ❌ **Bad:** Claude Code's hook subprocess PATH is not
+  guaranteed to include `~/.claude/bin` (empirical claim;
+  see empirical-test debt below).
+
+#### Option E: Render-time `{{sed_gnu}}` substitution
+
+- ✅ **Good:** Could template hook commands at render.
+- ❌ **Bad:** Forces every script through the maury
+  renderer; the env-var approach lets user-written scripts
+  in `bin/` use the same resolution by sourcing
+  `maury-tools.sh`.
+
+#### Option F: File lock on `claude-writes.jsonl`
+
+- ✅ **Good:** Explicit concurrency control.
+- ❌ **Bad:** POSIX `O_APPEND` + ≤4 KB lines is sufficient
+  and lock-free. Locks would also be fragile across
+  Claude Code processes that don't know about each other.
+
+#### Option G: Per-tool sentinel comments inside scripts
+
+- ✅ **Good:** Resolution metadata travels with the script.
+- ❌ **Bad:** Scripts would need to be parsed by the
+  resolver before each run; env-var resolution is cheaper
+  and the standard Unix idiom.
+
+#### Option H (chosen): Marker + render-pipeline + resolved_tools
+
+- ✅ **Good:** Coexistence safe; sync-rendered; tool
+  resolution centralized; uninstall real.
+- ❌ **Bad:** Eight load-bearing decisions to test
+  together; tools.yaml versioning becomes a manifest
+  schema event.
+
+</details>
 
 ## Build-order placement
 
