@@ -2,6 +2,11 @@
 
 **Status:** Proposed | Accepted | Superseded by ADR-NNNN
 **Date:** YYYY-MM-DD
+<!-- Optional fields, in order, when applicable: -->
+<!-- **Superseded:** YYYY-MM-DD -->
+<!-- **Amended:** -->
+<!--   - YYYY-MM-DD — short note on what this amendment changed -->
+<!--   - YYYY-MM-DD — short note on the next amendment -->
 
 ## Context
 

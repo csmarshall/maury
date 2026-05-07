@@ -2,6 +2,12 @@
 
 **Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+- 2026-05-07 — added addendum acknowledging the
+  `claude-writes.jsonl` schema extension (added `before_sha`,
+  `after_sha`, `size_delta` alongside the original `diff_hint`)
+  per [ADR-0023](0023-hook-installation-and-tool-resolution.md)
+  §6, which became the authoritative reference for the schema.
 
 ## Related tenets
 

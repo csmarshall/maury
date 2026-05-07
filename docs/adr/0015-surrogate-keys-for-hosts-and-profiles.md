@@ -2,6 +2,10 @@
 
 **Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+- 2026-05-06 — added rule-IDs addendum proposing `rule_<32 hex>`
+  prefix for rules; subsequently RETRACTED on the same day after
+  ADR-0022 made it unnecessary (commit log preserves the trail).
 
 ## Related tenets
 
