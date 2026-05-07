@@ -41,8 +41,9 @@ branches.
 ### 1. Marker-based hook ownership
 
 Maury claims ownership of every hook entry it places by adding a
-sentinel comment to the command string itself. Claude Code's hooks
-schema groups hook entries by event name and matcher; maury's marker
+sentinel comment to the command string itself. Per [Claude Code's
+hooks documentation][cc-hooks], the schema groups hook entries by
+event name and matcher with three levels of nesting; maury's marker
 lives on the inner command string:
 
 ```json
@@ -63,11 +64,21 @@ lives on the inner command string:
 }
 ```
 
-The trailing `# maury-managed` makes the entry a single shell line
-that runs the maury script (the comment is stripped by the shell).
-Render finds maury entries by string-matching the marker; user-added
+The trailing `# maury-managed` is intended to be a shell comment
+that runs the maury script and is stripped by the shell. Render
+finds maury entries by string-matching the marker; user-added
 entries without the marker pass through untouched, including their
 `matcher` grouping context.
+
+> **Empirical claim — needs verification:** Anthropic's hooks
+> documentation does not explicitly specify which shell executes
+> the `command` string or whether shell comments are stripped.
+> The marker scheme depends on this behavior; before shipping the
+> implementation, validate with a test hook that the trailing
+> `# maury-managed` comment doesn't break execution. If it does,
+> fall back to a marker stored in a parallel `_maury_marked: true`
+> sidecar map within `settings.json` (which would require Claude
+> Code to ignore unknown keys — itself an empirical question).
 
 On render, maury computes:
 
@@ -175,14 +186,46 @@ one feature where graceful degradation is the wrong answer.
 
 Hook commands in the rendered `settings.json` are absolute paths
 resolved at render time per host. We do not embed `$HOME` or `~`
-because Claude Code's hook subprocess may not expand env vars and
-may not run with the same `HOME` as the parent.
+in the command strings.
+
+> **Empirical claim — needs verification:** Anthropic's
+> [hooks documentation][cc-hooks] does not specify whether hook
+> subprocesses inherit a stable PATH or whether shell expansion of
+> `$HOME` / `~` happens reliably. Absolute paths are the
+> conservative choice regardless (they work in any shell and any
+> PATH), but if PATH is in fact reliable the absolute-path
+> requirement could be relaxed later. Test before relying on either
+> assumption.
 
 Since `settings.json` is already host-specific (host overlay layer)
 this is not a portability regression — the file is regenerated on
 every sync.
 
 ### 6. `log_tool_use` payload schema (locked)
+
+#### How the hook receives data from Claude Code
+
+Per [Claude Code hooks documentation][cc-hooks], hook subprocesses
+receive their event payload via **stdin as a single JSON object**,
+not via environment variables. For `PostToolUse`, the input JSON
+contains:
+
+```json
+{
+  "session_id": "abc...",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input":  {"file_path": "...", "old_string": "...", ...},
+  "tool_result": {"...": "..."}
+}
+```
+
+The maury `log_tool_use` script reads stdin, extracts the fields
+it needs (typically with `jq`), computes derived values (file
+SHA before/after, size delta), and appends one JSON line to
+`~/.claude/maury-state/claude-writes.jsonl`.
+
+#### What gets written to claude-writes.jsonl
 
 Extends the schema from
 [ADR-0017](0017-drift-detection-and-reconciliation.md) §"Drift
@@ -196,7 +239,18 @@ fields needed to make drift attribution work:
  "size_delta":47,"diff_hint":"L42: 'old' → 'new'"}
 ```
 
-Rationale per field:
+Field-name mapping from the Claude Code stdin payload:
+
+| Stdin field (from CC) | Logged field (in claude-writes.jsonl) |
+|---|---|
+| `session_id` | `session_id` (passthrough) |
+| `tool_name` | `tool` (renamed for terseness) |
+| `tool_input.file_path` | `path` |
+| (computed before hook fires) | `before_sha`, `size_delta` |
+| (computed after hook fires) | `after_sha` |
+| (truncated diff line) | `diff_hint` |
+
+Rationale per logged field:
 
 - `before_sha` / `after_sha` let drift detection cleanly attribute
   "this file's current SHA matches a Claude-write event's
@@ -215,15 +269,11 @@ that ADR-0017 §"Drift sources and treatment" implies but never
 specified the mechanism for.
 
 **Caveat:** lines must be ≤ 4 KB to ensure POSIX `O_APPEND` atomic-
-write guarantees on collision. `diff_hint` must be truncated to
-keep this bound; the convention is "≤ 200 bytes." Any path that
-exceeds 4 KB is its own pathology we don't try to handle.
-
-Lines must be ≤ 4 KB to ensure POSIX `O_APPEND` atomic-write
-guarantees on collision (multiple Claude Code sessions writing
-simultaneously). The schema's fields are bounded; only `path` is
-variable, and any path that exceeds 4 KB is its own pathology we
-don't try to handle.
+write guarantees on collision (multiple Claude Code sessions writing
+simultaneously, which is explicitly supported per
+[CC sessions documentation][cc-sessions]). `diff_hint` must be
+truncated to keep this bound; the convention is "≤ 200 bytes." Any
+path that exceeds 4 KB is its own pathology we don't try to handle.
 
 ### 7. Concurrent sessions
 
@@ -323,3 +373,42 @@ their git history.
 - **A `maury hooks doctor` command** (or extension of `maury doctor`)
   to validate that every installed hook's commands exist + every
   `MAURY_*` env var resolves to a real binary on this host.
+
+## Empirical-test debt
+
+Three load-bearing claims in this ADR are NOT documented by
+Anthropic and require empirical validation before the
+implementation can rely on them:
+
+1. **Shell + comment stripping** (§1) — does the hook subprocess'
+   shell strip the trailing `# maury-managed` comment cleanly? If
+   not, the marker scheme breaks. Test: install a hook with a
+   trailing `# marker` comment and verify it executes the script
+   correctly without erroring.
+2. **Hook subprocess PATH** (§5) — is `~/.claude/bin/` on PATH?
+   Are env vars expanded? Test: install a hook that prints `$PATH`
+   and `echo $HOME` to a file and inspect.
+3. **Hook file-I/O permissions** (§6, §7) — can hooks freely write
+   to `~/.claude/maury-state/`? Are there any sandbox or
+   permission restrictions? Test: install a hook that writes a
+   marker file and verify it lands.
+
+The implementation slice for this ADR (Phase 3 / Phase 5.x.x) MUST
+run these tests before being marked complete. If any test fails,
+that section of this ADR needs amendment with the actual observed
+behavior.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-hooks`][cc-hooks] — hook event names, JSON shape (event →
+  matcher group → `{type, command}`), stdin payload structure
+  (`session_id`, `hook_event_name`, `tool_name`, `tool_input`,
+  `tool_result`).
+- [`cc-sessions`][cc-sessions] — multiple concurrent Claude Code
+  sessions on one host are explicitly supported.
+
+[cc-hooks]: https://code.claude.com/docs/en/hooks
+[cc-sessions]: https://code.claude.com/docs/en/sessions
