@@ -10,45 +10,126 @@
   ADR-0014 secrets, ADR-0017 watch-mode drift, ADR-0019
   refactor-promote-common, and ADR-0016 non-git backends.
 
-## Context
+## Related tenets
+
+- [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
+- [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
+
+## Context and Problem Statement
 
 The maury design spans three pillars: sync (across hosts), profile
 isolation (across trust boundaries), and learning (mining transcripts
 with rule-engine classification and proposal queue). Each is
-independently large.
+independently large. The question for v1 is: do we ship one pillar
+at a time and grow, or do we ship all three together?
 
-We considered three v1 scopes:
+## Decision Drivers
 
-1. **Sync first, mining in v2.** Faster to a useful daily-driver tool
-   but defers validating the riskiest piece (mining quality).
-2. **Mining-only spike first.** Validate the learning loop on real
-   workstation transcripts before investing in multi-host scaffolding. Lowest
-   risk for "is this whole thing worth building."
-3. **All three together.** Largest upfront build, but the rule engine
-   matures with real data immediately and there's no v1-to-v2
-   retrofit.
+- **Mining-quality risk:** the riskiest piece of the design is
+  whether mining produces useful output at all. Deferring it to
+  v2 defers the answer to the question that determines whether
+  the whole project is worth building.
+- **Interface ossification risk:** if sync ships before mining,
+  the rule engine, render engine, and miner won't be exercised
+  against each other's real outputs from day one — assumptions
+  bake in.
+- **Coherence over time-to-first-release:** the user
+  prioritized "build the thing right" over "ship a smaller
+  thing sooner."
+- **Retrofit cost:** v1-to-v2 schema and CLI changes are more
+  expensive than v0-to-v1 changes inside an unreleased tool.
 
-## Decision
+## Considered Options
 
-Build all three pillars in v1, designed as one coherent system.
+- **Option A:** Sync first, mining in v2.
+- **Option B:** Mining-only spike first.
+- **Option C (chosen):** All three pillars together as one
+  coherent v1.
 
-## Consequences
+## Decision Outcome
 
-- Larger v1 scope; longer to first usable release.
-- The rule engine, render engine, and miner each get exercised against
-  the others' real outputs from day one. No interface assumptions
-  ossify before they're tested.
-- Internal phasing remains in clean order (rule engine → manifest →
-  capability probe → render engine → bootstrap → sync → mining →
-  proposal review → rule synthesis → promotion → audit), but we ship
-  them together.
-- Release readiness depends on mining producing useful output. If
-  extraction quality is poor in early dogfooding, ship sync+isolation
-  as v0.5 and ship the full thing as v1 once mining is proven.
+**Chosen option:** Option C — build all three pillars in v1,
+designed as one coherent system. The user explicitly preferred
+all-in-one over staged when the trade-off was named.
 
-## Alternatives considered
+### Implementation details
 
-- See above. The owner confirmed all-in-one was preferred over staged.
+Internal phasing remains in clean order (rule engine → manifest
+→ capability probe → render engine → bootstrap → sync → mining
+→ proposal review → rule synthesis → promotion → audit), but we
+ship them together rather than as separate releases.
+
+Release readiness depends on mining producing useful output. If
+extraction quality is poor in early dogfooding, the **escape
+hatch** is to ship sync+isolation as v0.5 and ship the full
+thing as v1 once mining is proven. This preserves the "all
+three" intent without forcing a bad mining release.
+
+### Consequences
+
+- ✅ **Good:** The rule engine, render engine, and miner each
+  get exercised against the others' real outputs from day one.
+  No interface assumptions ossify before they're tested.
+- ✅ **Good:** No v1-to-v2 retrofit cost; the schema is shaped
+  by all three pillars from the start.
+- ❌ **Bad:** Larger v1 scope; longer to first usable release.
+- ⚖️ **Neutral:** Phase ordering is internal scaffolding; users
+  see only the v1 release.
+
+### Confirmation
+
+- `docs/status.md` tracks per-phase shipped/partial/planned
+  status; release-readiness is gated by all three pillars
+  having usable surfaces.
+- The Amendment section below tracks phase additions and v1.1
+  deferrals as the design has evolved.
+
+## Pros and Cons of the Options
+
+### Option A: Sync first, mining in v2
+
+- ✅ **Good:** Fastest path to a useful daily-driver tool
+  (multi-host config sync alone is valuable).
+- ❌ **Bad:** Defers validating the riskiest piece (mining
+  quality). The whole project's value depends on mining
+  working; deferring is risk-averse only at first glance.
+- ❌ **Bad:** Sync schema would have to be retrofitted when
+  mining lands.
+
+### Option B: Mining-only spike first
+
+- ✅ **Good:** Lowest risk for "is this whole thing worth
+  building" — answers the value question first.
+- ❌ **Bad:** Single-host mining is much less interesting than
+  multi-host mining; the spike doesn't reflect the eventual
+  shape of the tool.
+- ❌ **Bad:** Multi-host scaffolding is what makes maury
+  unique; deferring it means the spike is only a partial
+  signal.
+
+### Option C (chosen): All three together
+
+- ✅ **Good:** All interfaces exercised against real
+  cross-component outputs from day one.
+- ✅ **Good:** No retrofit cost.
+- ❌ **Bad:** Largest upfront build; longest time to first
+  release.
+- ❌ **Bad:** Risk concentrated at one release point — if
+  mining doesn't work, the whole release slips.
+
+## Build-order placement
+
+This ADR *defines* the build order rather than living inside
+one phase. The phase list (rule engine → manifest → capability
+probe → render engine → bootstrap → sync → mining → proposal
+review → rule synthesis → promotion → audit) is normative; the
+Amendment section below tracks subsequent additions and
+deferrals.
+
+## Followups
+
+- See Amendment (2026-05-06) below for ongoing phase additions
+  and v1.1 deferrals as new ADRs land.
 
 ## Amendment (2026-05-06): phase additions + v1.1 deferrals
 

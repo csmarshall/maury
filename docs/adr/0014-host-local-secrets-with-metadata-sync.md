@@ -11,7 +11,7 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
-## Context
+## Context and Problem Statement
 
 Some hosts run local services that require credentials Claude needs to
 interact with — typical homelab pattern. The credential **value** is
@@ -31,11 +31,52 @@ This is a clean two-tier separation that maury should support
 explicitly: **values are host-local**, **presence metadata is
 syncable**.
 
-## Decision
+## Decision Drivers
 
-Two independent stores:
+- **Tenet 3:** trust boundaries are physical. Credential
+  values must never cross a host boundary; that has to be a
+  structural property, not a policy hope.
+- **Tenet 4:** sensitive data stays local. Values stay on
+  the host that set them; only metadata syncs.
+- **Tenet 6:** identity is not name. Credentials are
+  identified by (service, name) tuples that survive
+  endpoint/URL changes.
+- **Tenet 9:** defer to the platform. Use the OS keychain
+  where one exists; only fall back to file-based storage
+  when no native keystore is available.
+- **Tenet 10:** modularity over hardcoding. Backend choice
+  must be capability-driven, not OS-hardcoded.
+- **Recovery use cases are real.** "I crashed; what
+  credentials did I have?" needs an answer.
 
-### 1. Host-local secret-value store (NEVER synced)
+## Considered Options
+
+- **Option A:** Sync values into encrypted git (chezmoi+age,
+  git-crypt, etc.).
+- **Option B:** No metadata at all; rely on operator memory.
+- **Option C:** Single uniform backend (e.g., age-encrypted
+  file everywhere).
+- **Option D:** External secrets manager (Vault, 1Password)
+  as the only backend.
+- **Option E (chosen):** Two stores — host-local value store
+  (capability-driven backend) + synced metadata manifest with
+  no values, ever.
+
+## Decision Outcome
+
+**Chosen option:** Option E — two independent stores. The
+host-local value store uses the OS keychain where available
+(macOS Keychain, Linux Secret Service) and falls back to an
+age-encrypted file. The synced metadata manifest records
+presence + endpoints + rotation timestamps but never values.
+This is the only option that satisfies the trust-boundary
+requirement structurally (values can't leak because they're
+never in synced storage) while still supporting
+recovery/migration use cases.
+
+### Implementation details
+
+#### 1. Host-local secret-value store (NEVER synced)
 
 Lives outside any synced repo path. Backend selected by capability
 probe:
@@ -51,7 +92,7 @@ backends are convenience layers on top. The probe writes
 `secret_backend: keychain | secret-service | age-file` into
 `capabilities.json`.
 
-### 2. Synced metadata manifest (per-host overlay)
+#### 2. Synced metadata manifest (per-host overlay)
 
 Lives at `<repo>/profiles/<profile>/hosts/<host>/secrets.json` —
 inside the host overlay, so it travels with the host's other config.
@@ -93,7 +134,7 @@ Schema:
   that contains a path or content that looks like a value-store
   destination — the value store path is reserved.
 
-### Service-presence vs credential-presence are separate
+#### Service-presence vs credential-presence are separate
 
 The `services` list captures what's *running* on the host (presence +
 endpoint), independent of whether maury holds credentials for it. The
@@ -105,7 +146,7 @@ endpoint), independent of whether maury holds credentials for it. The
   → update both the `services` entry on each host and the
   `credentials` entries; the values must be re-set on the new host.
 
-### CLI surface
+#### CLI surface
 
 ```sh
 maury secret set <name> [--service=...] [--kind=api-key]
@@ -125,7 +166,7 @@ maury service list
 maury service unregister <name>
 ```
 
-### Claude Code integration
+#### Claude Code integration
 
 - Claude on a host can call `maury secret get <name>` when it needs a
   credential value to perform a task. The value flows into Claude's
@@ -144,7 +185,7 @@ maury service unregister <name>
   proves too noisy in practice, switching to `SessionEnd`
   (once-per-session) is the trivial alternative.
 
-### Privacy of metadata itself
+#### Privacy of metadata itself
 
 The metadata IS sensitive in some environments — knowing "host X has a
 credential for service Y" can leak information. Three knobs:
@@ -159,39 +200,117 @@ credential for service Y" can leak information. Three knobs:
   `endpoint_visibility: local-only`; in that case, the synced manifest
   records the credential's *existence* but not the URL.
 
-## Consequences
+### Consequences
 
-- After a host crash, `maury secret restore-checklist` produces an
-  exact list of credentials and services that need re-population.
-- Service migrations gain a clear cross-host view: "what's running
-  where, what credentials are tied to what, what needs to move."
-- Two new schemas (`secrets.json`, capability probe gains a
-  `secret_backend` field), one new module (`src/maury/secrets/`), four
-  new CLI subcommands.
-- Defense-in-depth at four layers: backend separation, content-pattern
-  pre-commit hook, render-engine path reservation, and per-credential
-  `private` flag.
-- Multi-backend support adds complexity but keeps the abstraction
-  clean: the same `secret get/set/list` interface across macOS
-  Keychain / Linux Secret Service / age-encrypted file.
+- ✅ **Good:** After a host crash, `maury secret
+  restore-checklist` produces an exact list of credentials and
+  services that need re-population.
+- ✅ **Good:** Service migrations gain a clear cross-host
+  view — "what's running where, what credentials are tied to
+  what, what needs to move."
+- ✅ **Good:** Defense-in-depth at four layers — backend
+  separation, content-pattern pre-commit hook, render-engine
+  path reservation, and per-credential `private` flag.
+- ⚖️ **Neutral:** Multi-backend support adds complexity but
+  keeps the abstraction clean — the same `secret
+  get/set/list` interface across macOS Keychain / Linux
+  Secret Service / age-encrypted file.
+- ❌ **Bad:** Two new schemas (`secrets.json`, capability
+  probe gains a `secret_backend` field), one new module
+  (`src/maury/secrets/`), four new CLI subcommands. Real
+  surface-area cost.
+
+### Confirmation
+
+- `secrets.json` schema validated by the manifest loader;
+  pre-commit hook refuses high-entropy or `BEGIN PRIVATE KEY`
+  content within `secrets.json` paths.
+- Capability probe surfaces `secret_backend ∈ {keychain,
+  secret-service, age-file}`; render engine reserves the
+  value-store path so no rendered file collides with it.
+- `maury secret list` never displays values; `maury secret
+  get` reads from the host backend at use time only.
+
+## Pros and Cons of the Options
+
+### Option A: Sync values into encrypted git
+
+- ✅ **Good:** One store; familiar tooling (chezmoi+age,
+  git-crypt).
+- ❌ **Bad:** Mixes value bytes with sync bytes — one
+  mistake in encryption config and a value leaks across
+  every host with read access.
+- ❌ **Bad:** Two-store separation is unconditionally safer
+  for the same operational cost.
+
+### Option B: No metadata at all; rely on operator memory
+
+- ✅ **Good:** Zero new schema; zero leak surface.
+- ❌ **Bad:** Defeats the restore/migration use cases — the
+  whole point of the feature.
+
+### Option C: Single uniform backend (age-file everywhere)
+
+- ✅ **Good:** One backend to test and document.
+- ❌ **Bad:** OS keychain where available is friendlier
+  (no extra password prompt, integrates with system access
+  patterns).
+- ⚖️ **Neutral:** Falling back to age-file gives us
+  uniformity where keychain isn't available — which is
+  what Option E does.
+
+### Option D: External secrets manager (Vault, 1Password)
+
+- ✅ **Good:** Battle-tested storage with rich access
+  controls.
+- ❌ **Bad:** External dependency on every host; defeats
+  Tenet 9's "defer to the platform" — these are *another*
+  platform.
+- ⚖️ **Neutral:** Could be added as a fourth backend in v2.
+
+### Option E (chosen): Two stores — host-local values + synced metadata
+
+- ✅ **Good:** Trust boundary is structural — values
+  literally never enter synced storage.
+- ✅ **Good:** Recovery and migration use cases work via
+  metadata.
+- ✅ **Good:** Capability-driven backend uses native
+  keystores where present.
+- ❌ **Bad:** Multi-backend complexity (three backends to
+  maintain).
+- ❌ **Bad:** Two stores for the user to reason about.
 
 ## Build-order placement
 
-New phase **Phase 5.6 — Host-local secrets with metadata sync.** Sits
-after Phase 5 (sync workflow) so the metadata manifest can ride the
-existing render+sync mechanism. Independent of mining.
+New phase **Phase 5.6 — Host-local secrets with metadata
+sync.** Sits after Phase 5 (sync workflow) so the metadata
+manifest can ride the existing render+sync mechanism.
+Independent of mining. Tracked as task #15.
 
-## Alternatives considered
+## Followups
 
-- **Sync values into encrypted git** (e.g., chezmoi + age, or
-  git-crypt). Rejected: mixes value bytes with sync bytes; one mistake
-  in encryption config and a value leaks. Two-store separation is
-  unconditionally safer.
-- **No metadata at all; rely on operator memory.** Rejected: defeats
-  the restore/migration use cases.
-- **Single uniform backend (age-file everywhere).** Considered. Using
-  the OS keychain where available is friendlier (no extra password
-  prompt, integrates with system access patterns). Falling back to the
-  age-file gives us uniformity where keychain isn't available.
-- **Vault / 1Password / external secrets manager.** Rejected for v1 as
-  external dependencies. Could be added as a fourth backend in v2.
+- **External-secrets-manager backend** (Vault, 1Password) as
+  a v2 fourth backend if a real use case appears.
+- **Auto-memory consumption of credential events** —
+  Anthropic's auto-memory may capture "user set a token"
+  events; investigate consuming as a secondary signal so
+  `register-pending` can be auto-suggested.
+- **Cross-host secret-mismatch detection** — surface
+  "linux-server has credential X but workstation doesn't"
+  in `maury status`, since this is a common
+  "why-isn't-it-working" failure mode.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-hooks`][cc-hooks] — `Stop` event semantics. The
+  pending-secrets reminder uses `Stop` because it fires once
+  per turn (per the
+  [`cc-contract:event-firing-cadence`](../claude-code-contract.md#cc-contractevent-firing-cadence)
+  table), giving a low-noise "after each exchange" cadence.
+  `SessionEnd` is the trivial alternative if `Stop` proves
+  too noisy in practice.
+
+[cc-hooks]: https://code.claude.com/docs/en/hooks

@@ -19,9 +19,10 @@
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
-## Context
+## Context and Problem Statement
 
-The original mining design (ADR-0005, ADR-0008) is **passive**: each
+The original mining design ([ADR-0005](0005-local-only-mining.md),
+[ADR-0008](0008-claude-diary-reference.md)) is **passive**: each
 host periodically scans its `~/.claude/projects/*.jsonl` transcripts,
 extracts candidate fragments, classifies them, and queues proposals.
 
@@ -44,13 +45,52 @@ initiated capture** (where the user explicitly tells Claude or
 maury to remember something). Both paths feed the same staging
 pipeline; they're two entry points, not two systems.
 
-## Decision
+## Decision Drivers
 
-Add an **active capture pipeline** with two entry paths and one
-staging backend. Maury ships four artifacts from `base/`,
-distributed via the normal render engine:
+- **Tenet 1:** first, do no harm. Cross-boundary capture leaks
+  are the chief risk; defense must be multi-layered (skill
+  prompt + forbid rules + review step).
+- **Tenet 2:** consistency within a profile, controlled
+  difference across profiles. The capture mechanism must
+  arrive on every host through normal sync — no per-host
+  hand-installation.
+- **Tenet 5:** the user arbitrates ambiguity. Captures are
+  proposals, not auto-applied changes; the user reviews
+  before they land.
+- **Tenet 8:** hand-edits are first-class input. User-
+  initiated capture (`/maury-pin`, "remember this" prompt
+  cues) is a peer to Claude-initiated capture, not a
+  second-class signal source.
+- **Coherence with passive mining:** active and passive must
+  feed the same downstream pipeline; otherwise we have two
+  classification systems.
 
-### Entry path 1 — Claude-initiated (the original design)
+## Considered Options
+
+- **Option A:** Pure passive mining (the original plan before
+  this ADR).
+- **Option B:** Anthropic's auto-memory (v2.1.59+).
+- **Option C:** A new MCP server hosted by maury for active
+  capture.
+- **Option D (chosen):** Active capture via skill + CLAUDE.md
+  fragment + UserPromptSubmit hook + slash command, all
+  feeding a single staging file consumed by the existing
+  mining pipeline.
+
+## Decision Outcome
+
+**Chosen option:** Option D — add an **active capture
+pipeline** with two entry paths (Claude-initiated and
+user-initiated) and one staging backend. Maury ships four
+artifacts from `base/`, distributed via the normal render
+engine. This is the only option that captures durable insights
+in-session, respects trust boundaries through multi-layer
+defense, and integrates cleanly with the existing
+classification/proposal pipeline.
+
+### Implementation details
+
+#### Entry path 1 — Claude-initiated (the original design)
 
 Claude observes a durable pattern in the conversation, recognizes
 it via the skill's instructions, and stages it.
@@ -69,7 +109,7 @@ it via the skill's instructions, and stages it.
    `maury-stage` when it observes durable preferences, voice
    cues, workflow patterns, anti-patterns, or new host-facts.
 
-### Entry path 2 — user-initiated (added in 2026-05-07 amendment)
+#### Entry path 2 — user-initiated (added in 2026-05-07 amendment)
 
 The user explicitly signals that something should be remembered.
 Two sub-paths:
@@ -97,7 +137,7 @@ Two sub-paths:
    `source: user-pin-explicit`. Higher confidence than the
    prompt-cue path because the user typed an explicit command.
 
-### Backend — single staging file, single review
+#### Backend — single staging file, single review
 
 All four artifacts write to the same staging file (no separate
 "Claude captures" vs "user pins" channels). Mining and review
@@ -140,7 +180,7 @@ classification + proposal flow as a transcript-mined fragment,
 but skips the extraction step (the line is already a clean
 paragraph).
 
-### Active-context file — what Claude needs to know
+#### Active-context file — what Claude needs to know
 
 For Claude-initiated capture (entry path 1) to respect trust
 boundaries, Claude needs to know **the host's active profile and
@@ -180,7 +220,7 @@ context. Per
 Claude Code itself records nothing about maury profiles — this
 file is the only mechanism by which Claude can be told.
 
-### Cross-boundary safety as a multi-layer guarantee
+#### Cross-boundary safety as a multi-layer guarantee
 
 A single layer that can fail isn't enough. Cross-boundary
 content leakage requires **all** of these to fail simultaneously:
@@ -206,7 +246,7 @@ content leakage requires **all** of these to fail simultaneously:
 A leak requires Claude AND the rule engine AND the user to fail
 in succession — three-layer defense per Tenet 1.
 
-### Inheritance access modes interaction
+#### Inheritance access modes interaction
 
 Per [concepts.md §6 (inheritance access modes)](../concepts.md#6-inheritance-access-mode):
 the `scope_hint` chosen for a capture determines which repo's
@@ -226,51 +266,118 @@ work-laptop (which typically has `ro` on the base repo) will
 correctly route through cross-boundary promotion rather than
 quietly failing or producing a confusing error.
 
-## Consequences
+### Consequences
 
-- Mining gets a high-signal input source. Active captures are labeled
-  by Claude with kind + scope_hint at write time, so they enter
-  classification with much more context than raw transcript snippets.
-- The pipeline is recursive in a satisfying way: maury distributes the
-  skill + fragment + hook to every host through normal sync, so the
-  capture mechanism arrives on every machine the moment it joins the
-  fleet.
-- The user gets a clear feedback loop: at session end, "here's what
-  Claude thought you might want to persist." No mystery batch processing.
-- We rely on Claude following the CLAUDE.md instruction. False negatives
-  (Claude doesn't stage something it could have) are caught by the
-  passive miner. False positives (Claude stages noise) are caught by
-  the user during `maury review`.
-- The staging file must never sync to git. Defense-in-depth:
-  `~/.claude/maury-staging/` is local-only, plus the file lives outside
-  any synced repo path.
-- Cross-profile content emerging on the wrong host (e.g., a "linux-server"
-  capture from a work-laptop session) gets quarantined by the
-  anomaly-detection logic from ADR-0005 before reaching git.
+- ✅ **Good:** Mining gets a high-signal input source. Active
+  captures are labeled by Claude with kind + scope_hint at
+  write time, so they enter classification with much more
+  context than raw transcript snippets.
+- ✅ **Good:** The pipeline is recursive in a satisfying way —
+  maury distributes the skill + fragment + hook to every host
+  through normal sync, so the capture mechanism arrives on
+  every machine the moment it joins the fleet.
+- ✅ **Good:** The user gets a clear feedback loop. At session
+  end, "here's what Claude thought you might want to
+  persist." No mystery batch processing.
+- ✅ **Good:** Cross-boundary safety is a three-layer
+  guarantee, not single-point-of-failure (skill prompt +
+  forbid rules + review step).
+- ⚖️ **Neutral:** We rely on Claude following the CLAUDE.md
+  instruction. False negatives (Claude doesn't stage
+  something it could have) are caught by the passive miner.
+  False positives (Claude stages noise) are caught by the
+  user during `maury review`.
+- ❌ **Bad:** The staging file must never sync to git.
+  Defense-in-depth: `~/.claude/maury-staging/` is local-only,
+  plus the file lives outside any synced repo path.
+- ❌ **Bad:** Cross-profile content emerging on the wrong
+  host (e.g., a "linux-server" capture from a work-laptop
+  session) needs the anomaly-detection logic from
+  [ADR-0005](0005-local-only-mining.md) to quarantine before
+  reaching git.
+
+### Confirmation
+
+- All four artifacts (`maury-stage` skill, `base/CLAUDE.md`
+  fragment, `UserPromptSubmit` hook, `/maury-pin` slash
+  command) are shipped from `base-template/` via the render
+  engine.
+- `~/.claude/maury-staging/captures.jsonl` is gitignored at
+  the maury-state layer per
+  [ADR-0029](0029-maury-state-layout-contract.md).
+- Mining (Phase 6) consumes `captures.jsonl` and routes
+  through the same classification + proposal flow as
+  transcript-mined fragments.
+- The skill's frontmatter conforms to the
+  [Agent Skills specification](https://agentskills.io/specification)
+  per [ADR-0036](0036-open-standards-alignment.md).
+
+## Pros and Cons of the Options
+
+### Option A: Pure passive mining
+
+- ✅ **Good:** Simpler — one extraction pipeline.
+- ❌ **Bad:** Lossy. Insights Claude already had in-session
+  must be re-derived from the transcript, with no signal
+  about which paragraph was the durable part.
+- ❌ **Bad:** No place for user-initiated capture
+  ("remember this") to live; user must wait for the next
+  mining cycle and hope.
+
+### Option B: Anthropic auto-memory (v2.1.59+)
+
+- ✅ **Good:** Built into Claude Code; no integration needed.
+- ❌ **Bad:** Per-project, machine-local — doesn't propagate
+  to user-global CLAUDE.md or to other hosts.
+- ⚖️ **Neutral:** Useful as a secondary signal source.
+  Maury could consume from the auto-memory tree in v2; not
+  a substitute for active capture.
+
+### Option C: A new MCP server hosted by maury
+
+- ✅ **Good:** First-class integration via Anthropic's
+  documented protocol.
+- ❌ **Bad:** Over-engineered for this — skill + hook is
+  simpler.
+- ❌ **Bad:** Would need its own deployment surface; doesn't
+  arrive via the render engine the rest of maury uses.
+
+### Option D (chosen): Skill + CLAUDE.md fragment + hook + slash command
+
+- ✅ **Good:** All four artifacts arrive via the existing
+  render engine — no new distribution mechanism.
+- ✅ **Good:** Two entry paths (Claude-initiated +
+  user-initiated) feed one staging file — single
+  classification path downstream.
+- ✅ **Good:** Multi-layer cross-boundary safety.
+- ❌ **Bad:** Four artifacts to author and version-track.
+- ❌ **Bad:** Relies on Claude following the skill's prompt
+  instructions; mitigated by review step.
 
 ## Build-order placement
 
-New phase **Phase 5.5 — Active capture distribution.** Sits between
-Phase 5 (sync) and Phase 6 (mining):
+New phase **Phase 5.5 — Active capture distribution.** Sits
+between Phase 5 (sync) and Phase 6 (mining):
 
 - Authors the skill, fragment, hook in `base-template/`.
 - Implements the staging-file consumer in the mining module.
-- Verifies the render engine installs all three artifacts on a fresh host.
+- Verifies the render engine installs all three artifacts on
+  a fresh host.
 
-Cannot ship before Phase 3 (render engine) and Phase 5 (sync workflow).
+Cannot ship before Phase 3 (render engine) and Phase 5 (sync
+workflow). Tracked as task #14 in the project task list.
 
-## Alternatives considered
+## Followups
 
-- **Anthropic auto-memory (v2.1.59+).** Per-project, machine-local,
-  doesn't propagate to user-global CLAUDE.md or to other hosts. Useful
-  but not a substitute. Maury can additionally consume from the
-  auto-memory tree as a secondary signal source — punt to v2.
-- **Pure passive mining.** What we'd planned. Rejected as strictly
-  inferior once we realized Claude can label durable content as it
-  happens.
-- **A new MCP server hosted by maury.** Considered. Skill + hook is
-  simpler and arrives via the same render engine the rest of maury
-  uses. MCP would be over-engineered for this.
+- **Auto-memory consumption** — maury could additionally
+  consume from Anthropic's auto-memory tree as a secondary
+  signal source. v2.
+- **Per-host capture-rate observability** — surface how often
+  Claude is staging and how often the user accepts vs.
+  rejects, so noisy hosts/skills can be tuned.
+- **Skill prompt versioning** — when the skill prompt is
+  updated, hosts running the older version may behave
+  differently. Sync should surface this.
 
 ## Claude Code references
 

@@ -13,11 +13,12 @@
 
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
-## Context
+## Context and Problem Statement
 
-The repo-per-trust-boundary architecture (ADR-0002) was originally
-designed assuming git over GitHub everywhere. Real-world cases break
-that assumption:
+The repo-per-trust-boundary architecture
+([ADR-0002](0002-repo-per-trust-boundary.md)) was originally
+designed assuming git over GitHub everywhere. Real-world cases
+break that assumption:
 
 - Personal stuff on GitHub; work on GitHub Enterprise.
 - Personal stuff on GitHub; work on self-hosted GitLab.
@@ -34,15 +35,51 @@ bytes flow between hosts and the store." Conflating them means a user
 can't pick a different transport for different boundaries — which is
 exactly the realistic case.
 
-Same instinct as ADR-0015: don't bake an implementation detail into
-the schema.
+Same instinct as [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md):
+don't bake an implementation detail into the schema.
 
-## Decision
+## Decision Drivers
 
-Add a per-repo `backend` field. Each backend is an adapter implementing
-a small interface; the manifest selects the adapter at runtime.
+- **Tenet 10:** modularity over hardcoding. Backend choice
+  should be configuration, not code.
+- **Real-world heterogeneity:** users genuinely have one
+  boundary on GitHub and another on a different host (Gitea,
+  Enterprise, etc.). Hardcoding GitHub locks them out.
+- **Trust boundary ≠ transport:** these are two independent
+  axes that the schema should keep independent.
+- **Substrate constraint:** [ADR-0022](0022-branch-per-mining-run.md)
+  commits maury to git as the substrate for the proposal model
+  (commit-message-as-proposal, `git log --grep` dedup). Non-git
+  backends would have no equivalent.
+- **Forward-compatibility:** adding the schema field now is
+  cheap; retrofitting it later means breaking every manifest.
 
-### Schema addition
+## Considered Options
+
+- **Option A:** Hardcode git (and GitHub) everywhere.
+- **Option B:** Hardcode git, treat non-git as out-of-scope
+  permanently.
+- **Option C:** Per-host backend instead of per-repo.
+- **Option D:** Bake auth into manifest URLs.
+- **Option E (chosen):** Per-repo `backend` field with an
+  adapter interface; ship `git` and `github` adapters in v1;
+  defer non-git backends; later constrained by ADR-0022 to
+  git-compatible only.
+
+## Decision Outcome
+
+**Chosen option:** Option E — add a per-repo `backend` field.
+Each backend is an adapter implementing a small interface;
+the manifest selects the adapter at runtime. Initial v1
+ships `git` (default) and `github` adapters. The
+[2026-05-06 addendum](#addendum-2026-05-06) below restricts
+future backends to git-compatible alternatives only,
+following [ADR-0022](0022-branch-per-mining-run.md)'s
+substrate lock-in.
+
+### Implementation details
+
+#### Schema addition
 
 ```json
 "repos": {
@@ -68,7 +105,7 @@ pulls/pushes).
 Schema validation is the adapter's responsibility, not the core
 manifest's.
 
-### The adapter interface (v1 sketch)
+#### The adapter interface (v1 sketch)
 
 ```python
 class RepoBackend(Protocol):
@@ -95,7 +132,7 @@ calls, P4PORT/P4USER for Perforce, AWS creds for S3, ...). The
 manifest doesn't store secrets — it points at credential-store entries
 managed under ADR-0014.
 
-### v1 backends
+#### v1 backends
 
 - **`git`** (default) — generic git over SSH/HTTPS. No remote
   bootstrap; user creates the remote and provides the URL. Works with
@@ -104,28 +141,38 @@ managed under ADR-0014.
   `attach_credential` (deploy keys via `gh api repos/OWNER/REPO/keys`).
   Falls through to plain git for clone/pull/push/status.
 
-### v2+ backends (deferred)
+#### v2+ backends
 
-- **`gitlab`** — analogous, using `glab` or GitLab API.
-- **`gitea`** — analogous, using Gitea API.
-- **`p4`** (Perforce) — different model entirely (pessimistic locking,
-  depots, no branches like git). Adapter is a substantial chunk of
-  work.
-- **`s3-age`** — encrypted bundles in S3/B2; sync = upload/download +
-  age encrypt/decrypt. No git semantics; would mean diff/conflict
-  resolution lives in maury.
-- **`bundle`** — signed/encrypted bundles dropped in a shared
-  filesystem (NFS, removable drive). For air-gapped work environments.
-- **`hg`**, **`svn`** — niche but plausible.
+> **2026-05-06 addendum below restricted scope:** all
+> non-git backends listed here are no longer planned, because
+> [ADR-0022](0022-branch-per-mining-run.md) commits maury to
+> git as the substrate. Per-entry status:
 
-### Discovery and registration
+- **`gitlab`** — *still in scope*; analogous to `github`,
+  using `glab` or GitLab API.
+- **`gitea`** — *still in scope*; analogous, using Gitea API.
+- **`codeberg`** — *still in scope* (added in addendum);
+  straightforward extension of the Gitea-shape adapter.
+- **`p4`** (Perforce) — **NO LONGER PLANNED.** Different
+  model entirely (pessimistic locking, depots, no branches
+  like git); has no equivalent of commit-message-as-proposal
+  or `git log --grep` dedup.
+- **`s3-age`** — **NO LONGER PLANNED.** Encrypted bundles in
+  S3/B2 have no git semantics; diff/conflict resolution
+  would have to live in maury.
+- **`bundle`** — **NO LONGER PLANNED.** Signed/encrypted
+  bundles dropped in a shared filesystem (NFS, removable
+  drive); same substrate-incompatibility as `s3-age`.
+- **`hg`**, **`svn`** — **NO LONGER PLANNED.** Same reason.
+
+#### Discovery and registration
 
 Backends register via a small registry in `src/maury/repos/backends/`.
 v2+ third-party backends would use `entry_points` in
 `pyproject.toml`. The manifest validator refuses unknown backend names
 with a clear error pointing at the registry.
 
-### CLI surface
+#### CLI surface
 
 ```sh
 maury bootstrap repo <name> --backend github --visibility private --owner exampleuser
@@ -135,7 +182,7 @@ maury repo list                # shows all repos and their backends
 maury repo backends            # lists registered backends + capabilities
 ```
 
-### Mixed-backend example
+#### Mixed-backend example
 
 ```json
 "hosts": {
@@ -156,46 +203,101 @@ maury repo backends            # lists registered backends + capabilities
 The render engine, sync workflow, and audit log don't care about the
 backend — they call into the adapter through the interface.
 
-## Consequences
+### Consequences
 
-- Trust boundary and transport become independent dimensions. Adding a
-  fourth Perforce-only client engagement doesn't pollute the personal
-  GitHub repos with weird auth code.
-- New backends are additive: shipping `gitlab` later doesn't touch
-  the existing `github` or `git` adapters.
-- The manifest gains optional fields (`backend`, `backend_config`).
-  Default `backend: "git"` keeps existing manifests valid.
-- Auth abstraction lives at the adapter boundary; per-backend
-  credentials are referenced through ADR-0014's secret store rather
-  than copy-pasted in the manifest.
-- Cost: a small interface to design and one extra concept for users
-  to learn. Worth it because the alternative is "if you're not on
-  GitHub, you're SOL."
+- ✅ **Good:** Trust boundary and transport become independent
+  dimensions. Adding a fourth client engagement on a different
+  git host doesn't pollute the personal GitHub repos with
+  weird auth code.
+- ✅ **Good:** New backends are additive — shipping `gitlab`
+  later doesn't touch the existing `github` or `git`
+  adapters.
+- ✅ **Good:** Auth abstraction lives at the adapter
+  boundary; per-backend credentials are referenced through
+  [ADR-0014](0014-host-local-secrets-with-metadata-sync.md)'s
+  secret store rather than copy-pasted in the manifest.
+- ⚖️ **Neutral:** The manifest gains optional fields
+  (`backend`, `backend_config`). Default `backend: "git"`
+  keeps existing manifests valid.
+- ❌ **Bad:** A small interface to design and one extra
+  concept for users to learn. Worth it because the
+  alternative is "if you're not on GitHub, you're SOL."
+
+### Confirmation
+
+- `RepoSpec` in the manifest schema includes optional
+  `backend: str = "git"` and `backend_config: dict | None`.
+- Backends register in `src/maury/repos/backends/`; the
+  manifest validator refuses unknown backend names with a
+  clear error pointing at the registry.
+- Auth never appears in manifest URLs; the
+  `attach_credential` adapter method routes through the
+  [ADR-0014](0014-host-local-secrets-with-metadata-sync.md)
+  store.
+
+## Pros and Cons of the Options
+
+### Option A: Hardcode git everywhere
+
+- ✅ **Good:** Smallest schema; no adapter abstraction to
+  design.
+- ❌ **Bad:** A user with a non-git work shop is locked out
+  of the work boundary entirely.
+
+### Option B: Hardcode git, treat non-git as out-of-scope
+
+- ✅ **Good:** Same simplicity as Option A.
+- ❌ **Bad:** The schema-only addition (Option E) is so cheap
+  that there's no reason to refuse the future possibility.
+
+### Option C: Per-host backend instead of per-repo
+
+- ✅ **Good:** Slightly simpler manifest.
+- ❌ **Bad:** A host can legitimately have one git repo and
+  one different-backend repo; per-repo is the right
+  granularity.
+
+### Option D: Bake auth into manifest URLs
+
+- ✅ **Good:** Self-contained URL strings.
+- ❌ **Bad:** Secrets in manifest is a layering violation.
+  Auth must flow through the adapter from the
+  [ADR-0014](0014-host-local-secrets-with-metadata-sync.md)
+  credential store.
+
+### Option E (chosen): Per-repo backend with adapter interface
+
+- ✅ **Good:** Clean separation of trust boundary from
+  transport.
+- ✅ **Good:** Forward-compatible with new git-compatible
+  hosts.
+- ❌ **Bad:** Adapter interface to design and document.
+- ❌ **Bad:** Users learn one extra concept (backends).
 
 ## Build-order placement
 
-- **Schema field added now**, alongside the ADR-0015 surrogate-key
-  refactor. `RepoSpec` gains optional `backend: str = "git"` and
-  `backend_config: dict | None = None`.
-- **`git` backend** lands in Phase 4 (bootstrap commands) and
-  Phase 5 (sync workflow) — that's where the actual ops live.
-- **`github` backend** lands in Phase 4 alongside `git`, since most
-  users are there.
-- **Other backends** are post-v1 work, added as users need them.
+- **Schema field added now**, alongside the
+  [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)
+  surrogate-key refactor. `RepoSpec` gains optional
+  `backend: str = "git"` and `backend_config: dict | None =
+  None`.
+- **`git` backend** lands in Phase 4 (bootstrap commands)
+  and Phase 5 (sync workflow) — that's where the actual ops
+  live.
+- **`github` backend** lands in Phase 4 alongside `git`,
+  since most users are there.
+- **Other backends** are post-v1 work, added as users need
+  them, scoped to git-compatible only per the addendum.
 
-## Alternatives considered
+## Followups
 
-- **Hardcode git everywhere.** Rejected: a user with a Perforce work
-  shop is locked out of the work boundary entirely.
-- **Hardcode git, treat non-git as out-of-scope.** Considered. The
-  schema-only addition is so cheap that there's no reason to refuse
-  the future possibility.
-- **Per-host backend instead of per-repo.** Rejected: a host can
-  legitimately have one git repo and one Perforce depot; per-repo is
-  the right granularity.
-- **Bake auth into manifest URLs.** Rejected: secrets in manifest is
-  a layering violation. Auth flows through the adapter from the
-  ADR-0014 credential store.
+- **`gitlab` adapter** — first non-GitHub git host worth
+  shipping; uses `glab` or GitLab API.
+- **`gitea` adapter** — for self-hosted use cases.
+- **`codeberg` adapter** — straightforward extension of the
+  Gitea-shape work.
+- **Self-hosted git** is already covered by the default
+  `git` backend; no new adapter needed.
 
 ## Addendum (2026-05-06)
 

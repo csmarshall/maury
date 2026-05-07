@@ -7,7 +7,7 @@
 
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
-## Context
+## Context and Problem Statement
 
 Anthropic ships no public API or CLI for evaluating CLAUDE.md / settings
 content quality. The closest thing is `/doctor` (slash command) which is
@@ -37,10 +37,45 @@ Building maury without acknowledging this rubric would mean we'd
 re-derive the same advice from scratch via the rule engine, with poor
 provenance. The rubric exists; we should consume it.
 
-## Decision
+## Decision Drivers
 
-Add a `maury doctor` subcommand and seed an evaluator with rules
-derived directly from Anthropic's best-practices doc. v1 scope:
+- **Tenet 9:** defer to the platform. Anthropic's documented
+  rubric is *the* authoritative source for "what belongs in
+  CLAUDE.md"; reinventing it via the rule engine would have
+  worse provenance.
+- **Mining alignment:** mining produces CLAUDE.md proposals
+  from day one. Without a quality check against the rubric,
+  maury could happily propose content the docs say not to
+  write.
+- **Auditable provenance:** the doctor's checks should cite
+  the source rule so users can click through to Anthropic's
+  prose for context.
+- **No new dependencies:** evaluator should ship as a small
+  in-tree module, not a new external service.
+
+## Considered Options
+
+- **Option A:** Defer the evaluator to v2.
+- **Option B:** Shell out to `cclint` for structural validation.
+- **Option C:** Reuse the existing rule engine for quality
+  checks.
+- **Option D:** AI-only critique — ask the LLM "is this rule
+  good?"
+- **Option E (chosen):** Add a `maury doctor` subcommand with
+  pattern-based checks seeded from Anthropic's best-practices
+  doc.
+
+## Decision Outcome
+
+**Chosen option:** Option E — add a `maury doctor` subcommand
+and seed an evaluator with rules derived directly from
+Anthropic's best-practices doc. Pattern-based checks are
+deterministic, fast, and cite the source rule — the only
+option that satisfies all four decision drivers.
+
+### Implementation details
+
+v1 scope:
 
 1. **`maury doctor` command** that reads a CLAUDE.md file (default
    `~/.claude/CLAUDE.md` per [Claude Code memory documentation][cc-memory])
@@ -74,45 +109,110 @@ derived directly from Anthropic's best-practices doc. v1 scope:
    beyond what the upstream `claude` binary already does. These are
    v2.
 
-## Consequences
+### Consequences
 
-- maury becomes the only content-quality CLAUDE.md evaluator in the
-  ecosystem, in addition to its sync + isolation + mining role.
-- Anti-pattern checks are a small, well-bounded code module
-  (`src/maury/doctor/`) that uses regex patterns + word counting; no
-  AI dependency.
-- The rubric is the authoritative source. When Anthropic updates the
-  doc, we update the doctor's pattern list. README + ADR record the
-  source URL so the provenance is auditable.
-- Mining gains an extra signal: proposals that match anti-patterns
-  are flagged before the user sees them, reducing the chance of
-  approving content that violates Anthropic's own guidance.
-- Adds a new top-level CLI command and a new module, but no new
-  external dependencies.
+- ✅ **Good:** Maury becomes the only content-quality CLAUDE.md
+  evaluator in the ecosystem, in addition to its sync +
+  isolation + mining role.
+- ✅ **Good:** Mining gains an extra signal — proposals that
+  match anti-patterns are flagged before the user sees them,
+  reducing the chance of approving content that violates
+  Anthropic's own guidance.
+- ✅ **Good:** Provenance is auditable — every flagged check
+  cites the source rule in Anthropic's best-practices doc.
+- ⚖️ **Neutral:** Anti-pattern checks are a small, well-bounded
+  code module (`src/maury/doctor/`) that uses regex patterns +
+  word counting; no AI dependency.
+- ⚖️ **Neutral:** Adds a new top-level CLI command and a new
+  module, but no new external dependencies.
+- ❌ **Bad:** Maintenance coupling to upstream — when
+  Anthropic updates the rubric, we update the doctor's pattern
+  list. Mitigated by recording the source URL.
 
-## Alternatives considered
+### Confirmation
 
-- **Defer to v2.** Rejected: mining produces CLAUDE.md proposals from
-  day one, and shipping a tool that proposes content without checking
-  against the documented best practices feels backwards. Cost of folding
-  in is small.
-- **Shell out to cclint.** Rejected for v1: cclint is structural, not
-  semantic; doesn't evaluate the ✅/❌ rubric. Reasonable to add as a
-  v2 pre-pass (cheap subprocess, JSON output).
-- **Use the existing rule engine for quality checks.** Considered.
-  The classification rule engine routes fragments to profiles; doctor
-  evaluates content quality, which is a different operation. Reusing
-  the engine would require new rule semantics (a `quality` shape that
-  doesn't classify but flags). Cleaner for v1 to keep them separate;
-  revisit unification in v2 if patterns converge.
-- **AI-only critique.** Rejected: pattern-based checks are
-  deterministic, fast, and cite the source rule. AI-only would be
-  opaque, which contradicts maury's "rules are the learned artifact"
-  ethos (ADR-0004).
+- `src/maury/doctor/` exists and `maury doctor` is shipped per
+  Phase 2.5 in `docs/status.md`.
+- Each check carries a citation back to the Anthropic source
+  rule it derives from (visible in both text and JSON
+  output).
 
-## Source
+## Pros and Cons of the Options
 
-- Anthropic best practices: <https://code.claude.com/docs/en/best-practices>
-  (✅/❌ table, the five named failure patterns)
-- Anthropic memory docs: <https://code.claude.com/docs/en/memory>
-- "How Anthropic teams use Claude Code" PDF
+### Option A: Defer the evaluator to v2
+
+- ✅ **Good:** Smaller v1 scope.
+- ❌ **Bad:** Mining produces CLAUDE.md proposals from day
+  one; shipping a tool that proposes content without checking
+  against the documented best practices feels backwards.
+- ❌ **Bad:** Cost of folding in is small — deferring
+  trades a small effort for a real gap in v1.
+
+### Option B: Shell out to `cclint`
+
+- ✅ **Good:** Reuses an existing tool.
+- ❌ **Bad:** `cclint` is structural, not semantic — doesn't
+  evaluate the ✅/❌ rubric.
+- ⚖️ **Neutral:** Reasonable to add as a v2 pre-pass (cheap
+  subprocess, JSON output) for the structural-validation slice.
+
+### Option C: Reuse the existing rule engine
+
+- ✅ **Good:** One engine, one mental model.
+- ❌ **Bad:** The classification rule engine routes fragments
+  to profiles; doctor evaluates content quality, which is a
+  different operation.
+- ❌ **Bad:** Reusing the engine would require new rule
+  semantics (a `quality` shape that doesn't classify but
+  flags). Cleaner for v1 to keep them separate; revisit
+  unification in v2 if patterns converge.
+
+### Option D: AI-only critique
+
+- ✅ **Good:** Could catch nuanced quality issues regex
+  patterns miss.
+- ❌ **Bad:** Pattern-based checks are deterministic, fast,
+  and cite the source rule. AI-only would be opaque, which
+  contradicts maury's "rules are the learned artifact" ethos
+  ([ADR-0004](0004-rule-engine-classification.md)).
+- ❌ **Bad:** Adds an LLM round-trip on every doctor invocation.
+
+### Option E (chosen): Pattern-based doctor seeded from Anthropic's docs
+
+- ✅ **Good:** Deterministic, auditable, cites sources.
+- ✅ **Good:** No new dependencies.
+- ✅ **Good:** Aligns with maury's rule-engine ethos.
+- ❌ **Bad:** Pattern-based checks may miss nuances; v2 can
+  layer AI critique as an opt-in pre-pass.
+
+## Build-order placement
+
+Phase 2.5 — `maury doctor` lands after the rule engine
+(Phase 1) and manifest/capability probe (Phase 2). Already
+shipped per `docs/status.md`.
+
+## Followups
+
+- **AI-assisted semantic critique** (Option D, opt-in) for
+  nuance the regex checks miss. v2.
+- **Shell out to `cclint`** as an optional pre-pass for
+  structural validation. v2.
+- **Doctor-rubric drift detection** — when Anthropic updates
+  best-practices, we should know. The
+  `docs/claude-code-snapshots/` mechanism already exists for
+  CC behavior; extend or mirror for the rubric URL.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-best-practices`][cc-best-practices] — the ✅/❌ table
+  and the five named failure patterns. The doctor's check
+  list derives directly from this page.
+- [`cc-memory`][cc-memory] — the documented location of
+  CLAUDE.md (`~/.claude/CLAUDE.md` for user-global memory).
+  `maury doctor` defaults to this path.
+
+[cc-best-practices]: https://code.claude.com/docs/en/best-practices
+[cc-memory]: https://code.claude.com/docs/en/memory
