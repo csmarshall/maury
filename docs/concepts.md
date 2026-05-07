@@ -5,9 +5,94 @@ ADRs document *decisions*; this file documents the *concepts*
 those decisions operate on. When a term is used loosely in
 conversation or in an ADR, this file is what it's referring to.
 
-If you're new to maury, read this top-to-bottom before diving
-into any ADR. If you're an ADR author, link here when defining
-terms rather than re-defining them inline.
+**Reading order:**
+
+1. **[The mental model](#the-mental-model)** below — start here if
+   you've never used maury. ~3 minutes. Plain-language analogies,
+   no jargon.
+2. **[The five core concepts](#the-five-core-concepts)** — formal
+   definitions. Reach for these when you need precision (writing
+   an ADR, debugging a render, auditing a safety property).
+3. **[Theoretical foundations](#theoretical-foundations)** — the
+   established CS/IT frameworks maury composes. Reach for these
+   when you want to ground a design discussion in literature
+   instead of one-off arguments.
+
+---
+
+## The mental model
+
+If you've ever managed dotfiles across multiple machines
+(`.bashrc`, `.vimrc`, etc.) you already know maury's premise.
+**Maury is the richer version of that, specialized for your
+Claude Code config (`~/.claude/`), with two extra ideas: profiles
+and inheritance.**
+
+Two analogies, both useful:
+
+### Analogy 1 — outfits in a wardrobe
+
+Imagine your `~/.claude/` directory is your **outfit for the day**.
+Different occasions need different outfits — work, home, client.
+Each is a **profile**.
+
+Some pieces go with everything: your watch, your favorite belt.
+You keep those in a **shared drawer** (the `base` profile) so you
+don't have to copy them into every outfit.
+
+When you "get dressed" on a given machine — that's a **render** —
+maury opens the shared drawer first, then the profile-specific
+drawer for whichever context you've chosen, then adds any host-
+specific tweaks (a coat if it's cold on this particular machine).
+
+Drawers live in **locked cabinets** — a *trust boundary*. One
+cabinet can hold multiple drawers if you trust those contexts to
+coexist (a `consulting` cabinet might hold both `acme-client` and
+`globex-client` drawers). Each cabinet has its own lock; only
+some hosts have keys to a given cabinet. Your work laptop can't
+reach into the personal cabinet because it doesn't have that
+key.
+
+### Analogy 2 — config files with composition
+
+If you'd rather think in code: maury's `base` profile is like
+your shared `~/.bashrc.common`, sourced everywhere. A specific
+profile (`work`, `personal`) is like a `~/.bashrc.work` that
+extends the common one. The host overlay is the per-machine
+tweak.
+
+The thing that's NEW vs dotfile management:
+
+- **Profile inheritance** — a profile can extend another. So
+  `acme-client` extends `work` extends `base`, and rendering
+  composes all three. (Like CSS classes inheriting from base
+  styles, or Docker images layered on a base image.)
+- **Trust boundaries** — each profile lives in a git repo with
+  per-host SSH deploy keys. The work laptop literally cannot
+  fetch the bytes of personal content. Privacy is enforced
+  server-side, not by client-side filtering.
+- **Active profile** — at any moment a host is "in" exactly one
+  profile. Switching is deliberate (and safeguarded — see
+  [ADR-0025](adr/0025-profile-switching-session-safeguards.md)).
+
+### One-line summary of each term
+
+| Term | Plain-language gist |
+|---|---|
+| **Profile** | A named context (e.g., `personal`, `work`, `acme-client`) — one drawer in your wardrobe |
+| **Trust boundary** | A locked cabinet (one git repo) — only some hosts have the key. One cabinet can hold multiple drawers |
+| **Inheritance** | A profile can build on another's pieces (`acme-client` builds on `work` builds on `base`) |
+| **Layer** | One drawer's contribution at render time |
+| **Active profile** | Which context you're "wearing" right now on this machine |
+| **Render** | Composing all the layers into your `~/.claude/` |
+| **Promotion** | Moving a piece from one drawer to a more-shared drawer (e.g., a `work` finding → `base`) |
+
+That's the whole model. Everything below is precision —
+necessary if you're writing an ADR or auditing a safety property,
+skippable on first read. (The wardrobe analogy is intentionally
+loose; the formal sections distinguish profile-vs-trust-boundary
+in ways the analogy blurs, so come back here if anything is
+unclear later.)
 
 ---
 
@@ -31,13 +116,12 @@ Profiles are registered in `.meta/manifest.json`. They have:
 - An optional single parent profile via `extends:` (see
   [Inheritance](#3-inheritance) below)
 
-A profile is the user's mental "context I am working in right now":
-"I'm in personal context" = "my host's active profile is `personal`."
-
 Profiles are user-defined and unbounded. There's nothing in
 maury's schema that hardcodes "personal" or "work" — those are
 just names you happened to register. Per
-[ADR-0001](adr/0001-n-profiles.md).
+[ADR-0001](adr/0001-n-profiles.md). The "context the user is
+working in right now" framing is in [§5 Active profile](#5-active-profile);
+this section defines what a profile *is* structurally.
 
 ### 2. Trust boundary
 
