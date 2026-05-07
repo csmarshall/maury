@@ -1,0 +1,376 @@
+# maury — concepts and definitions
+
+This is the canonical reference for the terms maury's docs use.
+ADRs document *decisions*; this file documents the *concepts*
+those decisions operate on. When a term is used loosely in
+conversation or in an ADR, this file is what it's referring to.
+
+If you're new to maury, read this top-to-bottom before diving
+into any ADR. If you're an ADR author, link here when defining
+terms rather than re-defining them inline.
+
+---
+
+## The five core concepts
+
+These five terms are load-bearing across every ADR. They are not
+synonymous with each other — and they are not synonymous with
+Claude Code's terms of art (which sometimes use the same words to
+mean different things).
+
+### 1. Profile
+
+A **profile** is a user-defined namespace of configuration content
+— a CLAUDE.md fragment, skills, hooks, settings, and rules — that
+applies when a host is "in" that profile.
+
+Profiles are registered in `.meta/manifest.json`. They have:
+
+- A surrogate ID (`profile_<32 hex>`, per [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md))
+- A human-friendly name (`personal`, `work`, `acme-client`, …)
+- An optional single parent profile via `extends:` (see
+  [Inheritance](#3-inheritance) below)
+
+A profile is the user's mental "context I am working in right now":
+"I'm in personal context" = "my host's active profile is `personal`."
+
+Profiles are user-defined and unbounded. There's nothing in
+maury's schema that hardcodes "personal" or "work" — those are
+just names you happened to register. Per
+[ADR-0001](adr/0001-n-profiles.md).
+
+### 2. Trust boundary
+
+A **trust boundary** is the unit of read/write access. One trust
+boundary = one git repo. Per
+[ADR-0002](adr/0002-repo-per-trust-boundary.md).
+
+Multiple profiles can live inside one trust boundary if you trust
+those profiles to see each other's content. Crossing a trust
+boundary requires a separate repo + separate deploy keys per host
+(per [ADR-0003](adr/0003-per-host-deploy-keys.md)).
+
+> **Profile ≠ trust boundary.** A profile is a *content namespace*;
+> a trust boundary is an *access scope*. The `personal` and `work`
+> profiles are typically in *different* repos (different trust
+> boundaries) because you don't want the work-laptop fetching
+> personal content. But the `acme-client` and `globex-client`
+> profiles might share one repo (one trust boundary called
+> "consulting") if you trust those clients' contexts to coexist.
+
+### 3. Inheritance
+
+**Inheritance** is the *extends* relationship between profiles.
+Profile A *extends* profile B means: when rendering for A, base +
+B's content + A's content all compose into the final
+`~/.claude/`. A is the *child*, B is the *parent*.
+
+Two structural rules:
+
+- **Single-parent only.** A profile extends exactly zero or one
+  parents. No diamond inheritance. (Per
+  [ADR-0001](adr/0001-n-profiles.md).)
+- **Acyclic.** The extends chain must terminate; no cycles. The
+  manifest validator enforces this.
+
+This means the inheritance graph is a **forest of trees** rooted
+at the implicit `base` (every render starts from `base` even if a
+profile doesn't explicitly extend it).
+
+Concrete example:
+
+```mermaid
+flowchart TD
+    base[base]
+    personal[personal]
+    work[work]
+    research[research]
+    acme[acme-client]
+    globex[globex-client]
+
+    base --> personal
+    base --> work
+    base --> research
+    work --> acme
+    work --> globex
+```
+
+In this tree:
+
+- `personal` extends `base` directly.
+- `work` extends `base` directly.
+- `acme-client` extends `work` extends `base` (chain length 2).
+- `globex-client` extends `work` extends `base` (chain length 2).
+- `research` extends `base` directly.
+
+Reading the chain "root to leaf" for `acme-client`: `base → work
+→ acme-client`. The render engine walks this chain and composes
+content according to [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)'s
+refinement-by-default semantics.
+
+**The inheritance graph IS the trust graph for cross-context
+promotion.** A finding in `acme-client` can be promoted to:
+
+- `acme-client` itself (no promotion needed; just commit there)
+- `work` (its parent — flows to `acme-client` AND `globex-client`
+  via inheritance)
+- `base` (the root — flows to every descendant)
+
+A finding in `acme-client` CANNOT be promoted directly to
+`globex-client` even though they share a parent — you have to go
+through `work` (the shared parent) or `base` (the shared root).
+This rule is captured in the planned ADR-0027 on cross-context
+promotion.
+
+### 4. Layer
+
+A **layer** is one source of content that the render engine
+composes into the final `~/.claude/`. There are three kinds:
+
+- **Base layer** — the implicit root. Every render includes base.
+- **Profile chain layers** — each profile in the inheritance
+  chain, root-to-leaf. For `acme-client` above: `work`, then
+  `acme-client`.
+- **Host overlay layer** — host-specific content under
+  `profiles/<active-profile>/hosts/<host>/`. Per-host capabilities,
+  per-host hand-managed paths, etc.
+
+Render order is always `base → profile chain (root → leaf) → host
+overlay`. Refinement and replacement semantics per
+[ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md).
+
+> **Profile ≠ layer.** A profile *contributes a layer* during
+> render. The same profile can contribute different layers on
+> different hosts (because each host has its own host overlay
+> directory under that profile).
+
+### 5. Active profile
+
+A host has, at any moment, exactly **one active profile.**
+The active profile determines which inheritance chain renders
+into that host's `~/.claude/`.
+
+A host's active profile is set by:
+
+- `maury init` (initial assignment).
+- `maury profile use <name>` (with safeguards per
+  [ADR-0025](adr/0025-profile-switching-session-safeguards.md)).
+- Manual edit of the host's manifest entry (with all the same
+  validation as the above).
+
+If `lock: true` is set on the host's manifest entry,
+`maury profile use` refuses to change the active profile (per
+[ADR-0001](adr/0001-n-profiles.md)).
+
+> **"Context" in maury usually means "active profile + its
+> inheritance chain."** When someone says *"this should apply to
+> my work context,"* they mean *"this should apply to the active
+> profile `work` and any profile that extends `work`."*
+
+---
+
+## Two terms maury intentionally avoids re-defining
+
+### "Context" (Claude Code's usage)
+
+Claude Code uses "context" to mean **the working memory of one
+session** — the prompt + conversation history + tool-use chain
+that the assistant has loaded. Maury's "context" (defined in
+[§5 Active profile](#5-active-profile)) is unrelated.
+
+To keep them apart, maury docs say **"session context"** or
+**"conversation context"** when referring to Claude Code's
+session memory; **"context"** alone always means
+*active profile + inheritance chain* per §5.
+
+Per [`cc-contract:fresh-session-context`](claude-code-contract.md#cc-contractfresh-session-context),
+Claude Code's session context is fresh on every new invocation
+(unless `--resume` is used). Maury's profile context is set at
+`maury init` and changed only by `maury profile use`.
+
+### "Inheritance" (object-oriented usage)
+
+Maury's profile inheritance is a *content composition* mechanism
+(layers compose at render time). It is NOT object-oriented
+inheritance — there are no methods, no polymorphism, no virtual
+dispatch. The only thing that "happens" with inheritance is that
+the render engine walks the chain and composes layered content.
+
+If you've used dotfile managers like chezmoi, maury's inheritance
+is closer to that mental model than to Java's `class A extends B`.
+
+---
+
+## How the concepts compose: a worked example
+
+Suppose the project owner (a freelancer) has:
+
+- Two hosts: `workstation` (their personal Mac) and `work-laptop`
+  (a client-issued machine for ACME).
+- Three profiles: `personal`, `work`, `acme-client`. Inheritance:
+  `personal` extends `base`; `work` extends `base`; `acme-client`
+  extends `work`.
+- **Three trust boundaries (per [ADR-0002](adr/0002-repo-per-trust-boundary.md)):**
+  - `maury-base` — holds base content only. Both hosts have read
+    access; only the curator host has write.
+  - `maury-personal` — holds the `personal` profile. Only
+    `workstation` has access.
+  - `maury-work` — holds `work` and `acme-client`. Only
+    `work-laptop` has rw access; `workstation` has rw too if it
+    serves as curator.
+
+Base lives in its own repo so `work-laptop` can consume it
+without ever fetching the bytes of any `personal` content.
+
+Active profile per host:
+
+- `workstation`: active profile is `personal`. Renders by
+  composing layers from `maury-base` (base) and `maury-personal`
+  (personal + workstation overlay).
+- `work-laptop`: active profile is `acme-client`. Renders by
+  composing layers from `maury-base` (base) and `maury-work`
+  (work + acme-client + work-laptop overlay).
+
+If the freelancer learns a useful pattern while working as
+`acme-client` and wants it to apply to all client work:
+
+- They mark it for promotion to `work` (parent of `acme-client`).
+- After review, the rule lands in `maury-work`'s `work` profile.
+- Next sync, both `acme-client` and any future sibling client
+  profile (e.g., `globex-client`) inherit it.
+
+If the same pattern should apply to personal projects too:
+
+- They'd need to promote it to `base` (the shared root, which
+  lives in `maury-base`).
+- But the `work-laptop` doesn't have write access to `maury-base`.
+  So the promotion happens in two steps:
+  - Step 1: a finding-shaped commit lands in `maury-work`'s
+    review queue, tagged for promotion to `base`.
+  - Step 2: a curator host with write access to both `maury-work`
+    (read) and `maury-base` (write) cross-promotes it. Per
+    [ADR-0009](adr/0009-promotion-only-cross-boundary.md).
+
+---
+
+## Theoretical foundations
+
+Maury's model is not invented from scratch. It composes four
+well-established frameworks. Naming them gives ADR authors
+precise vocabulary to reach for and grounds maury's safety
+properties in literature instead of one-off arguments.
+
+### Mandatory access control (Bell-LaPadula, 1973)
+
+[Bell-LaPadula][bell-lapadula] established the formal model of
+**security labels** on data and **clearances** on subjects. The
+governing rules are *no read up* (a subject cannot read data above
+its clearance) and *no write down* (a subject cannot write data
+below its level). Labels form a partial-order **lattice**.
+
+**Maury maps to this:**
+
+| Bell-LaPadula | Maury |
+|---|---|
+| Security label | Trust boundary (one repo) |
+| Subject clearance | Per-host deploy keys ([ADR-0003](adr/0003-per-host-deploy-keys.md)) |
+| Lattice | The repo-access graph across hosts |
+| No read up | A work-laptop cannot fetch personal-context bytes |
+| Controlled write up | Cross-trust-boundary promotion via curator review |
+
+We are essentially implementing a simplified MAC system
+specialized for personal + small-team Claude Code config. When
+debating safety properties, we can audit them against this
+literature instead of inventing arguments.
+
+### Lexical scoping (Strachey, 1967)
+
+[Lexical scoping][lexical-scoping] is the rule that inner scopes
+see outer scopes' bindings; outer scopes don't see inner. Lookups
+walk the chain outward. Maury's render-time inheritance is exactly
+this:
+
+- Inner scope (`acme-client`) sees outer (`work`) which sees
+  outermost (`base`).
+- `base` cannot see `work`'s additions; `work` cannot see
+  `acme-client`'s.
+- "Render walks the chain root-to-leaf, later wins" = lexical-
+  scope shadowing.
+
+This is a more precise mental model than "inheritance" for what
+maury does. There are no methods, no polymorphism, no virtual
+dispatch — just *content composition by walking a chain of scopes*.
+
+### Non-interference (Goguen & Meseguer, 1982)
+
+[Goguen-Meseguer non-interference][goguen-meseguer] is the
+formal property that high-security inputs do not affect low-
+security outputs. Inputs at level H must be unobservable at
+level L.
+
+**Maury's promotion-only flow IS a non-interference property.**
+Personal-context content has zero effect on `work-laptop`'s render
+output, because `work-laptop` literally cannot fetch the bytes
+(different trust boundary, no key per ADR-0003). The only path
+personal → work is: personal mining → curator review → explicit
+promotion to base → base flows to work via inheritance. Each
+step is observable and gated by a curator.
+
+When someone asks "but can personal content leak to the work
+laptop?" the answer is: *non-interference with curator-mediated
+upward flow* — a known property with known proofs.
+
+### CSS cascading (Lie & Bos, 1996)
+
+[CSS][css-spec] combines inheritance (children inherit parent
+properties) with cascading (later rules override earlier).
+Specificity rules adjudicate conflicts.
+
+[ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)'s
+"refinement by default, replacement explicitly" is essentially
+CSS's cascade with one specificity-ish twist (per-content-type
+defaults). For users who've authored CSS, **"think of profiles as
+nested CSS scopes"** is the closest single-sentence explanation
+that doesn't import OO baggage.
+
+### Two frameworks maury deliberately avoids citing
+
+- **Object-oriented inheritance (Java/C++).** Brings methods,
+  polymorphism, virtual dispatch — none of which maury has.
+  Using "inheritance" loosely is fine; using it as in
+  `class A extends B` causes more confusion than clarity.
+- **Prototype-based inheritance (JavaScript, Self).** Closer to
+  maury mechanically (single-parent chain, lookup walks chain),
+  but the vocabulary (delegation, prototype) imports a different
+  mental model than the security/composition story we want.
+
+[bell-lapadula]: https://en.wikipedia.org/wiki/Bell%E2%80%93LaPadula_model
+[lexical-scoping]: https://en.wikipedia.org/wiki/Scope_(computer_science)#Lexical_scope
+[goguen-meseguer]: https://en.wikipedia.org/wiki/Non-interference_(security)
+[css-spec]: https://www.w3.org/TR/css-cascade/
+
+---
+
+## Quick glossary
+
+| Term | Means | See |
+|---|---|---|
+| **Profile** | Named namespace of configuration content | [§1](#1-profile), [ADR-0001](adr/0001-n-profiles.md) |
+| **Trust boundary** | One git repo = one access scope | [§2](#2-trust-boundary), [ADR-0002](adr/0002-repo-per-trust-boundary.md) |
+| **Inheritance** | Extends relationship between profiles | [§3](#3-inheritance), [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
+| **Inheritance chain** | The root-to-leaf path through extends | [§3](#3-inheritance) |
+| **Layer** | One source of content composed at render | [§4](#4-layer) |
+| **Host overlay** | Per-host slice of a profile's content | [§4](#4-layer) |
+| **Active profile** | The one profile a host is currently in | [§5](#5-active-profile) |
+| **Context** | Active profile + its inheritance chain | [§5](#5-active-profile) (NOT Claude Code's "session context") |
+| **Render** | Compose all layers → write to `~/.claude/` | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
+| **Refinement** | Default merge semantics: child adds to parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
+| **Replacement** | Explicit override semantics: child replaces parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
+| **Promotion** | Move content up the inheritance graph (toward base) | [ADR-0009](adr/0009-promotion-only-cross-boundary.md), ADR-0027 (planned) |
+| **Cross-trust-boundary promotion** | Promotion that crosses repos (e.g., work → base when base lives in a separate repo) — requires a curator host with write access to both repos | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
+| **Curator** | A user (and the host they operate on) with write access to a higher-trust repo. Acts as the gate for cross-trust-boundary promotion review | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
+| **Provenance** | The record of where rendered content came from (which layer contributed which lines) — surfaced as a comment block at the top of every rendered file | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md), Tenet 7 |
+| **Manifest** | `.meta/manifest.json` — the source of truth for hosts/profiles/repos | [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md) |
+
+If a term shows up in an ADR and isn't here, that's a doc bug —
+file it as a finding for the next ADR landscape audit.
