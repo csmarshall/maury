@@ -113,10 +113,27 @@ Claude config across hosts. The tagline writes itself.
 
 ## Status
 
-Pre-v0.1, scaffolding stage. See [`docs/tenets.md`](docs/tenets.md) for
-the principles maury is built on, [`docs/workflow.md`](docs/workflow.md)
-for ASCII state diagrams of the user-facing flows, and
-[`docs/adr/`](docs/adr/) for the architecture decisions.
+Pre-v0.1, scaffolding stage. **For an honest snapshot of which
+parts of maury actually work today vs. which are designed but
+not yet implemented, see [`docs/status.md`](docs/status.md).**
+
+For everything else:
+
+- [`docs/concepts.md`](docs/concepts.md) — canonical definitions
+  (six core concepts + theoretical foundations + glossary).
+  **Start here if you're new to maury.**
+- [`docs/tenets.md`](docs/tenets.md) — the principles maury is
+  built on.
+- [`docs/workflow.md`](docs/workflow.md) — user-journey flowcharts
+  (mermaid).
+- [`docs/operations.md`](docs/operations.md) — per-command
+  operational reference (mermaid).
+- [`docs/claude-code-contract.md`](docs/claude-code-contract.md) —
+  what maury depends on Claude Code doing, and how confident we
+  are in each claim.
+- [`docs/adr/`](docs/adr/) — architecture decisions, with each
+  ADR citing the tenets it embodies and the Claude Code docs it
+  references.
 
 ## Install
 
