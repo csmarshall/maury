@@ -82,29 +82,16 @@ knows where everyone needs to be, and gets the band on stage.
 The deeper thread is a four-generation family tree from the model down
 to the tool that manages it:
 
-```
-                    ┌─────────────────────────┐
-                    │  Claude  (Anthropic LLM)│
-                    └────────────┬────────────┘
-                                 │  named after
-                                 ▼
-              ┌────────────────────────────────────┐
-              │  Claude Elwood Shannon             │
-              │  father of information theory      │
-              └────────────────┬───────────────────┘
-                               │  shares "Elwood" with
-                               ▼
-                ┌──────────────────────────────┐
-                │  Elwood Blues  (Dan Aykroyd) │
-                │  The Blues Brothers          │
-                └──────────────┬───────────────┘
-                               │  managed by
-                               ▼
-                ┌──────────────────────────────┐
-                │  Maury Sline (Steve Lawrence)│
-                │  Elwood's booking agent      │
-                │  the namesake of this tool   │
-                └──────────────────────────────┘
+```mermaid
+flowchart TD
+    Claude["<b>Claude</b><br/>(Anthropic LLM)"]
+    Shannon["<b>Claude Elwood Shannon</b><br/>father of information theory"]
+    Elwood["<b>Elwood Blues</b> (Dan Aykroyd)<br/>The Blues Brothers"]
+    Maury["<b>Maury Sline</b> (Steve Lawrence)<br/>Elwood's booking agent<br/>the namesake of this tool"]
+
+    Claude -->|named after| Shannon
+    Shannon -->|shares 'Elwood' with| Elwood
+    Elwood -->|managed by| Maury
 ```
 
 So `claude → elwood → maury` traces the lineage from the model, through
