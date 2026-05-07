@@ -74,6 +74,12 @@ The skill itself ships in v1; the auto-invocation Stop hook is v1.1.
 
 ## 3. Periodic mining + cross-reference + review
 
+> The four-state bucket names (`NEW`, `PRESENT_AND_CLEAR`,
+> `PRESENT_BUT_UNCLEAR`, `PRESENT_AND_REINFORCED`) shown in the
+> diagram below are **owned by [ADR-0020](adr/0020-two-mining-modes-bulk-and-incremental.md)**.
+> If those names change there, this diagram becomes stale — that
+> ADR is the source of truth.
+
 ```mermaid
 flowchart TD
     Start([user runs maury mine]) --> Walk[walk ~/.claude/projects/HASH/*.jsonl<br/>filter system-injected pseudo-user content]

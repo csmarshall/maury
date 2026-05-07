@@ -120,6 +120,9 @@ converts the soft-accept into a proposal (same path as `adopt`).
 
 Local transcript mining per [ADR-0005](adr/0005-local-only-mining.md).
 Produces a run branch per [ADR-0022](adr/0022-branch-per-mining-run.md).
+The four-state bucket names referenced in the chart below are
+**owned by [ADR-0020](adr/0020-two-mining-modes-bulk-and-incremental.md)**;
+that ADR is the source of truth if they change.
 
 ```mermaid
 flowchart TD
@@ -264,7 +267,11 @@ package-manager operation (`pipx uninstall maury` or
 
 ## Convention
 
-Flowcharts use mermaid `flowchart TD` (top-down). If we ever need
-true sequence diagrams (multiple actors over time), use mermaid
-`sequenceDiagram` for those — but flowcharts always stay
-`flowchart TD` for visual consistency across the project.
+Flowcharts in maury docs use mermaid `flowchart TD` (top-down)
+for visual consistency across the project. True multi-actor
+sequence diagrams (when they arise — e.g., a future cross-host
+promotion flow with three or more independent actors interacting
+over time) may use mermaid `sequenceDiagram`; that's a different
+diagram shape and the convention doesn't try to force it into
+`flowchart TD`. The rule is "consistent within a shape, not
+forcibly across shapes."
