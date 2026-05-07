@@ -27,17 +27,21 @@ The risk profile-switching introduces is real and specific:
 > the user kicks off in that session can write personal-context
 > content into work-tracked files (or the reverse, which is worse).
 
-Claude Code's session boundary is otherwise clean — a fresh
-`claude` invocation reads `~/.claude/CLAUDE.md`,
-`~/.claude/memory/MEMORY.md`, `settings.json`, hooks, agents, and
-skills at startup, and has zero memory of any prior session unless
-explicitly resumed via `--resume <session-id>`. Past transcripts at
-`~/.claude/projects/<hash>/*.jsonl` are data-at-rest and are
-**not** auto-loaded into a new session (they are a mining-time
-concern, not a session-context concern; cross-host coordination of
-mining is gap E in the gaps walkthrough). Terminal-emulator
-scrollback is a display artifact and is unrelated to what Claude
-loads.
+Claude Code's session boundary is otherwise clean. Per [Claude
+Code's "How Claude Code works" documentation][cc-how-it-works] and
+the [memory documentation][cc-memory], a fresh `claude` invocation
+reads `~/.claude/CLAUDE.md`, `~/.claude/memory/MEMORY.md`,
+`settings.json`, hooks, agents, and skills at startup, and "each
+new session starts with a fresh context window, without the
+conversation history from previous sessions." Per [the sessions
+documentation][cc-sessions], past transcripts at
+`~/.claude/projects/<project>/<session-id>.jsonl` are data-at-rest
+and are **not** auto-loaded into a new session unless the user
+explicitly invokes [`claude --resume <id>` or `claude --continue`][cc-cli-resume]
+(they are a mining-time concern, not a session-context concern;
+cross-host coordination of mining is gap E in the gaps walkthrough).
+Terminal-emulator scrollback is a display artifact and is unrelated
+to what Claude loads.
 
 So the only cross-boundary leakage path that exists is **active
 sessions whose memory predates the switch**. Maury's job is to
@@ -65,7 +69,23 @@ Active-session detection lives at
 `~/.claude/maury-state/active-sessions.jsonl`, an append-only event
 log maintained by hooks shipped under
 [ADR-0023](0023-hook-installation-and-tool-resolution.md)'s
-marker scheme. The same `SessionStart` hook is also referenced by
+marker scheme.
+
+Per [Claude Code hooks][cc-hooks], events fire at different
+cadences:
+
+- `SessionStart` — **once per session.** Use this for "session
+  began on this host."
+- `SessionEnd` — **once per session.** Use this for "session
+  ended on this host." NOT `Stop` — `Stop` fires once per *turn*
+  (each user-prompt → assistant-response cycle), so it would
+  fire many times per session and cannot serve as a session-
+  lifecycle marker.
+- `PostToolUse` — fires after **every** tool call (not once per
+  session). Useful as a recency heuristic only; not a lifecycle
+  event.
+
+The same `SessionStart` hook is also referenced by
 [ADR-0017](0017-drift-detection-and-reconciliation.md)'s deferred
 "watch-mode drift detection" followup — there is **one**
 SessionStart installation, multiple consumers (active-session
@@ -77,22 +97,26 @@ Event schema (one JSON object per line, ≤4 KB):
 {"event":"session_start","ts":"...","session_id":"abc...",
  "project_path":"~/work/foo","resumed_from":null}
 {"event":"tool_use","ts":"...","session_id":"abc..."}
-{"event":"session_stop","ts":"...","session_id":"abc..."}
+{"event":"session_end","ts":"...","session_id":"abc..."}
 ```
 
 `resumed_from` is the prior `session_id` if this session was
-launched via `claude --resume <id>`; null otherwise. Resumption
-matters because a resumed session inherits the prior session's
-working memory — see §"What maury cannot prevent."
+launched via [`claude --resume <id>`][cc-cli-resume]; null
+otherwise. Resumption matters because a resumed session inherits
+the prior session's working memory — see §"What maury cannot
+prevent."
 
 Append-only with ≤4 KB lines preserves the same POSIX `O_APPEND`
 atomicity story as `claude-writes.jsonl` (multiple sessions can
-write concurrently without locking).
+write concurrently without locking). Per [Claude Code
+sessions][cc-sessions], multiple concurrent Claude Code sessions
+on one host are explicitly supported, so concurrent writes to
+this log are expected.
 
 **On read:** walk the log, build a map `session_id → {started_at,
-last_tool_use_at, stopped_at, resumed_from}`. A session is
+last_tool_use_at, ended_at, resumed_from}`. A session is
 considered **active** if it has a `session_start` event with no
-matching `session_stop`, regardless of how recently it had a
+matching `session_end`, regardless of how recently it had a
 tool use. The precondition check errs conservative on the safety
 path: if the bookkeeping says a session is open, refuse the
 switch.
@@ -103,7 +127,7 @@ periods (the user is reading, thinking, or away from keyboard);
 treating "no activity for N minutes" as "ghost" risks
 mis-classifying a live session as gone — exactly the leakage path
 this ADR closes. Cleanup of clearly-dead entries (e.g., older than
-24h with no `session_stop`) happens via an explicit
+24h with no `session_end`) happens via an explicit
 `maury sessions prune` command, never as a side effect of a
 safety check.
 
@@ -219,11 +243,12 @@ Honest acknowledgements:
   under one profile are explicitly handled before being carried
   across.
 - **Two new hooks join the marker-managed set:** `SessionStart`
-  and `Stop`, alongside the existing `PostToolUse log_tool_use`
-  from ADR-0017. Cost: small. The shared `active-sessions.jsonl`
-  file uses the same POSIX `O_APPEND` ≤4 KB atomicity story as
-  `claude-writes.jsonl` (append-only event records, reduced on
-  read into a per-session-id state map).
+  and `SessionEnd`, alongside the existing `PostToolUse log_tool_use`
+  from ADR-0017. (NOT `Stop` — that fires per-turn, not per-session,
+  per [Claude Code hooks][cc-hooks].) Cost: small. The shared
+  `active-sessions.jsonl` file uses the same POSIX `O_APPEND`
+  ≤4 KB atomicity story as `claude-writes.jsonl` (append-only
+  event records, reduced on read into a per-session-id state map).
 - **The profile banner is double-coverage:** structured marker
   for tooling + human-readable sentence for the user. If Claude
   responds about something that contradicts the banner, the user
@@ -243,12 +268,19 @@ Honest acknowledgements:
   Rejected: too aggressive — `maury status`, `maury sync`
   (read-only path), `maury mine` are all safe to run with active
   sessions.
-- **PostToolUse-only detection** (no SessionStart/Stop hooks).
+- **PostToolUse-only detection** (no SessionStart/SessionEnd hooks).
   Considered. Rejected because a freshly-started session that has
   not yet made a tool call would not appear in
   active-sessions.jsonl, and a quick profile switch in that window
   would silently succeed — opening the exact leakage path we're
-  trying to close. SessionStart fires before any tool use.
+  trying to close. `SessionStart` fires before any tool use.
+- **Use `Stop` instead of `SessionEnd`.** Rejected on
+  [hooks documentation][cc-hooks] verification: `Stop` fires once
+  per *turn* (each user-prompt → assistant-response cycle), not
+  once per session. Tracking "session ended" with `Stop` would
+  mark sessions as ended after the first assistant response,
+  silently treating live sessions as gone — exactly the leakage
+  path this ADR closes.
 - **Single `--force` flag without the verbose acknowledgement.**
   Rejected: `--force` is a casual flag in many tools; users type
   it without thinking. A profile switch is not a casual operation
@@ -293,3 +325,27 @@ Honest acknowledgements:
   thinks the active profile is (from CLAUDE.md banner it loaded
   at startup) against what maury's state file says now. If they
   differ, alert the user. v1.1.
+
+## Claude Code references
+
+Verified-as-of 2026-05-07 against Anthropic's official Claude
+Code documentation:
+
+- [`cc-hooks`][cc-hooks] — hook event names, firing cadence
+  (SessionStart/SessionEnd once per session; Stop once per turn;
+  PostToolUse on every tool call), and JSON shape.
+- [`cc-memory`][cc-memory] — fresh-session reading of CLAUDE.md
+  and MEMORY.md.
+- [`cc-how-it-works`][cc-how-it-works] — fresh-context-window
+  guarantee on each new session.
+- [`cc-sessions`][cc-sessions] — transcript JSONL location,
+  `--resume`/`--continue` semantics, multiple concurrent sessions
+  on one host.
+- [`cc-cli-resume`][cc-cli-resume] — explicit session resumption
+  via CLI flag.
+
+[cc-hooks]: https://code.claude.com/docs/en/hooks
+[cc-memory]: https://code.claude.com/docs/en/memory
+[cc-how-it-works]: https://code.claude.com/docs/en/how-claude-code-works
+[cc-sessions]: https://code.claude.com/docs/en/sessions
+[cc-cli-resume]: https://code.claude.com/docs/en/cli-reference
