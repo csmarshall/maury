@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
 from maury.doctor import Report, render_json, render_text, run_all
 from maury.drift import detect_drift, read_last_render
+from maury.empirical_tests import HarnessReport, claude_present
+from maury.empirical_tests import run as run_empirical
 from maury.ids import short as short_id
 from maury.llm import BackendUnavailableError, get_backend
 from maury.manifest import (
@@ -1199,3 +1202,133 @@ def doctor(claude_md: Path, output_format: str, fail_on: str) -> None:
     )
     if worst >= threshold:
         sys.exit(1)
+
+
+# ---- verify-cc-hooks command --------------------------------------------
+
+
+def _print_empirical_report(report: HarnessReport, output_format: str) -> None:
+    """Pretty-print or JSON-print a HarnessReport."""
+    if output_format == "json":
+        payload = {
+            "workspace": str(report.workspace),
+            "claude_invoked": report.claude_invoked,
+            "claude_returncode": report.claude_returncode,
+            "claude_stderr_excerpt": report.claude_stderr_excerpt,
+            "passed": report.passed,
+            "probes": [
+                {
+                    "name": p.name,
+                    "passed": p.passed,
+                    "detail": p.detail,
+                    "captured": p.captured,
+                }
+                for p in report.probes
+            ],
+        }
+        click.echo(json.dumps(payload, indent=2, default=str))
+        return
+
+    if not report.claude_invoked:
+        click.echo(f"❌ {report.claude_stderr_excerpt}")
+        click.echo("\nThis test requires `claude` (Claude Code CLI) on PATH.")
+        return
+
+    if report.claude_returncode != 0:
+        click.echo(f"⚠️  claude exited with code {report.claude_returncode}")
+        if report.claude_stderr_excerpt:
+            click.echo(f"   stderr (last 400 chars): {report.claude_stderr_excerpt}")
+        click.echo()
+
+    if not report.probes:
+        click.echo("(no probes ran — claude failed before any tool use)")
+        return
+
+    click.echo(f"workspace: {report.workspace}")
+    click.echo()
+    for p in report.probes:
+        mark = "✅" if p.passed else "❌"
+        click.echo(f"{mark} {p.name}")
+        click.echo(f"   {p.detail}")
+        if p.captured:
+            for k, v in p.captured.items():
+                click.echo(f"   {k}: {v!r}")
+        click.echo()
+
+    if report.passed:
+        click.echo("All empirical hook claims verified. ADR-0023's marker scheme is safe.")
+    else:
+        click.echo("One or more probes failed. See ADR-0023 §'Empirical-test debt'.")
+
+
+@main.command("verify-cc-hooks")
+@click.option(
+    "--workspace",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Persist the probe workspace at this path (default: a fresh temp dir, kept for inspection).",
+)
+@click.option(
+    "--prompt",
+    "claude_prompt",
+    type=str,
+    default="List the files in the current directory.",
+    show_default=True,
+    help="Prompt to send to `claude -p`. Should reliably trigger at least one tool use.",
+)
+@click.option(
+    "--timeout",
+    type=float,
+    default=60.0,
+    show_default=True,
+    help="Seconds to wait for the claude subprocess.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Only check whether `claude` is present on PATH; don't run the harness.",
+)
+def verify_cc_hooks(
+    workspace: Path | None,
+    claude_prompt: str,
+    timeout: float,
+    output_format: str,
+    check_only: bool,
+) -> None:
+    """Verify Claude Code's hook subprocess behaviors empirically.
+
+    Three load-bearing assumptions about Claude Code's hook subsystem are
+    documented in `docs/claude-code-contract.md` as ❓ Assumed but unverified.
+    ADR-0023 names them as load-bearing for the `# maury-managed` marker
+    scheme and for drift attribution.
+
+    This command sets up an isolated workspace, drops probe `PostToolUse`
+    hooks into it, runs `claude -p` against it so the hooks fire, and
+    reports pass/fail for each empirical claim. Nothing in the user's
+    real `~/.claude/` is modified.
+
+    Exit code: 0 if all probes pass, 1 otherwise.
+    """
+    if check_only:
+        if claude_present():
+            click.echo("✅ `claude` is present on PATH.")
+            sys.exit(0)
+        else:
+            click.echo("❌ `claude` not found on PATH.")
+            sys.exit(1)
+
+    report = run_empirical(
+        workspace=workspace,
+        claude_prompt=claude_prompt,
+        timeout=timeout,
+    )
+
+    _print_empirical_report(report, output_format)
+    sys.exit(0 if report.passed else 1)
