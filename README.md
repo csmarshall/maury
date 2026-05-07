@@ -1,16 +1,10 @@
+<p align="center">
+  <img src="docs/masthead.svg" alt="maury — On a mission from Claude." width="900">
+</p>
+
 # maury
 
-> *On a mission from Claude.*
-
-```
-  ┌──────────────────────────┐
-  │  MAURY SLINE             │
-  │  ─────────────           │
-  │  Talent Agent            │
-  │  Configs · Hosts · Skills│
-  │  Chicago, IL             │
-  └──────────────────────────┘
-```
+> *"On a mission from Claude."*
 
 Multi-host Claude Code configuration sync, profile isolation, and
 learned-rule mining. Maury keeps `~/.claude/` consistent across machines,
@@ -180,3 +174,14 @@ Maury stands on shoulders. Credit:
 ## License
 
 MIT. See `LICENSE`.
+
+---
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo.svg" alt="maury" width="84">
+  </picture>
+</p>
+
+<p align="center"><sub><code>m. sline · prop.</code></sub></p>
