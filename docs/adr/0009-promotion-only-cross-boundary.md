@@ -50,6 +50,17 @@ could leak content classification.
   local quarantine, never to git.
 - Curator role follows repo access, not host identity (per ADR-0003).
 
+## See also
+
+- [ADR-0027](0027-cross-context-promotion-via-shared-root.md)
+  adds the **inheritance-graph constraint** on top of this
+  ADR's mechanics: promotion can only flow along extends edges
+  (or shared-root paths). Together: this ADR says *how*
+  cross-boundary promotion happens (proposal queue, curator
+  review, audit); ADR-0027 says *where in the graph* it's
+  permitted to happen (no lateral cross-profile, must go
+  through shared ancestor).
+
 ## Alternatives considered
 
 - **Direct cross-repo writes from work hosts.** Rejected: violates the

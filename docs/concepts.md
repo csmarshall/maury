@@ -209,16 +209,17 @@ A finding in `acme-client` CANNOT be promoted directly to
 `globex-client` even though they share a parent — you have to go
 through `work` (the shared parent) or `base` (the shared root).
 
-> **What ADR-0009 already covers vs. what planned ADR-0027 will
-> add:** [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
+> **What ADR-0009 covers vs. what ADR-0027 adds:**
+> [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
 > establishes the *cross-trust-boundary promotion mechanics* —
-> the proposal queue, curator review, audit trail. Planned
-> ADR-0027 adds the *inheritance-graph constraint* on top:
-> promotion can only flow along extends edges (or shared-root
-> paths), so lateral cross-profile promotion is forbidden by the
-> graph itself, not just by the curator's discretion. The two
-> compose: ADR-0009 says "how" promotion happens; ADR-0027 will
-> say "where in the graph it's permitted to happen."
+> the proposal queue, curator review, audit trail.
+> [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md)
+> adds the *inheritance-graph constraint* on top: promotion
+> can only flow along extends edges (or shared-root paths), so
+> lateral cross-profile promotion is forbidden by the graph
+> itself, not just by the curator's discretion. The two
+> compose: ADR-0009 says "how" promotion happens; ADR-0027
+> says "where in the graph it's permitted to happen."
 
 ### 4. Layer
 
@@ -290,7 +291,7 @@ that ADRs reach for when describing contribution flows.
 | Mode | Read | Write | Used when |
 |---|---|---|---|
 | **`ro`** | yes | none | Default. Child consumes parent content; no path to modify the parent's source directly from this host. |
-| **`pr`** *(planned)* | yes | via pull request, requires curator approval | Child can submit changes for review; curator merges. **Not yet expressible in the manifest schema** — ADR-0003 currently defines only `ro`/`rw`. The `pr` mode lands in a planned gap-K ADR alongside the workflow tooling. Mechanically, `pr` is a workflow layered on top of `ro` deploy-key access plus a side channel (e.g., GitHub PR via `gh`); the mode value just makes the contract explicit in the manifest. |
+| **`pr`** | yes | via pull request, requires curator approval | Child can submit changes for review; curator merges. Specified in [ADR-0033](adr/0033-pr-repo-mode.md); **lands in manifest schema v3** alongside the existing `ro`/`rw`. Mechanically, `pr` is a workflow layered on top of `ro` deploy-key access plus a side channel (e.g., GitHub PR via `gh`); the mode value just makes the contract explicit in the manifest. |
 | **`rw`** | yes | direct push | Full trust. Curator hosts have this on the repos they maintain. |
 
 The mode is a property of the **access path** — specifically the
@@ -523,13 +524,13 @@ that doesn't import OO baggage.
 | **Layer** | One source of content composed at render | [§4](#4-layer) |
 | **Host overlay** | Per-host slice of a profile's content | [§4](#4-layer) |
 | **Active profile** | The one profile a host is currently in | [§5](#5-active-profile) |
-| **Inheritance access mode** | What a child can do to a forebearer's canonical state: `ro` / `pr` / `rw` | [§6](#6-inheritance-access-mode), planned gap-K ADR (pr mode) |
+| **Inheritance access mode** | What a child can do to a forebearer's canonical state: `ro` / `pr` / `rw` | [§6](#6-inheritance-access-mode), [ADR-0033](adr/0033-pr-repo-mode.md) (pr mode mechanics) |
 | **`maury-status` skill** | Claude-invokable mid-session affordance that surfaces maury's view of host state (active profile, drift, pending captures/proposals, active sessions) | [ADR-0017 §"The `maury-status` skill"](adr/0017-drift-detection-and-reconciliation.md#the-maury-status-skill) |
 | **Context** | Active profile + its inheritance chain | [§5](#5-active-profile) (NOT Claude Code's "session context") |
 | **Render** | Compose all layers → write to `~/.claude/` | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
 | **Refinement** | Default merge semantics: child adds to parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
 | **Replacement** | Explicit override semantics: child replaces parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
-| **Promotion** | Move content up the inheritance graph (toward base) | [ADR-0009](adr/0009-promotion-only-cross-boundary.md), ADR-0027 (planned) |
+| **Promotion** | Move content up the inheritance graph (toward base) | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (mechanics), [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md) (graph constraint) |
 | **Cross-trust-boundary promotion** | Promotion that crosses repos (e.g., work → base when base lives in a separate repo) — requires a curator host with write access to both repos | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
 | **Curator** | A user (and the host they operate on) with write access to a higher-trust repo. Acts as the gate for cross-trust-boundary promotion review | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
 | **Provenance** | The record of where rendered content came from (which layer contributed which lines) — surfaced as a comment block at the top of every rendered file | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md), Tenet 7 |

@@ -77,7 +77,8 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | docs/claude-code-contract.md | ✅ shipped (9 documented + 5 assumed-but-unverified entries) |
 | docs/claude-code-snapshots/ | ✅ shipped (8 HTML snapshots, MANIFEST with sha256) |
 | docs/adr/ (0001-0025) | ✅ shipped |
-| Planned ADRs: 0026 (profile-aware mining), 0027 (cross-context promotion via shared root), 0028 (`pr` repo mode), 0029 (published/subscribed profiles) | ⏳ planned |
+| ADRs 0026 (profile-aware mining), 0027 (cross-context promotion via shared root), 0028 (offline behavior), 0029 (maury-state layout contract), 0030 (manifest schema migrations), 0031 (self-update), 0032 (backup + DR), 0033 (`pr` repo mode), 0034 (published/subscribed profiles) | ✅ shipped |
+| Planned: Phase 10 audit log ADR (gap-M, not yet drafted; multiple ADRs reference it) | ⏳ planned |
 | docs/patterns/team-upstream.md (gap K) | ⏳ planned |
 
 ## How to read this file alongside the ADRs
