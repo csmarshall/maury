@@ -112,6 +112,9 @@ For everything else:
 - [`docs/claude-code-contract.md`](docs/claude-code-contract.md) —
   what maury depends on Claude Code doing, and how confident we
   are in each claim.
+- [`docs/porting-to-new-os.md`](docs/porting-to-new-os.md) —
+  primer for adding maury support on an OS beyond the three
+  we currently exercise (macOS, Ubuntu, FreeBSD).
 - [`docs/adr/`](docs/adr/) — architecture decisions, with each
   ADR citing the tenets it embodies and the Claude Code docs it
   references.
