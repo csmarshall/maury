@@ -13,6 +13,7 @@ from maury.bootstrap import init as run_init
 from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
 from maury.doctor import Report, render_json, render_text, run_all
+from maury.drift import detect_drift, read_last_render
 from maury.ids import short as short_id
 from maury.llm import BackendUnavailableError, get_backend
 from maury.manifest import (
@@ -30,6 +31,13 @@ from maury.mining import (
     extract_from_messages,
     walk_user_messages,
 )
+from maury.reconcile import (
+    ALL_ACTIONS,
+    ReconcileAction,
+)
+from maury.reconcile import (
+    reconcile as run_reconcile,
+)
 from maury.render import RenderError, apply_render, render
 from maury.rules import (
     RuleParseError,
@@ -38,7 +46,7 @@ from maury.rules import (
     render_trace,
     validate_rules,
 )
-from maury.sync import RepoSyncResult, SyncError
+from maury.sync import DRIFT_SCAN_DIRS, RepoSyncResult, SyncError
 from maury.sync import sync as run_sync
 
 BANNER = r"""
@@ -441,6 +449,145 @@ def init_cmd(
 def status() -> None:
     """Show reachable repos and sync state."""
     raise click.ClickException("not yet implemented")
+
+
+@main.command("reconcile")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=str(Path.home() / ".claude"),
+    show_default=True,
+    help="Target directory whose drift to reconcile.",
+)
+@click.option(
+    "--repos-root",
+    "repos_root",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=str(Path.home() / ".config" / "maury" / "repos"),
+    show_default=True,
+    help="Where local clones live.",
+)
+def reconcile_cmd(
+    manifest_file: Path | None,
+    target_dir: Path,
+    repos_root: Path,
+) -> None:
+    """Walk hand-edit drift on the target dir and prompt for each.
+
+    Per ADR-0017's reconcile menu (5 actions for hand-edits): adopt /
+    adapt / mark-managed / revert / skip-once. Run after `maury sync`
+    refuses on drift, or any time you want to inspect/clean up drift.
+
+    v0: hand-edit menu only. Claude-write drift menu (3 actions) lands
+    when claude-writes.jsonl attribution is wired (Phase 5.x.a slice 5).
+    """
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    if not mpath.exists():
+        raise click.ClickException(f"manifest file not found: {mpath}")
+
+    # Read baseline; refuse if absent (no baseline = no drift to reconcile).
+    last = read_last_render(target_dir)
+    if last is None:
+        click.echo(
+            f"no last-render.json found at {target_dir}/maury-state/. Run `maury sync` first to establish a baseline."
+        )
+        sys.exit(2)
+
+    try:
+        m = load_manifest(mpath)
+    except ManifestError as e:
+        raise click.ClickException(str(e)) from e
+
+    # Resolve current host + profile by host_id stored in last-render
+    # (no need to re-do the full host-id lookup since the baseline
+    # already encodes which host rendered this).
+    host_spec = m.hosts.get(last.host_id)
+    if host_spec is None:
+        raise click.ClickException(
+            f"baseline references host_id {last.host_id!r} which is no longer in the manifest. "
+            f"Re-run `maury sync` to re-establish the baseline against the current manifest."
+        )
+    profile_id = host_spec.profile
+    profile_spec = m.profiles.get(profile_id)
+    profile_name = profile_spec.name if profile_spec else profile_id
+
+    # Detect drift
+    drift_report = detect_drift(
+        target_dir=target_dir,
+        last=last,
+        untracked_scan_dirs=DRIFT_SCAN_DIRS,
+    )
+    if not drift_report.has_drift():
+        click.echo(f"clean: no drift on {target_dir}.")
+        return
+
+    counts = drift_report.summary_counts()
+    click.echo(f"drift: modified={counts['modified']} missing={counts['missing']} untracked={counts['untracked']}")
+    click.echo("")
+
+    # Re-render so REVERT has access to baseline content.
+    base_path = repos_root / "base"
+    if not base_path.is_dir():
+        raise click.ClickException(
+            f"base repo not present at {base_path}. Run `maury sync` first (it clones repos before render)."
+        )
+    try:
+        rendered = render(
+            repo_paths={"base": base_path},
+            manifest=m,
+            profile_id=profile_id,
+            host_id=last.host_id,
+        )
+    except RenderError as e:
+        raise click.ClickException(f"render failed: {e}") from e
+
+    # Interactive prompter: for each entry, show the diff context and
+    # the 5-action menu.
+    def _prompter(entry):  # type: ignore[no-untyped-def]
+        click.echo(f"--- {entry.kind.value:<10} {entry.path}")
+        if entry.expected_sha and entry.actual_sha:
+            click.echo(f"    baseline: {entry.expected_sha[:12]}  on-disk: {entry.actual_sha[:12]}")
+        prompt = "  action [{}]".format("/".join(a.value for a in ALL_ACTIONS))
+        choice_text = click.prompt(prompt, default=ReconcileAction.SKIP_ONCE.value)
+        try:
+            return ReconcileAction(choice_text)
+        except ValueError:
+            click.echo(f"  unrecognized choice {choice_text!r}; defaulting to skip-once.")
+            return ReconcileAction.SKIP_ONCE
+
+    # Resolve the base repo path for hand-managed.json writes.
+    summary = run_reconcile(
+        drift_report=drift_report,
+        target_dir=target_dir,
+        rendered=rendered,
+        prompter=_prompter,
+        base_repo=base_path,
+        profile_name=profile_name,
+        host_name=host_spec.name,
+    )
+
+    click.echo("")
+    click.echo(
+        f"reconcile: "
+        f"adopted={summary.captures_written - summary.paths_falling_back_to_adopt} "
+        f"adapt-fallback={summary.paths_falling_back_to_adopt} "
+        f"marked-managed={summary.paths_marked_managed} "
+        f"reverted={summary.paths_reverted} "
+        f"skipped={summary.paths_skipped}"
+    )
+    if summary.has_errors():
+        click.echo("errors:")
+        for err in summary.errors:
+            click.echo(f"  ✗ {err}", err=True)
+        sys.exit(1)
 
 
 DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
