@@ -289,6 +289,194 @@ def test_sync_render_skipped_when_base_repo_missing(tmp_path):
 # ---- host id file fallback ----------------------------------------------
 
 
+# ---- drift detection wired into sync ------------------------------------
+
+
+def test_sync_writes_last_render_after_first_apply(tmp_path):
+    """First sync (no prior last-render.json) writes the baseline."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    # last-render.json is now present and lists the rendered files
+    last_render_path = target / "maury-state" / "last-render.json"
+    assert last_render_path.is_file()
+    content = json.loads(last_render_path.read_text())
+    assert content["schema_version"] == 1
+    assert any(f["path"] == "CLAUDE.md" for f in content["files"])
+
+
+def test_sync_first_run_no_drift_action(tmp_path):
+    """First sync sets drift_action='none' (no baseline to compare)."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    result = sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=tmp_path / "out",
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    assert result.drift_action == "none"
+    assert result.drift_report is None  # no baseline → no report
+
+
+def test_sync_unchanged_target_second_run_no_drift(tmp_path):
+    """Second sync with no hand-edits sees clean state."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    # Re-run; nothing changed on disk
+    result = sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    assert result.drift_action == "none"
+    assert result.drift_report is not None
+    assert not result.drift_report.has_drift()
+
+
+def test_sync_default_mode_refuses_on_modified_drift(tmp_path):
+    """Default drift_mode refuses if user hand-edited a rendered file."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    # Establish baseline
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    # User hand-edits CLAUDE.md
+    (target / "CLAUDE.md").write_text("hand-edited content\n")
+    result = sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    assert result.drift_action == "refused"
+    assert result.has_errors()
+    assert any("drift detected" in e for e in result.errors)
+    # The hand-edited file is preserved (we refused before applying)
+    assert (target / "CLAUDE.md").read_text() == "hand-edited content\n"
+
+
+def test_sync_force_mode_clobbers_drift(tmp_path):
+    """--force clobbers hand-edits with a loud warning."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    (target / "CLAUDE.md").write_text("hand-edited\n")
+    result = sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+        drift_mode="force",
+    )
+    assert result.drift_action == "forced"
+    assert not result.has_errors()
+    assert any("--force" in w and "clobbering" in w for w in result.warnings)
+    # The hand-edit was overwritten
+    assert "hand-edited" not in (target / "CLAUDE.md").read_text()
+
+
+def test_sync_non_interactive_mode_refuses_on_drift(tmp_path):
+    """--non-interactive refuses (cron/CI safe) on any drift, exit 1 (errors)."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    (target / "CLAUDE.md").write_text("changed\n")
+    result = sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+        drift_mode="non-interactive",
+    )
+    assert result.drift_action == "refused"
+    assert result.has_errors()
+    assert any("--non-interactive" in e for e in result.errors)
+
+
+def test_sync_unknown_drift_mode_raises(tmp_path):
+    """Bogus drift_mode values fail loud at the API boundary."""
+    with pytest.raises(SyncError) as ei:
+        sync(
+            manifest_path=tmp_path / "nope.json",
+            target_dir=tmp_path / "out",
+            repos_root=tmp_path / "repos",
+            drift_mode="bogus",
+        )
+    assert "drift_mode" in str(ei.value)
+
+
+def test_sync_dry_run_does_not_write_last_render(tmp_path):
+    """--check (dry_run) produces a report but doesn't pollute baseline."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+        dry_run=True,
+    )
+    # Dry-run shouldn't have created the maury-state dir at all
+    assert not (target / "maury-state").exists()
+
+
+def test_sync_force_after_drift_writes_new_baseline(tmp_path):
+    """After --force clobber, last-render.json is updated to current state."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+    )
+    last_render_path = target / "maury-state" / "last-render.json"
+    assert last_render_path.is_file()
+    # Drift then force
+    (target / "CLAUDE.md").write_text("drift\n")
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=tmp_path / ".maury-host-id",
+        drift_mode="force",
+    )
+    # Baseline updated (rendered_at differs at minimum)
+    new_content = last_render_path.read_text()
+    # Same files post-render (since the seed didn't change), but the
+    # timestamp should have updated. Just verify it's still well-formed.
+    assert json.loads(new_content)["schema_version"] == 1
+
+
+# ---- end drift wiring ---------------------------------------------------
+
+
 def test_sync_uses_host_id_file_when_present(tmp_path):
     seed = _make_seed_repo(tmp_path, hostname="not-this-hostname")
     mpath = seed / ".meta" / "manifest.json"

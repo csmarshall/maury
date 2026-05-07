@@ -34,6 +34,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from maury.drift import (
+    DriftReport,
+    FileFingerprint,
+    LastRender,
+    detect_drift,
+    read_last_render,
+    write_last_render,
+)
 from maury.manifest import (
     HOST_ID_FILE,
     HostSpec,
@@ -44,6 +52,13 @@ from maury.manifest import (
     load_manifest,
 )
 from maury.render import RenderError, RenderResult, apply_render, render
+
+# Subdirs that maury renders content into; drift detection scans these
+# for UNTRACKED files (files maury didn't put there but live under a
+# managed prefix). Top-level files (CLAUDE.md, settings.json) are
+# detected via the baseline comparison in detect_drift, not via the
+# scan-dirs walk.
+DRIFT_SCAN_DIRS = ["agents", "skills", "bin"]
 
 # ---- result types -------------------------------------------------------
 
@@ -68,6 +83,8 @@ class SyncResult:
     apply_actions: list[str] = field(default_factory=list)
     host_id: str | None = None
     profile_id: str | None = None
+    drift_report: DriftReport | None = None
+    drift_action: str = ""  # "" | "none" | "skipped" | "forced" | "refused"
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -77,6 +94,17 @@ class SyncResult:
 
 class SyncError(ValueError):
     """Raised when sync inputs are invalid before any I/O."""
+
+
+# Drift-handling modes per ADR-0017's three sync flows:
+# - "default": refuse on drift in v0 (reconcile menu is a later slice);
+#              point user at --force or `maury reconcile` (planned).
+# - "force": pull and clobber with loud warning to stderr (Flow A).
+# - "non-interactive": refuse on any drift, exit 1 (Flow C, cron/CI safe).
+DRIFT_MODE_DEFAULT = "default"
+DRIFT_MODE_FORCE = "force"
+DRIFT_MODE_NON_INTERACTIVE = "non-interactive"
+_DRIFT_MODES = {DRIFT_MODE_DEFAULT, DRIFT_MODE_FORCE, DRIFT_MODE_NON_INTERACTIVE}
 
 
 # ---- public API ---------------------------------------------------------
@@ -89,6 +117,7 @@ def sync(
     repos_root: Path,
     host_id_file: Path = HOST_ID_FILE,
     dry_run: bool = False,
+    drift_mode: str = DRIFT_MODE_DEFAULT,
     on_repo_progress: Callable[[RepoSyncResult], None] | None = None,
 ) -> SyncResult:
     """Run the v0 sync flow.
@@ -103,8 +132,14 @@ def sync(
         host_id_file: location of `~/.maury-host-id`.
         dry_run: when True, don't actually `git pull` (no I/O on remote)
             and don't write the rendered output. Useful for `--check`.
+        drift_mode: how to handle drift when detected (per ADR-0017's
+            three sync flows). One of "default", "force",
+            "non-interactive". Default = refuse on drift in v0
+            (reconcile menu is a later slice).
         on_repo_progress: optional callback fired after each repo op.
     """
+    if drift_mode not in _DRIFT_MODES:
+        raise SyncError(f"unknown drift_mode {drift_mode!r}; expected one of {sorted(_DRIFT_MODES)}")
     if not manifest_path.is_file():
         raise SyncError(f"manifest not found: {manifest_path}")
 
@@ -172,8 +207,95 @@ def sync(
 
     result.render_result = rendered
     result.warnings.extend(rendered.warnings)
+
+    # Drift detection per ADR-0017. Run BEFORE apply so we can refuse
+    # before clobbering hand-edits.
+    last = read_last_render(target_dir)
+    if last is None:
+        # First-time render on this target. No baseline to compare
+        # against — bootstrap case. Skip drift detection; proceed to
+        # apply normally. The apply step writes the initial
+        # last-render.json.
+        result.drift_action = "none"
+    else:
+        drift_report = detect_drift(
+            target_dir=target_dir,
+            last=last,
+            untracked_scan_dirs=DRIFT_SCAN_DIRS,
+        )
+        result.drift_report = drift_report
+
+        if drift_report.has_drift():
+            if drift_mode == DRIFT_MODE_FORCE:
+                result.drift_action = "forced"
+                counts = drift_report.summary_counts()
+                result.warnings.append(
+                    f"--force: clobbering drift "
+                    f"(modified={counts['modified']}, "
+                    f"missing={counts['missing']}, "
+                    f"untracked={counts['untracked']}). "
+                    f"Hand-edits will be overwritten."
+                )
+            elif drift_mode == DRIFT_MODE_NON_INTERACTIVE:
+                result.drift_action = "refused"
+                counts = drift_report.summary_counts()
+                result.errors.append(
+                    f"--non-interactive: refusing on drift "
+                    f"(modified={counts['modified']}, "
+                    f"missing={counts['missing']}, "
+                    f"untracked={counts['untracked']}). "
+                    f"Re-run interactively or with --force."
+                )
+                return result
+            else:
+                # Default mode. The reconcile menu (Phase 5.x slice 3
+                # per ADR-0017) is not yet wired; v0 refuses with a
+                # pointer at --force as the escape hatch.
+                result.drift_action = "refused"
+                counts = drift_report.summary_counts()
+                result.errors.append(
+                    f"drift detected on this host's `~/.claude/` "
+                    f"(modified={counts['modified']}, "
+                    f"missing={counts['missing']}, "
+                    f"untracked={counts['untracked']}). "
+                    f"Re-run with --force to overwrite (hand-edits "
+                    f"will be lost), or use --check to inspect. "
+                    f"`maury reconcile` (interactive resolution per "
+                    f"ADR-0017) is a planned follow-up slice."
+                )
+                return result
+        else:
+            result.drift_action = "none"
+
     result.apply_actions = apply_render(rendered, target_dir, dry_run=dry_run)
+
+    # Write last-render.json baseline if we actually applied changes.
+    # Skip on dry_run (don't pollute state with a hypothetical render).
+    if not dry_run:
+        new_baseline = LastRender(
+            schema_version=1,
+            rendered_at=_now_iso(),
+            host_id=hid,
+            profile_id=host_spec.profile,
+            files=[
+                FileFingerprint.from_bytes(
+                    path=f.target_path,
+                    content=f.content,
+                )
+                for f in rendered.files
+            ],
+        )
+        write_last_render(target_dir, new_baseline)
+
     return result
+
+
+def _now_iso() -> str:
+    """UTC ISO-8601 timestamp. Module-private so callers can't accidentally
+    drift the format used in last-render.json."""
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---- internals ----------------------------------------------------------

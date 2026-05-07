@@ -476,19 +476,37 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
     is_flag=True,
     help="Dry-run: don't pull from remotes, don't write to target.",
 )
+@click.option(
+    "--force",
+    "force",
+    is_flag=True,
+    help="If drift is detected on the target dir, overwrite anyway. Hand-edits will be lost.",
+)
+@click.option(
+    "--non-interactive",
+    "non_interactive",
+    is_flag=True,
+    help="Refuse on any drift, exit 1. Cron/CI safe.",
+)
 def sync_cmd(
     manifest_file: Path | None,
     target_dir: Path,
     repos_root: Path,
     check: bool,
+    force: bool,
+    non_interactive: bool,
 ) -> None:
     """Pull all reachable repos, render, and apply.
 
     v0: assumes the host's manifest entry declares a repo named 'base';
-    drift detection (per ADR-0017), multi-repo profile composition, and
-    push of pending proposals are deferred to subsequent slices.
+    multi-repo profile composition and push of pending proposals are
+    deferred to subsequent slices. Drift detection per ADR-0017's three
+    flows is wired in (--check / --non-interactive / --force / default).
     """
+    if force and non_interactive:
+        raise click.ClickException("--force and --non-interactive are mutually exclusive.")
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    drift_mode = "force" if force else ("non-interactive" if non_interactive else "default")
 
     # Live progress: print each repo as it completes
     def _progress(rs: RepoSyncResult) -> None:
@@ -509,6 +527,10 @@ def sync_cmd(
     click.echo(f"      repos-root={repos_root}")
     if check:
         click.echo("      --check (dry-run; no remote I/O, no writes)")
+    if force:
+        click.echo("      --force (clobber drift)")
+    if non_interactive:
+        click.echo("      --non-interactive (refuse on drift)")
     click.echo("")
 
     try:
@@ -517,6 +539,7 @@ def sync_cmd(
             target_dir=target_dir,
             repos_root=repos_root,
             dry_run=check,
+            drift_mode=drift_mode,
             on_repo_progress=_progress,
         )
     except SyncError as e:
@@ -527,6 +550,21 @@ def sync_cmd(
         click.echo(f"host:    {short_id(result.host_id)}")
     if result.profile_id:
         click.echo(f"profile: {short_id(result.profile_id)}")
+
+    # Drift report (only present after first-render)
+    if result.drift_report is not None:
+        counts = result.drift_report.summary_counts()
+        click.echo("")
+        click.echo(
+            f"drift:   modified={counts['modified']} "
+            f"missing={counts['missing']} "
+            f"untracked={counts['untracked']} "
+            f"(action: {result.drift_action})"
+        )
+        for entry in result.drift_report.entries:
+            if entry.kind.value == "expected":
+                continue  # skip the boring rows
+            click.echo(f"  {entry.kind.value:<10} {entry.path}")
 
     if result.warnings:
         click.echo("")
