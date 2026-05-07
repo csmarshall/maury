@@ -21,14 +21,45 @@ from maury.empirical_tests import (
     _evaluate_comment,
     _evaluate_env,
     _evaluate_io,
+    _parse_env_output,
+    _write_probe_scripts,
     claude_present,
 )
+
+# ---- _write_probe_scripts ------------------------------------------------
+
+
+def _make_scripts(tmp_path: Path) -> tuple[dict[str, Path], Path]:
+    """Test helper: materialize probe scripts into a fresh tmp tree."""
+    scripts_dir = tmp_path / "scripts"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    scripts = _write_probe_scripts(scripts_dir, out_dir)
+    return scripts, out_dir
+
+
+def test_write_probe_scripts_creates_three_executables(tmp_path: Path) -> None:
+    scripts, _ = _make_scripts(tmp_path)
+    assert set(scripts.keys()) == {"comment", "env", "io"}
+    for path in scripts.values():
+        assert path.exists()
+        # Owner-execute bit must be set so the hook can run them.
+        assert path.stat().st_mode & 0o100
+
+
+def test_probe_scripts_are_posix_sh_shebang(tmp_path: Path) -> None:
+    scripts, _ = _make_scripts(tmp_path)
+    for path in scripts.values():
+        first_line = path.read_text().splitlines()[0]
+        assert first_line == "#!/bin/sh"
+
 
 # ---- _build_settings -----------------------------------------------------
 
 
 def test_build_settings_has_three_post_tool_use_probes(tmp_path: Path) -> None:
-    settings = _build_settings(tmp_path)
+    scripts, out_dir = _make_scripts(tmp_path)
+    settings = _build_settings(out_dir, scripts)
 
     assert "hooks" in settings
     assert "PostToolUse" in settings["hooks"]
@@ -41,7 +72,8 @@ def test_build_settings_has_three_post_tool_use_probes(tmp_path: Path) -> None:
 
 
 def test_comment_probe_includes_marker(tmp_path: Path) -> None:
-    settings = _build_settings(tmp_path)
+    scripts, out_dir = _make_scripts(tmp_path)
+    settings = _build_settings(out_dir, scripts)
     comment_probe = settings["hooks"]["PostToolUse"][0]["hooks"][0]
     assert COMMENT_MARKER in comment_probe["command"]
     # The marker must be a trailing shell comment, not a flag or arg.
@@ -50,10 +82,33 @@ def test_comment_probe_includes_marker(tmp_path: Path) -> None:
 
 def test_settings_round_trips_through_json(tmp_path: Path) -> None:
     """Settings must be JSON-serializable so they can land in settings.json."""
-    settings = _build_settings(tmp_path)
+    scripts, out_dir = _make_scripts(tmp_path)
+    settings = _build_settings(out_dir, scripts)
     encoded = json.dumps(settings)
     decoded = json.loads(encoded)
     assert decoded == settings
+
+
+# ---- _parse_env_output ---------------------------------------------------
+
+
+def test_parse_env_output_basic() -> None:
+    text = "path=/usr/bin\nhome=/Users/x\npwd=/tmp\n"
+    parsed = _parse_env_output(text)
+    assert parsed == {"path": "/usr/bin", "home": "/Users/x", "pwd": "/tmp"}
+
+
+def test_parse_env_output_handles_equals_in_value() -> None:
+    """Values containing `=` (e.g., URLs with query strings) preserve them."""
+    text = "endpoint=https://x.example.com/?a=1&b=2\n"
+    parsed = _parse_env_output(text)
+    assert parsed["endpoint"] == "https://x.example.com/?a=1&b=2"
+
+
+def test_parse_env_output_skips_lines_without_equals() -> None:
+    text = "path=/usr/bin\n# comment\n\nhome=/x\n"
+    parsed = _parse_env_output(text)
+    assert parsed == {"path": "/usr/bin", "home": "/x"}
 
 
 # ---- _evaluate_comment ---------------------------------------------------
@@ -95,17 +150,9 @@ def test_comment_eval_fails_on_unexpected_content(tmp_path: Path) -> None:
 
 
 def test_env_eval_passes_with_path_and_home(tmp_path: Path) -> None:
-    out = tmp_path / "env.out.json"
+    out = tmp_path / "env.out"
     out.write_text(
-        json.dumps(
-            {
-                "path": "/usr/local/bin:/usr/bin",
-                "home": "/Users/probe",
-                "pwd": "/tmp/x",
-                "hook_event_name": "PostToolUse",
-                "claude_project_dir": "/tmp/x",
-            }
-        )
+        "path=/usr/local/bin:/usr/bin\nhome=/Users/probe\npwd=/tmp/x\nhook_event=unset\nproject_dir=/tmp/x\n"
     )
 
     result = _evaluate_env(out)
@@ -116,23 +163,13 @@ def test_env_eval_passes_with_path_and_home(tmp_path: Path) -> None:
 
 
 def test_env_eval_fails_on_missing_file(tmp_path: Path) -> None:
-    result = _evaluate_env(tmp_path / "absent.json")
+    result = _evaluate_env(tmp_path / "absent.out")
     assert not result.passed
-
-
-def test_env_eval_fails_on_invalid_json(tmp_path: Path) -> None:
-    out = tmp_path / "bad.json"
-    out.write_text("{not json")
-
-    result = _evaluate_env(out)
-
-    assert not result.passed
-    assert "not JSON" in result.detail
 
 
 def test_env_eval_fails_when_path_or_home_missing(tmp_path: Path) -> None:
-    out = tmp_path / "env.json"
-    out.write_text(json.dumps({"path": "", "home": ""}))
+    out = tmp_path / "env.out"
+    out.write_text("path=\nhome=\n")
 
     result = _evaluate_env(out)
 

@@ -44,24 +44,39 @@ from pathlib import Path
 # preceding this comment still runs and the probe file gets written.
 COMMENT_MARKER = "# maury-managed-empirical-probe"
 
-# Hook command template for the comment-stripping probe.
-# Trailing `# maury-managed-empirical-probe` is the comment-strip test.
-COMMENT_PROBE_TEMPLATE = '/bin/sh -c \'printf "%s" "ran" > "{out}"\' {marker}'
 
-# Env-capture probe writes a JSON document of relevant env + cwd.
-ENV_PROBE_TEMPLATE = (
-    "/bin/sh -c '"
-    'printf "{{\\"path\\":\\"%s\\",\\"home\\":\\"%s\\",\\"pwd\\":\\"%s\\","'
-    '"hook_event_name\\":\\"%s\\",\\"claude_project_dir\\":\\"%s\\"}}" '
-    '"$PATH" "$HOME" "$PWD" "${{CLAUDE_HOOK_EVENT:-unset}}" '
-    '"${{CLAUDE_PROJECT_DIR:-unset}}" > "{out}"'
-    "'"
-)
+def _comment_probe_script(out: Path) -> str:
+    """Probe shell that runs if the trailing `# maury-managed` is stripped cleanly."""
+    return f"""#!/bin/sh
+# Comment-stripping probe: if the shell strips the trailing `# maury-managed`
+# comment cleanly, this script runs and writes "ran" to the output path.
+printf '%s' "ran" > "{out}"
+"""
 
-# File-IO probe creates a sibling directory + writes a file inside it.
-# Tests whether the hook subprocess has filesystem access to a path
-# it didn't pre-exist (the analog of writing to ~/.claude/maury-state/).
-IO_PROBE_TEMPLATE = '/bin/sh -c \'mkdir -p "{io_dir}" && printf "wrote-from-hook" > "{out}"\''
+
+def _env_probe_script(out: Path) -> str:
+    """Probe shell that captures the hook subprocess's env + cwd as key=value lines."""
+    return f"""#!/bin/sh
+# Env-capture probe: write a flat key=value file of the env vars and CWD
+# the hook subprocess sees. Line-based; no JSON quoting nightmare.
+{{
+    printf 'path=%s\\n' "$PATH"
+    printf 'home=%s\\n' "$HOME"
+    printf 'pwd=%s\\n' "$PWD"
+    printf 'hook_event=%s\\n' "${{CLAUDE_HOOK_EVENT:-unset}}"
+    printf 'project_dir=%s\\n' "${{CLAUDE_PROJECT_DIR:-unset}}"
+}} > "{out}"
+"""
+
+
+def _io_probe_script(io_dir: Path, out: Path) -> str:
+    """Probe shell that creates a sibling directory + writes a file inside it."""
+    return f"""#!/bin/sh
+# File-IO probe: create a directory that didn't exist, write a file inside.
+# Tests whether the hook subprocess has filesystem access to paths it
+# needs to provision (analog of writing to ~/.claude/maury-state/).
+mkdir -p "{io_dir}" && printf 'wrote-from-hook' > "{out}"
+"""
 
 
 @dataclass(frozen=True)
@@ -94,19 +109,52 @@ def claude_present() -> bool:
     return shutil.which("claude") is not None
 
 
-def _build_settings(out_dir: Path) -> dict[str, object]:
+def _write_probe_scripts(scripts_dir: Path, out_dir: Path) -> dict[str, Path]:
+    """Materialize the three probe shell scripts into scripts_dir.
+
+    Returns a mapping of probe name → absolute script path. The hook
+    commands in settings.json invoke these by absolute path; this avoids
+    embedding multi-arg printf calls (and their attendant shell-quoting
+    pitfalls) in the JSON command string.
+    """
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    comment_script = scripts_dir / "comment_probe.sh"
+    env_script = scripts_dir / "env_probe.sh"
+    io_script = scripts_dir / "io_probe.sh"
+
+    comment_out = out_dir / "comment.out"
+    env_out = out_dir / "env.out"
+    io_dir = out_dir / "maury-state-analog"
+    io_out = io_dir / "io.out"
+
+    comment_script.write_text(_comment_probe_script(comment_out))
+    env_script.write_text(_env_probe_script(env_out))
+    io_script.write_text(_io_probe_script(io_dir, io_out))
+
+    for path in (comment_script, env_script, io_script):
+        path.chmod(0o755)
+
+    return {
+        "comment": comment_script,
+        "env": env_script,
+        "io": io_script,
+    }
+
+
+def _build_settings(out_dir: Path, scripts: dict[str, Path]) -> dict[str, object]:
     """Construct a Claude Code settings.json that installs the three probe hooks.
 
     Per Claude Code docs, hooks live under settings["hooks"][<event>] as a list
     of {matcher, hooks: [{type:"command", command:"..."}]} groups. PostToolUse
     fires after every tool invocation, so any tool use by Claude during
     `claude -p` will trigger all three probes.
-    """
-    comment_out = out_dir / "comment.out"
-    env_out = out_dir / "env.out.json"
-    io_dir = out_dir / "maury-state-analog"
-    io_out = io_dir / "io.out"
 
+    The comment probe's command string carries a trailing shell comment
+    (`# maury-managed-empirical-probe`); if the shell strips that comment
+    cleanly, the script preceding it executes and writes "ran" — which is
+    exactly what ADR-0023's marker scheme depends on.
+    """
     return {
         "hooks": {
             "PostToolUse": [
@@ -115,21 +163,15 @@ def _build_settings(out_dir: Path) -> dict[str, object]:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": COMMENT_PROBE_TEMPLATE.format(
-                                out=comment_out,
-                                marker=COMMENT_MARKER,
-                            ),
+                            "command": f"{scripts['comment']} {COMMENT_MARKER}",
                         },
                         {
                             "type": "command",
-                            "command": ENV_PROBE_TEMPLATE.format(out=env_out),
+                            "command": str(scripts["env"]),
                         },
                         {
                             "type": "command",
-                            "command": IO_PROBE_TEMPLATE.format(
-                                io_dir=io_dir,
-                                out=io_out,
-                            ),
+                            "command": str(scripts["io"]),
                         },
                     ],
                 }
@@ -169,6 +211,21 @@ def _evaluate_comment(out_path: Path) -> ProbeResult:
     )
 
 
+def _parse_env_output(text: str) -> dict[str, str]:
+    """Parse the env probe's flat key=value output into a dict.
+
+    Format per line: `<key>=<value>`. Unknown keys are kept as-is.
+    Lines without `=` are ignored. Trailing newlines are stripped from values.
+    """
+    result: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        result[key.strip()] = value
+    return result
+
+
 def _evaluate_env(out_path: Path) -> ProbeResult:
     """What does the hook subprocess see for PATH/HOME/PWD?"""
     if not out_path.exists():
@@ -177,15 +234,8 @@ def _evaluate_env(out_path: Path) -> ProbeResult:
             passed=False,
             detail=f"env probe output not found at {out_path}",
         )
-    try:
-        captured = json.loads(out_path.read_text())
-    except json.JSONDecodeError as exc:
-        return ProbeResult(
-            name="subprocess_env",
-            passed=False,
-            detail=f"env probe output is not JSON: {exc}",
-            captured={"raw": out_path.read_text()},
-        )
+    raw = out_path.read_text()
+    captured: dict[str, object] = dict(_parse_env_output(raw))
     # We pass if we got a non-empty PATH and HOME — the actual values are
     # informational (recorded in `captured`) for the user/ADR to reference.
     path_val = str(captured.get("path", ""))
@@ -194,14 +244,14 @@ def _evaluate_env(out_path: Path) -> ProbeResult:
         return ProbeResult(
             name="subprocess_env",
             passed=True,
-            detail=("hook subprocess inherited PATH and HOME; details captured for ADR reference."),
+            detail="hook subprocess inherited PATH and HOME; details captured for ADR reference.",
             captured=captured,
         )
     return ProbeResult(
         name="subprocess_env",
         passed=False,
-        detail=("hook subprocess missing PATH or HOME — absolute-path requirement in ADR-0023 §5 is justified."),
-        captured=captured,
+        detail="hook subprocess missing PATH or HOME — absolute-path requirement in ADR-0023 §5 is justified.",
+        captured=captured if captured else {"raw": raw},
     )
 
 
@@ -263,9 +313,10 @@ def run(
 
     out_dir = workspace / "probe-out"
     out_dir.mkdir(parents=True, exist_ok=True)
+    scripts = _write_probe_scripts(workspace / ".claude" / "probes", out_dir)
     settings_dir = workspace / ".claude"
     settings_dir.mkdir(parents=True, exist_ok=True)
-    (settings_dir / "settings.json").write_text(json.dumps(_build_settings(out_dir), indent=2))
+    (settings_dir / "settings.json").write_text(json.dumps(_build_settings(out_dir, scripts), indent=2))
 
     # Empty CLAUDE.md so Claude has *something* to read at session start
     # without inheriting the user's real instructions.
@@ -311,7 +362,7 @@ def run(
 
     probes = (
         _evaluate_comment(out_dir / "comment.out"),
-        _evaluate_env(out_dir / "env.out.json"),
+        _evaluate_env(out_dir / "env.out"),
         _evaluate_io(out_dir / "maury-state-analog" / "io.out"),
     )
 
