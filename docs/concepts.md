@@ -33,25 +33,30 @@ Two analogies, both useful:
 ### Analogy 1 — outfits in a wardrobe
 
 Imagine your `~/.claude/` directory is your **outfit for the day**.
-Different occasions need different outfits — work, home, client.
-Each is a **profile**.
 
-Some pieces go with everything: your watch, your favorite belt.
-You keep those in a **shared drawer** (the `base` profile) so you
-don't have to copy them into every outfit.
+The pieces of an outfit live in **drawers**. Each drawer is one
+profile (`personal`, `work`, `acme-client`, …). Some pieces go
+with everything: your watch, your favorite belt. You keep those
+in a **shared drawer** (the `base` profile) so you don't have to
+copy them into every other drawer.
 
 When you "get dressed" on a given machine — that's a **render** —
 maury opens the shared drawer first, then the profile-specific
 drawer for whichever context you've chosen, then adds any host-
 specific tweaks (a coat if it's cold on this particular machine).
 
-Drawers live in **locked cabinets** — a *trust boundary*. One
-cabinet can hold multiple drawers if you trust those contexts to
-coexist (a `consulting` cabinet might hold both `acme-client` and
-`globex-client` drawers). Each cabinet has its own lock; only
-some hosts have keys to a given cabinet. Your work laptop can't
-reach into the personal cabinet because it doesn't have that
-key.
+Drawers live in **locked cabinets**. A cabinet is a *trust
+boundary* (one git repo). One cabinet can hold multiple drawers
+if you trust those drawers' contents to coexist (a `consulting`
+cabinet might hold both `acme-client` and `globex-client`
+drawers). Each cabinet has its own lock; only some hosts have
+keys to a given cabinet. Your work laptop can't reach into the
+personal cabinet because it doesn't have that cabinet's key —
+even though it has keys to its own work cabinet.
+
+> Cleanly: **drawer = profile; cabinet = trust boundary (one git
+> repo); cabinets contain drawers.** Multiple drawers per cabinet
+> is the norm, not the exception.
 
 ### Analogy 2 — config files with composition
 
@@ -203,8 +208,17 @@ promotion.** A finding in `acme-client` can be promoted to:
 A finding in `acme-client` CANNOT be promoted directly to
 `globex-client` even though they share a parent — you have to go
 through `work` (the shared parent) or `base` (the shared root).
-This rule is captured in the planned ADR-0027 on cross-context
-promotion.
+
+> **What ADR-0009 already covers vs. what planned ADR-0027 will
+> add:** [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
+> establishes the *cross-trust-boundary promotion mechanics* —
+> the proposal queue, curator review, audit trail. Planned
+> ADR-0027 adds the *inheritance-graph constraint* on top:
+> promotion can only flow along extends edges (or shared-root
+> paths), so lateral cross-profile promotion is forbidden by the
+> graph itself, not just by the curator's discretion. The two
+> compose: ADR-0009 says "how" promotion happens; ADR-0027 will
+> say "where in the graph it's permitted to happen."
 
 ### 4. Layer
 
@@ -230,9 +244,20 @@ overlay`. Refinement and replacement semantics per
 
 ### 5. Active profile
 
-A host has, at any moment, exactly **one active profile.**
-The active profile determines which inheritance chain renders
-into that host's `~/.claude/`.
+A host has, at any moment, exactly **one active profile.** The
+active profile is *the leaf* of the inheritance chain — the
+specific named profile the host has been bound to. It determines
+which full inheritance chain (leaf-to-root) renders into the
+host's `~/.claude/`.
+
+> **Active profile ≠ context.** The active profile is the leaf
+> only (one named profile). "Context" — when used in maury docs
+> as a term-of-art — means *active profile PLUS its full
+> inheritance chain*. They appear adjacent in the glossary
+> because they're related, but they're not synonyms. When
+> someone says "the work context," they mean `work` plus
+> everything `work` extends from (typically `base`); when they
+> say "the active profile is `work`," they mean just `work`.
 
 A host's active profile is set by:
 
@@ -507,7 +532,7 @@ that doesn't import OO baggage.
 | **Cross-trust-boundary promotion** | Promotion that crosses repos (e.g., work → base when base lives in a separate repo) — requires a curator host with write access to both repos | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
 | **Curator** | A user (and the host they operate on) with write access to a higher-trust repo. Acts as the gate for cross-trust-boundary promotion review | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
 | **Provenance** | The record of where rendered content came from (which layer contributed which lines) — surfaced as a comment block at the top of every rendered file | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md), Tenet 7 |
-| **Manifest** | `.meta/manifest.json` — the source of truth for hosts/profiles/repos | [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md) |
+| **Manifest** | `.meta/manifest.json` — the source of truth for hosts/profiles/repos. Schema spine in [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md); specific fields extended by [ADR-0001](adr/0001-n-profiles.md) (profiles, lock), [ADR-0002](adr/0002-repo-per-trust-boundary.md) (repos), [ADR-0003](adr/0003-per-host-deploy-keys.md) (deploy-key paths), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md) (secrets metadata, v1.1), [ADR-0016](adr/0016-pluggable-repo-backends.md) (backend field), [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md) (concurrency mechanics) | [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md) |
 
 If a term shows up in an ADR and isn't here, that's a doc bug —
 file it as a finding for the next ADR landscape audit.
