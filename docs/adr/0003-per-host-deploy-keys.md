@@ -78,3 +78,12 @@ Host github-work
 - **GitHub App.** Overkill for personal-scale; designed for orgs.
 - **Machine users (separate GitHub accounts per host).** Adds account
   sprawl; deploy keys give the same per-host scoping without that.
+
+## See also
+
+[concepts.md §6 — Inheritance access mode](../concepts.md#6-inheritance-access-mode)
+promotes the deploy-key-derived `mode` field on repo entries to
+a first-class concept and adds a third value, `pr` (read + write
+via pull request), alongside the `ro` and `rw` defined in this
+ADR. The `pr` mode is forward-referenced to planned ADR-0028;
+this ADR enumerates the modes that exist today.
