@@ -10,7 +10,7 @@ conversation or in an ADR, this file is what it's referring to.
 1. **[The mental model](#the-mental-model)** below — start here if
    you've never used maury. ~3 minutes. Plain-language analogies,
    no jargon.
-2. **[The five core concepts](#the-five-core-concepts)** — formal
+2. **[The six core concepts](#the-six-core-concepts)** — formal
    definitions. Reach for these when you need precision (writing
    an ADR, debugging a render, auditing a safety property).
 3. **[Theoretical foundations](#theoretical-foundations)** — the
@@ -96,9 +96,9 @@ unclear later.)
 
 ---
 
-## The five core concepts
+## The six core concepts
 
-These five terms are load-bearing across every ADR. They are not
+These six terms are load-bearing across every ADR. They are not
 synonymous with each other — and they are not synonymous with
 Claude Code's terms of art (which sometimes use the same words to
 mean different things).
@@ -250,6 +250,58 @@ If `lock: true` is set on the host's manifest entry,
 > inheritance chain."** When someone says *"this should apply to
 > my work context,"* they mean *"this should apply to the active
 > profile `work` and any profile that extends `work`."*
+
+### 6. Inheritance access mode
+
+> *Inheritance tells you what content flows; access mode tells
+> you who can change the source.*
+
+Every child-forebearer relationship in maury has one of three
+**access modes** — describing what the child can do to the
+forebearer's *canonical* state (not the rendered output, which
+is always read-only). The three modes are universal vocabulary
+that ADRs reach for when describing contribution flows.
+
+| Mode | Read | Write | Used when |
+|---|---|---|---|
+| **`ro`** | yes | none | Default. Child consumes parent content; no path to modify the parent's source directly from this host. |
+| **`pr`** *(planned)* | yes | via pull request, requires curator approval | Child can submit changes for review; curator merges. **Not yet expressible in the manifest schema** — ADR-0003 currently defines only `ro`/`rw`. The `pr` mode lands in planned ADR-0028 alongside the workflow tooling. Mechanically, `pr` is a workflow layered on top of `ro` deploy-key access plus a side channel (e.g., GitHub PR via `gh`); the mode value just makes the contract explicit in the manifest. |
+| **`rw`** | yes | direct push | Full trust. Curator hosts have this on the repos they maintain. |
+
+The mode is a property of the **access path** — specifically the
+deploy key the child's host holds for the forebearer's source
+repo (per [ADR-0003](adr/0003-per-host-deploy-keys.md), which
+today enumerates `ro` and `rw`). It is not a property of the
+abstract relationship between two profiles.
+
+**When child and parent live in the same repo** (e.g., `work`
+and `acme-client` both in `maury-work`), one mode applies — the
+host's deploy-key access on `maury-work` determines whether the
+child can modify the parent's canonical content directly.
+
+**When child and parent live in different repos** (the trust-
+boundary-spanning case from [§2](#2-trust-boundary)), multiple
+modes are involved — one per repo. The
+[cross-boundary promotion flow (ADR-0009)](adr/0009-promotion-only-cross-boundary.md)
+is the *default* contribution mechanism for cross-trust-boundary
+content even when one of the involved hosts has `rw` somewhere
+in the chain — promotion-and-review prevents accidental cross-
+boundary writes regardless of access. When access is `ro`-only
+on both sides, cross-boundary promotion is the **only**
+mechanism available.
+
+This three-mode framing is **orthogonal to content composition**
+([ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)
+covers refinement-vs-replacement at render time):
+
+- *Content composition* = how parent and child layers merge into
+  the final rendered output.
+- *Access mode* = what the child can do to the parent's canonical
+  source if it wants to contribute changes back upward.
+
+Both axes are always in play. The render walks the inheritance
+chain regardless of mode (because rendering only reads); the
+contribution flow depends entirely on mode.
 
 ---
 
@@ -446,6 +498,7 @@ that doesn't import OO baggage.
 | **Layer** | One source of content composed at render | [§4](#4-layer) |
 | **Host overlay** | Per-host slice of a profile's content | [§4](#4-layer) |
 | **Active profile** | The one profile a host is currently in | [§5](#5-active-profile) |
+| **Inheritance access mode** | What a child can do to a forebearer's canonical state: `ro` / `pr` / `rw` | [§6](#6-inheritance-access-mode), planned ADR-0028 |
 | **Context** | Active profile + its inheritance chain | [§5](#5-active-profile) (NOT Claude Code's "session context") |
 | **Render** | Compose all layers → write to `~/.claude/` | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
 | **Refinement** | Default merge semantics: child adds to parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
