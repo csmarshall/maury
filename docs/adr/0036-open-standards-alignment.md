@@ -8,7 +8,7 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
-## Context
+## Context and Problem Statement
 
 Maury was designed primarily against [Claude Code's][cc-overview]
 documented behavior (per
@@ -26,7 +26,40 @@ only target? A 2026-05-07 standards survey (run by the
 claude-code-guide subagent) returned concrete findings; this ADR
 locks in the decisions.
 
-## Decision
+## Decision Drivers
+
+- **Portability across agent vendors.** Skills maury ships should
+  work for users who later switch from Claude Code to Cursor,
+  Codex, etc., without maury-side changes.
+- **Avoid premature abstraction.** Don't take on standards work
+  that has no current maury use case.
+- **Avoid painting into a corner.** Don't make design choices
+  that lock out future cross-vendor adoption.
+- **Bounded implementation cost.** Standards compliance must be
+  a small lift relative to the portability gain.
+- **Consistency with maury's existing trust-boundary architecture**
+  — already vendor-neutral; the agent surface should match.
+
+## Considered Options
+
+- **Option A:** Anthropic-only alignment (Claude Code as sole target).
+- **Option B:** Commit to all four standards (Agent Skills, AGENTS.md, MCP, future AAF specs) immediately.
+- **Option C:** Build a maury-specific skills format.
+- **Option D:** Build a maury-specific cross-vendor hooks abstraction.
+- **Option E (chosen):** Tiered alignment — commit to Agent Skills now (trivially aligned, real portability win), track AGENTS.md and MCP for future use cases, deliberately stay out of scope for non-existent standards.
+
+## Decision Outcome
+
+**Chosen option:** Option E — tiered alignment. Commit to Agent
+Skills now (already aligned at the layout level; only YAML
+frontmatter discipline is new). Track AGENTS.md and MCP for
+future triggers (public profiles for AGENTS.md; multi-vendor
+agent fleet for MCP). Out-of-scope on cross-vendor standards
+that don't exist yet (manifest formats, hook standards,
+state-dir standards). This satisfies the portability driver
+without taking on unbounded standards work.
+
+### Implementation details
 
 Maury makes three commitments and explicitly defers two.
 
@@ -184,49 +217,82 @@ maury for compliance, ship updates.
   [ADR-0029](0029-maury-state-layout-contract.md) is correctly
   scoped to Claude Code's `~/.claude/` hierarchy.
 
-## Consequences
+### Consequences
 
-- **Skills published by maury are portable** to any
+- ✅ **Good:** Skills published by maury are portable to any
   Agent-Skills-aware agent. Users who switch from Claude Code
   to Cursor (or use both) get the maury-managed skills working
   without maury-side changes.
-- **One small documentation lift now** (Agent-Skills-conformant
-  frontmatter on shipped skills) prevents larger refactor
-  later.
-- **AGENTS.md and MCP commitments are "don't paint into a
-  corner."** No new code today; just keep design choices that
-  preserve future compatibility.
-- **Doc-review agents add one new check:** SKILL.md frontmatter
-  conforms to the Agent Skills spec. Update CLAUDE.local.md's
-  doc-review checklist.
-- **The Agentic AI Foundation becomes a third upstream-watch
-  point**, alongside Claude Code documentation
+- ✅ **Good:** One small documentation lift now
+  (Agent-Skills-conformant frontmatter on shipped skills)
+  prevents larger refactor later.
+- ⚖️ **Neutral:** AGENTS.md and MCP commitments are "don't
+  paint into a corner." No new code today; just keep design
+  choices that preserve future compatibility.
+- ❌ **Bad:** Doc-review agents add one more check (SKILL.md
+  frontmatter conforms to the Agent Skills spec); CLAUDE.local.md
+  checklist grows.
+- ⚖️ **Neutral:** The Agentic AI Foundation becomes a third
+  upstream-watch point alongside Claude Code documentation
   ([`claude-code-contract.md`](../claude-code-contract.md))
   and the Anthropic best-practices rubric (per
   [ADR-0011](0011-anthropic-rubric-integration.md)).
 
-## Alternatives considered
+### Confirmation
 
-- **Anthropic-only alignment** (treat Claude Code as the only
-  target). Rejected: the Agent Skills standard is already
-  Anthropic-co-authored AND adopted by 40+ vendors; there's no
-  cost to compliance and a real portability win. Maury's whole
-  trust-boundary architecture is also vendor-neutral; treating
-  the agent surface as Claude-Code-only would be
-  inconsistent.
-- **Commit to all four standards (Agent Skills + AGENTS.md +
-  MCP + future AAF specs) immediately.** Rejected: AGENTS.md
-  and MCP have no current use case in maury; preemptive
-  implementation is over-engineering. Track + defer is the
-  right balance.
-- **Build a maury-specific skills format.** Rejected: zero
-  benefit, breaks Agent Skills compliance, isolates maury
-  from the broader ecosystem.
-- **Build a maury-specific hooks format that abstracts over
-  Claude Code hooks + future cross-vendor hooks.** Considered.
-  Rejected: no cross-vendor hooks standard exists yet; building
-  the abstraction prematurely is speculative work. If/when a
-  standard emerges, revisit.
+- Doc-review agents check SKILL.md frontmatter on every commit
+  that adds or modifies a skill (rule captured in CLAUDE.local.md).
+- A future periodic refresh of `docs/agentskills-snapshots/`
+  (per Followups below) will detect spec drift, mirroring the
+  `docs/claude-code-snapshots/` pattern from
+  [`claude-code-contract.md`](../claude-code-contract.md).
+- `maury doctor` could optionally validate frontmatter on
+  installed skills (followup; not v1).
+
+## Pros and Cons of the Options
+
+### Option A: Anthropic-only alignment
+
+Treat Claude Code as the only target; ignore cross-vendor specs
+even when they overlap with what maury already does.
+
+- ❌ **Bad:** Misses portability win that's already-aligned-by-design.
+- ❌ **Bad:** The Agent Skills spec is already Anthropic-co-authored AND adopted by 40+ vendors; ignoring it is leaving free portability on the table.
+- ❌ **Bad:** Inconsistent with maury's vendor-neutral trust-boundary architecture.
+
+### Option B: Commit to all four standards immediately
+
+Implement Agent Skills + AGENTS.md output + MCP server-mode + monitor AAF, all now.
+
+- ✅ **Good:** Maximally portable from day one.
+- ❌ **Bad:** AGENTS.md and MCP have no current maury use case; preemptive implementation is over-engineering.
+- ❌ **Bad:** Adds three new surface areas to maintain (AGENTS.md render output, MCP server, AAF spec snapshots) when only one (Agent Skills) is currently exercised.
+
+### Option C: Maury-specific skills format
+
+Define our own skills schema, ignoring Agent Skills.
+
+- ❌ **Bad:** Zero benefit; reinvents what's already standardized.
+- ❌ **Bad:** Breaks Agent Skills compliance and isolates maury from the broader ecosystem.
+- ❌ **Bad:** Increases the maintenance surface (we'd have to keep our schema, document it, and explain why we deviate).
+
+### Option D: Maury-specific cross-vendor hooks abstraction
+
+Build an abstraction layer over Claude Code hooks + hypothetical future cross-vendor hooks.
+
+- ⚖️ **Neutral:** Conceptually attractive (insulates maury from any one vendor's hook system).
+- ❌ **Bad:** No cross-vendor hooks standard exists yet; building the abstraction is speculative.
+- ❌ **Bad:** YAGNI risk — if a standard emerges with a different shape, our abstraction becomes wasted work.
+
+### Option E (chosen): Tiered alignment
+
+Commit Agent Skills now (already aligned), track AGENTS.md + MCP for future use cases, deliberately stay out of scope for non-existent standards.
+
+- ✅ **Good:** Trivially aligned with the one standard maury actually uses (Agent Skills), with low documentation lift.
+- ✅ **Good:** Preserves future compatibility with AGENTS.md + MCP without preemptive implementation.
+- ✅ **Good:** Matches the project's general posture (defer to platforms; don't build abstractions before they're needed).
+- ⚖️ **Neutral:** Requires one new doc-review rule (frontmatter check) and one followup (snapshots dir).
+- ❌ **Bad:** When AGENTS.md or MCP eventually do apply, we'll have new design work to do — that work just isn't starting today.
 
 ## Build-order placement
 
