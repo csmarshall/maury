@@ -1,0 +1,12 @@
+# Snapshot manifest — 2026-05-07
+
+Each line: <name>  <bytes>  <sha256>  <url>
+
+claude-directory              1091402  ff0848dce132c42e27da171e65d8ecaee418b50eeb9aa32640944fe6433fcc7c  https://code.claude.com/docs/en/claude-directory
+cli-reference                 1061565  c2a4b674c03608e10c7c40b37b40124eef50b00e0e8f269098c5d60deba96daf  https://code.claude.com/docs/en/cli-reference
+hooks                         3918764  274f4bb28185a06357f48b706929a60db816832838ed10914ae03e1e4f9d9b8a  https://code.claude.com/docs/en/hooks
+how-claude-code-works         1043509  6b489f3c5d848260470104d4e3ef51e13ba16a65203986e8df66b0d2e97fafac  https://code.claude.com/docs/en/how-claude-code-works
+memory                        1187362  e5d112fdfdc8852feeb6dfcc3fcc31e4ba79675d845c4cd33f656bbe2d2cbd58  https://code.claude.com/docs/en/memory
+sessions                       950085  b9df123535887eeb694e6bc8228fea0a9551e5eecf197aaf7de1bbc229b62e97  https://code.claude.com/docs/en/sessions
+settings                      2003944  c3997560d87cd6708a2f31d44b76338b7806bf9150a4d4958b6f74a7eeeb756a  https://code.claude.com/docs/en/settings
+skills                        1784141  1dce39d7f38839fa8c007400e7618f746681a579e7b0032d107c42da733c5bc0  https://code.claude.com/docs/en/skills

@@ -27,6 +27,15 @@ analysis.
 **Last verification pass:** 2026-05-07 against Claude Code
 documentation at `https://code.claude.com/docs/en/`.
 
+**Reference rot mitigation:** every cited Anthropic page also has
+an in-repo snapshot at
+[`docs/claude-code-snapshots/2026-05-07/`](claude-code-snapshots/2026-05-07/)
+with `MANIFEST.txt` listing names, byte counts, and sha256 hashes.
+If a live URL ever changes content, the snapshot is the canonical
+record of what the page said when we verified it. See
+[`docs/claude-code-snapshots/README.md`](claude-code-snapshots/README.md)
+for the refresh process and how to detect drift.
+
 ---
 
 ## ✅ Documented behaviors
