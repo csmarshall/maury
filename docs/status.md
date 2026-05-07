@@ -34,6 +34,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury reconcile` | ⏳ planned | Drift menu (5 reconcile actions). Phase 5.x per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md). |
 | `maury sessions prune` | ⏳ planned | Clean up stale `active-sessions.jsonl` entries. Per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | `maury verify-cc-contract` | ⏳ planned | Re-fetch cited Claude Code docs and diff against `docs/claude-code-snapshots/`. Drift detection for upstream documentation changes. |
+| `maury verify-cc-hooks` | ✅ shipped | Empirically verify the three load-bearing Claude Code hook behaviors (comment stripping, subprocess env, file-IO permissions) by spinning up an isolated workspace and invoking `claude -p` against it. Used 2026-05-07 to close out ADR-0023's "Empirical-test debt." |
 | `maury subscribe <url>` | ⏳ planned (v1.1+) | Subscribe to a published profile (gap K). Per planned gap-K ADRs. |
 | `maury uninstall` | ⏳ planned | Strip maury hooks/scripts/state from a host. Per [ADR-0023 §8](adr/0023-hook-installation-and-tool-resolution.md). |
 
@@ -95,17 +96,21 @@ flowcharts. It means the implementation is the bottleneck.
 
 ## Empirical-test debt visible to users
 
-Three load-bearing Claude Code behaviors are documented in
-`docs/claude-code-contract.md` but not yet empirically verified:
+The three load-bearing hook claims that previously sat here have
+been **resolved** as of 2026-05-07 by running
+`maury verify-cc-hooks` on a real macOS host. ADR-0023's marker
+scheme, the absolute-path requirement, and the
+`~/.claude/maury-state/` write contract are all verified safe.
+Re-verify on FreeBSD + Linux when those hosts come online, and
+on managed/MDM macOS when first encountered.
 
-1. **Hook shell + comment stripping** — load-bearing for ADR-0023's
-   `# maury-managed` marker scheme.
-2. **Hook subprocess PATH** — drives the absolute-path requirement
-   in settings.json.
-3. **Hook file-I/O permissions** — load-bearing for `claude-writes.jsonl`
-   and `active-sessions.jsonl` (HIGH risk if it fails).
+See [`docs/claude-code-contract.md` §"Empirically verified behaviors"](claude-code-contract.md#empirically-verified-behaviors)
+for the verification records, and ADR-0023's
+"Empirical-test debt — RESOLVED" section for what each finding
+unblocks.
 
-Implementation of any feature that depends on these (drift
-detection, profile switching) **must** verify the empirical claims
-first. See the `❓ Assumed but unverified behaviors` section of
-`claude-code-contract.md`.
+Other unverified Claude Code behaviors remain in
+`claude-code-contract.md` §"Assumed but unverified behaviors" —
+none of them block currently-shipping features, but new feature
+work that touches them should run the same verify-then-document
+loop.

@@ -231,8 +231,88 @@ delegate this to CC and simplify.
 
 ## 🧪 Empirically verified behaviors
 
-*(None yet — empirical-test debt items below need to be moved
-here once tested.)*
+The three entries here were promoted from "❓ Assumed but
+unverified" on 2026-05-07 after running `maury verify-cc-hooks`
+on a real macOS host with Claude Code installed. The harness
+source lives at `src/maury/empirical_tests.py`; the verification
+command is documented in `docs/operations.md` and runs in an
+isolated workspace (no risk to the user's real `~/.claude/`).
+
+### `cc-contract:hook-shell-execution`
+
+**Verified 2026-05-07** (macOS, Claude Code per `claude --version`
+in CI; re-verify on FreeBSD + Linux hosts when first available).
+
+**Behavior observed:** Hook `command` strings are executed by a
+POSIX shell. Trailing `# maury-managed-empirical-probe` comment
+was stripped cleanly; the script preceding it executed and wrote
+its expected output.
+
+**Implication:** ADR-0023 §1's `# maury-managed` marker scheme
+is safe. Marker-based ownership / uninstall path holds.
+
+**Re-verification:** `maury verify-cc-hooks` re-runs the probe
+end-to-end. Re-run after any Claude Code minor-version bump
+that touches hooks.
+
+---
+
+### `cc-contract:hook-subprocess-path`
+
+**Verified 2026-05-07** (macOS).
+
+**Behavior observed:** Hook subprocess inherits PATH from the
+process that invoked `claude` — the full system PATH including
+the user's venv bin (when launched via `uv run`), Homebrew,
+system paths, etc. HOME inherited. PWD = the directory passed
+as `cwd` to the `claude` subprocess.
+
+**Two new findings worth recording:**
+
+- **`CLAUDE_HOOK_EVENT` is NOT set in the hook subprocess env.**
+  Hooks that need to know which event fired must read it from
+  the stdin JSON payload (the documented `hook_event_name` field
+  per `cc-contract:hooks-stdin-payload`), not from an env var.
+  This contradicts a tempting but wrong "just check `$CLAUDE_HOOK_EVENT`"
+  shortcut.
+- **`CLAUDE_PROJECT_DIR` IS set** to the resolved (symlink-followed)
+  realpath of the project directory. On macOS this means
+  `/var/...` → `/private/var/...` resolution happens automatically.
+  Hooks comparing CLAUDE_PROJECT_DIR to other paths must
+  realpath their comparand or the equality check will fail.
+
+**Implication for ADR-0023 §5:** absolute paths in
+`settings.json` are still the right call (it's a "works in
+both PATH worlds" choice), but PATH is in fact reliable on
+this host. The absolute-path requirement could be relaxed in
+a future ADR if portability across hosts is shown to be the
+same — but it costs nothing to keep.
+
+**Implication for hook authors:** read `hook_event_name` from
+stdin JSON, not from env. Realpath any path you compare to
+`CLAUDE_PROJECT_DIR`.
+
+---
+
+### `cc-contract:hook-file-io-permissions`
+
+**Verified 2026-05-07** (macOS).
+
+**Behavior observed:** Hook subprocess can `mkdir -p` a directory
+that didn't exist and write a file inside it, with no sandbox
+or permission restrictions. The HIGH-risk concern about TCC or
+similar interfering with `~/.claude/maury-state/` writes did
+not materialize.
+
+**Implication:** ADR-0017's `claude-writes.jsonl`, ADR-0025's
+`active-sessions.jsonl`, and any future maury hook that
+records state under `~/.claude/maury-state/` can rely on this.
+The HIGH risk level on this item is **closed**.
+
+**Re-verification:** `maury verify-cc-hooks`. Worth re-running
+on managed/MDM-restricted hosts when first encountered, since
+TCC + MDM combinations can introduce permission boundaries
+this verification didn't see.
 
 ---
 
@@ -242,89 +322,7 @@ These behaviors are NOT documented by Anthropic AND we have not
 empirically tested them. Each entry says what breaks if the
 assumption is wrong.
 
-### `cc-contract:hook-shell-execution`
 
-**Assumption:** Hook `command` strings are executed by `/bin/sh`
-(or equivalent POSIX shell). Trailing shell comments like
-`# maury-managed` are stripped by the shell and don't affect
-execution.
-
-**What breaks if wrong:** ADR-0023 §1's marker-ownership scheme.
-The `# maury-managed` sentinel relies on the shell stripping it
-cleanly so the script before it executes normally. If hooks run
-under a non-shell interpreter, or under a shell that doesn't
-strip comments, the marker either errors out or becomes part of
-the command argument list.
-
-**How to verify:**
-1. Install a hook with `command: "/bin/echo hi # marker-test"`
-2. Trigger the hook event in Claude Code
-3. Check whether the command executes successfully and the
-   `# marker-test` text doesn't appear in any error output
-
-**Fallback if wrong:** Move marker into a parallel `_maury_marked:
-true` map within `settings.json` (which itself depends on Claude
-Code ignoring unknown JSON keys — itself a separate empirical
-question).
-
-**Risk level:** Medium. Marker is load-bearing for ownership and
-uninstall, but a fallback exists.
-
----
-
-### `cc-contract:hook-subprocess-path`
-
-**Assumption:** Hook subprocesses inherit a PATH that is NOT
-guaranteed to include `~/.claude/bin/`, so commands must be
-absolute paths.
-
-**What breaks if wrong (in either direction):**
-- If PATH actually IS reliable and includes `~/.claude/bin/`,
-  the absolute-path requirement becomes unnecessary friction
-  but isn't broken.
-- If we trusted a relative path and PATH actually DOESN'T
-  include `~/.claude/bin/`, hooks would fail silently or with
-  cryptic "command not found" errors.
-
-**How to verify:**
-1. Install a hook with `command: "echo $PATH > /tmp/maury-hook-path-test"`
-2. Trigger the hook
-3. Inspect `/tmp/maury-hook-path-test`
-
-**Fallback if wrong (lenient case):** If PATH is in fact
-reliable, relax the absolute-path requirement in a future ADR.
-
-**Risk level:** Low. Absolute paths are conservative and work
-either way; this verification is "can we relax later," not "are
-we broken now."
-
----
-
-### `cc-contract:hook-file-io-permissions`
-
-**Assumption:** Hook subprocesses can freely write to
-`~/.claude/maury-state/` via append (`>>`). No sandbox or
-permission restrictions interfere.
-
-**What breaks if wrong:** ADR-0017's drift attribution
-(`claude-writes.jsonl`), ADR-0025's session tracking
-(`active-sessions.jsonl`), and any future maury hook that
-records state. Hooks would fire but their writes would
-silently fail, making maury's bookkeeping worthless.
-
-**How to verify:**
-1. Install a hook with `command: "echo test >> ~/.claude/maury-state/test.txt"`
-2. Trigger the hook
-3. Check whether the file was created/appended
-
-**Fallback if wrong:** Significantly more complex — would need
-to find an alternate write path (maybe `~/.config/maury/`?) and
-update three ADRs. No clean fallback.
-
-**Risk level:** **High.** Three ADRs depend on this. Verify
-EARLY in the implementation phase.
-
----
 
 ### `cc-contract:project-directory-derivation`
 

@@ -20,9 +20,10 @@ into hook scripts as `$MAURY_SED` etc., collapsing platform branching
 to one layer. Missing tools fail loud at render time — except
 `log_tool_use`, which has a no-deps POSIX-shell guarantee because
 drift attribution can't gracefully degrade. Trade-off: eight
-load-bearing decisions to test together, plus three empirical claims
-about Claude Code shell behavior that need verification before relying
-on them.
+load-bearing decisions to test together. Three empirical claims
+about Claude Code shell behavior were unverified at write time;
+verified ✅ on 2026-05-07 via `maury verify-cc-hooks` (see
+"Empirical-test debt — RESOLVED" section below).
 
 ## Context and Problem Statement
 
@@ -140,15 +141,13 @@ finds maury entries by string-matching the marker; user-added
 entries without the marker pass through untouched, including their
 `matcher` grouping context.
 
-> **Empirical claim — needs verification:** Anthropic's hooks
-> documentation does not explicitly specify which shell executes
-> the `command` string or whether shell comments are stripped.
-> The marker scheme depends on this behavior; before shipping the
-> implementation, validate with a test hook that the trailing
-> `# maury-managed` comment doesn't break execution. If it does,
-> fall back to a marker stored in a parallel `_maury_marked: true`
-> sidecar map within `settings.json` (which would require Claude
-> Code to ignore unknown keys — itself an empirical question).
+> **Empirically verified 2026-05-07** (macOS, via `maury verify-cc-hooks`):
+> the hook subprocess shell strips the trailing
+> `# maury-managed-empirical-probe` comment cleanly, so the marker
+> scheme is safe. See
+> [`cc-contract:hook-shell-execution`](../claude-code-contract.md#cc-contracthook-shell-execution)
+> for the verification record. Re-verify on FreeBSD + Linux when
+> first encountered.
 
 On render, maury computes:
 
@@ -258,14 +257,14 @@ Hook commands in the rendered `settings.json` are absolute paths
 resolved at render time per host. We do not embed `$HOME` or `~`
 in the command strings.
 
-> **Empirical claim — needs verification:** Anthropic's
-> [hooks documentation][cc-hooks] does not specify whether hook
-> subprocesses inherit a stable PATH or whether shell expansion of
-> `$HOME` / `~` happens reliably. Absolute paths are the
-> conservative choice regardless (they work in any shell and any
-> PATH), but if PATH is in fact reliable the absolute-path
-> requirement could be relaxed later. Test before relying on either
-> assumption.
+> **Empirically verified 2026-05-07** (macOS, via `maury verify-cc-hooks`):
+> hook subprocess inherits the full system PATH (including the
+> launching process's venv bin, Homebrew, system paths). HOME is
+> inherited. Absolute paths in `settings.json` remain the right
+> conservative choice, but PATH is in fact reliable on this host.
+> See [`cc-contract:hook-subprocess-path`](../claude-code-contract.md#cc-contracthook-subprocess-path)
+> for the verification record + two adjacent findings (`CLAUDE_HOOK_EVENT`
+> is NOT set in env; `CLAUDE_PROJECT_DIR` IS set + symlink-resolved).
 
 Since `settings.json` is already host-specific (host overlay layer)
 this is not a portability regression — the file is regenerated on
@@ -495,29 +494,32 @@ their git history.
   to validate that every installed hook's commands exist + every
   `MAURY_*` env var resolves to a real binary on this host.
 
-## Empirical-test debt
+## Empirical-test debt — RESOLVED 2026-05-07
 
-Three load-bearing claims in this ADR are NOT documented by
-Anthropic and require empirical validation before the
-implementation can rely on them:
+The three load-bearing claims that originally lived here have all
+been verified empirically by `maury verify-cc-hooks` (the
+`src/maury/empirical_tests.py` harness):
 
-1. **Shell + comment stripping** (§1) — does the hook subprocess'
-   shell strip the trailing `# maury-managed` comment cleanly? If
-   not, the marker scheme breaks. Test: install a hook with a
-   trailing `# marker` comment and verify it executes the script
-   correctly without erroring.
-2. **Hook subprocess PATH** (§5) — is `~/.claude/bin/` on PATH?
-   Are env vars expanded? Test: install a hook that prints `$PATH`
-   and `echo $HOME` to a file and inspect.
-3. **Hook file-I/O permissions** (§6, §7) — can hooks freely write
-   to `~/.claude/maury-state/`? Are there any sandbox or
-   permission restrictions? Test: install a hook that writes a
-   marker file and verify it lands.
+1. ✅ **Shell + comment stripping** (§1) — verified. Trailing
+   `# maury-managed` comment is stripped cleanly by the hook
+   subprocess shell. Marker scheme is safe.
+2. ✅ **Hook subprocess PATH + env** (§5) — verified. PATH and HOME
+   inherited. PWD = the directory passed as `cwd` to `claude`.
+   Two new findings extracted: `CLAUDE_HOOK_EVENT` is NOT set in
+   the env (read event name from stdin JSON, not env), and
+   `CLAUDE_PROJECT_DIR` IS set (symlink-resolved to realpath).
+3. ✅ **Hook file-I/O permissions** (§6, §7) — verified. Hook
+   subprocess can `mkdir -p` + write under arbitrary paths;
+   no sandbox or permission interference observed.
 
-The implementation slice for this ADR (Phase 3 / Phase 5.x.x) MUST
-run these tests before being marked complete. If any test fails,
-that section of this ADR needs amendment with the actual observed
-behavior.
+Verification was on macOS. Re-run `maury verify-cc-hooks` on
+FreeBSD + Linux when those hosts first come online, and on
+managed/MDM-restricted macOS hosts when first encountered (TCC +
+MDM combinations may introduce permission boundaries this
+verification didn't see).
+
+Full records in
+[`docs/claude-code-contract.md` §"Empirically verified behaviors"](../claude-code-contract.md#empirically-verified-behaviors).
 
 ## Claude Code references
 
