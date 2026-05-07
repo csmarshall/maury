@@ -8,6 +8,15 @@
   `after_sha`, `size_delta` alongside the original `diff_hint`)
   per [ADR-0023](0023-hook-installation-and-tool-resolution.md)
   §6, which became the authoritative reference for the schema.
+- 2026-05-07 — promoted the `maury-status` skill from a
+  one-line v1-scope mention to a §"The `maury-status` skill"
+  full definition. Defines structure (SKILL.md location),
+  contract (backing `maury status --json` CLI command + JSON
+  schema), source-file dependencies (active-context.json,
+  last-render.json, captures.jsonl, run-branch counts,
+  active-sessions.jsonl), and the user-facing output spirit.
+  Closes audit finding M2 (skill referenced in 4 docs without
+  being defined).
 
 ## Related tenets
 
@@ -124,9 +133,75 @@ v1 (in scope):
 - `hand-managed.json` per-host overlay
 - `PostToolUse log_tool_use` hook (single hook, single log file —
   load-bearing for drift attribution)
-- **`maury-status` skill** that Claude can invoke mid-session to
-  surface drift / pending captures / pending proposals
-  (per Q&A — the project owner's specific requirement to ship in v1)
+- **`maury-status` skill** — see §"The `maury-status` skill"
+  below for the definition.
+
+### The `maury-status` skill
+
+Claude-invokable mid-session affordance that surfaces maury's
+view of the current host's state. Distributed via the render
+engine to `~/.claude/skills/maury-status/SKILL.md` (per
+[Claude Code skills documentation][cc-skills]).
+
+**Structure:**
+
+```
+~/.claude/skills/maury-status/
+  └── SKILL.md
+```
+
+**SKILL.md content (in spirit):** instructs Claude that when the
+user asks "what's pending in maury?" / "is anything out of sync?"
+/ similar, it should run the `maury status` CLI command via the
+Bash tool, parse the JSON output, and present a concise summary
+to the user.
+
+**Backing CLI: `maury status --json`**
+
+Reads several state files and emits a single JSON document:
+
+```json
+{
+  "host_id": "host_e3844a43...",
+  "active_profile": "personal",
+  "last_sync_at": "2026-05-07T14:22:00Z",
+  "drift": {
+    "modified_count": 0,
+    "missing_count": 0,
+    "untracked_count": 0
+  },
+  "pending_captures": 3,
+  "pending_proposals": 1,
+  "active_sessions": 2,
+  "warnings": []
+}
+```
+
+Sources:
+- `host_id`, `active_profile` ← `~/.claude/maury-state/active-context.json` (ADR-0025).
+- `last_sync_at`, `drift` counts ← `~/.claude/maury-state/last-render.json` (this ADR's Phase 5.x.a).
+- `pending_captures` ← `~/.claude/maury-staging/captures.jsonl` line count (ADR-0013).
+- `pending_proposals` ← count of un-reviewed run branches (ADR-0022).
+- `active_sessions` ← reduce of `~/.claude/maury-state/active-sessions.jsonl` (ADR-0025).
+
+**Claude's user-facing output (in spirit):**
+
+> *"You're in the **personal** profile on `<host>`. Last sync 2 hours
+> ago. 3 captures pending review (run `maury review`). No drift, no
+> active sessions besides this one."*
+
+**Why a skill rather than the user typing `maury status`
+themselves:** Claude can opportunistically invoke it at relevant
+moments (e.g., after the user mentions wanting to remember
+something, Claude invokes `maury status` to confirm if there
+are captures pending) without the user having to context-switch
+to a terminal. The skill is also v1 scaffolding for the v1.1
+auto-invocation `Stop` hook that surfaces "📌 N captures
+pending" automatically.
+
+**Implementation status:** skill SKILL.md content TBD as part of
+Phase 5.x.a (drift detection). The `maury status` CLI command is
+also a Phase 5.x.a deliverable.
 
 v1.1 (deferred):
 - The full `maury-stage` skill + base/CLAUDE.md fragment + staging
@@ -207,5 +282,9 @@ Code documentation:
 
 - [`cc-hooks`][cc-hooks] — `PostToolUse` event semantics and
   payload structure (full schema in ADR-0023's references).
+- [`cc-skills`][cc-skills] — skill location and SKILL.md
+  invocation pattern; used for the `maury-status` skill
+  defined above.
 
 [cc-hooks]: https://code.claude.com/docs/en/hooks
+[cc-skills]: https://code.claude.com/docs/en/skills
