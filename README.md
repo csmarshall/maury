@@ -84,10 +84,10 @@ to the tool that manages it:
 
 ```mermaid
 flowchart TD
-    Claude["<b>Claude</b><br/>(Anthropic LLM)"]
-    Shannon["<b>Claude Elwood Shannon</b><br/>father of information theory"]
-    Elwood["<b>Elwood Blues</b> (Dan Aykroyd)<br/>The Blues Brothers"]
-    Maury["<b>Maury Sline</b> (Steve Lawrence)<br/>Elwood's booking agent<br/>the namesake of this tool"]
+    Claude["🤖 <b>Claude</b><br/>(Anthropic LLM)"]
+    Shannon["🧮 <b>Claude Elwood Shannon</b><br/>father of information theory"]
+    Elwood["🕶️ <b>Elwood Blues</b> (Dan Aykroyd)<br/>The Blues Brothers"]
+    Maury["📞 <b>Maury Sline</b> (Steve Lawrence)<br/>Elwood's booking agent<br/>the namesake of this tool"]
 
     Claude -->|named after| Shannon
     Shannon -->|shares 'Elwood' with| Elwood
