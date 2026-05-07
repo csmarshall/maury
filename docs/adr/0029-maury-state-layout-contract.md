@@ -2,6 +2,11 @@
 
 **Status:** Accepted
 **Date:** 2026-05-07
+**Amended:**
+- 2026-05-07 — added `last-version-check.json` to the File
+  inventory per [ADR-0031](0031-self-update-path.md) (cached
+  PyPI version-check result; written at most once per day; used
+  to gate the stale-version warning).
 
 ## Related tenets
 
@@ -70,6 +75,7 @@ specifies its schema, its lifecycle, and its purpose.
 | `session-history.jsonl` | [ADR-0026](0026-profile-aware-mining.md) | JSONL (append-only, one record per completed session) | Durable session-to-profile linkage. Written by `SessionEnd` hook (consumer 2 of the same hook ADR-0025 installs). Mining uses this for profile-aware filtering. |
 | `profile-switches.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) §"On a clean switch" point 1 | JSONL (append-only) | Stub audit log for profile-switch events until Phase 10 audit log lands; gets folded into the audit log later. |
 | `audit.jsonl` *(planned, Phase 10 — TODO: ADR number reserved when Phase 10 ADR is drafted)* | (Phase 10 ADR — not yet written) | JSONL (append-only) | Comprehensive audit of every state-changing maury operation. Subsumes `profile-switches.jsonl`. |
+| `last-version-check.json` | [ADR-0031](0031-self-update-path.md) | JSON (single doc) | Cached result of the once-per-day PyPI version check (installed_version, latest_version, channel, checked_at). Used to gate the stale-version warning without re-probing PyPI on every command. |
 
 ### Cross-cutting invariants
 
