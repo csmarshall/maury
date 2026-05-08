@@ -70,7 +70,9 @@ class TestFileFingerprint:
 
         fp = FileFingerprint.from_bytes(path="a", content=b"")
         with pytest.raises(FrozenInstanceError):
-            fp.path = "b"  # type: ignore[misc]
+            # setattr to avoid `# type: ignore[misc]` — the runtime
+            # failure is the assertion, mypy doesn't need to be involved.
+            setattr(fp, "path", "b")
 
 
 # ---- LastRender ---------------------------------------------------------

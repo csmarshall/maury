@@ -531,4 +531,7 @@ class TestReconcileOutcome:
 
         o = ReconcileOutcome(path="x", action=ReconcileAction.SKIP_ONCE)
         with pytest.raises(FrozenInstanceError):
-            o.path = "y"  # type: ignore[misc]
+            # setattr (rather than `o.path = "y"`) so we don't need a
+            # mypy `# type: ignore[misc]` to express what's already
+            # the point of the test: this assignment fails at runtime.
+            setattr(o, "path", "y")
