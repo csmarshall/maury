@@ -30,33 +30,90 @@ and inheritance.**
 
 Two analogies, both useful:
 
-### Analogy 1 — outfits in a wardrobe
+### Analogy 1 — outfits, lockers, and vending machines
 
 Imagine your `~/.claude/` directory is your **outfit for the day**.
 
-The pieces of an outfit live in **drawers**. Each drawer is one
-profile (`personal`, `work`, `acme-client`, …). Some pieces go
-with everything: your watch, your favorite belt. You keep those
-in a **shared drawer** (the `base` profile) so you don't have to
-copy them into every other drawer.
+Every outfit has the same **uniform underneath** — your t-shirt
+and jeans. That's the `base` profile: it travels with you to
+every location, and you wear it under everything else. Universal
+preferences (writing voice, code style, identity terms) go here
+so you don't have to copy them into every per-context layer.
 
-When you "get dressed" on a given machine — that's a **render** —
-maury opens the shared drawer first, then the profile-specific
-drawer for whichever context you've chosen, then adds any host-
-specific tweaks (a coat if it's cold on this particular machine).
+On top of the uniform, you add whatever's in **the locker at the
+location you're currently at** — flip-flops + a hoodie at home,
+smock + name badge at work. Each per-location layer is a
+**profile** (`personal`, `work`, `acme-client`, …). When you
+"get dressed" on a given machine — that's a **render** — maury
+puts on the uniform, then opens whichever locker you have a key
+for in the current context and adds those items, then layers any
+host-specific tweaks on top (a coat if it's cold on this
+particular machine).
 
-Drawers live in **locked cabinets**. A cabinet is a *trust
-boundary* (one git repo). One cabinet can hold multiple drawers
-if you trust those drawers' contents to coexist (a `consulting`
-cabinet might hold both `acme-client` and `globex-client`
-drawers). Each cabinet has its own lock; only some hosts have
-keys to a given cabinet. Your work laptop can't reach into the
-personal cabinet because it doesn't have that cabinet's key —
-even though it has keys to its own work cabinet.
+A **locker** is a *trust boundary* — one git repo. One locker
+can hold multiple per-context layers if you trust their contents
+to coexist (a `consulting` locker might hold both `acme-client`
+and `globex-client` items, both visible to anyone with the
+consulting locker key). Each locker has its own key. Your home
+laptop has the home-locker key; your work laptop has the
+work-locker key; **neither has the other's**. That's not policy
+you have to enforce — it's physical: the work laptop literally
+cannot open the home locker because it doesn't have the key (a
+`git clone` against the personal repo fails for lack of SSH
+credentials).
 
-> Cleanly: **drawer = profile; cabinet = trust boundary (one git
-> repo); cabinets contain drawers.** Multiple drawers per cabinet
-> is the norm, not the exception.
+The base-uniform locker is special: every host has its key,
+because base is what you always wear.
+
+#### Going somewhere new — inheritance vs. consuming someone else's content
+
+Two patterns for picking up gear from a location:
+
+- **You're going to the beach.** Beach is a sub-context of home —
+  you carry your home-locker key with you. The `beach` profile
+  `extends: home`, so beach's gear (beach bag, sunscreen, towel)
+  layers on top of home's gear (flip-flops). You own both lockers
+  and have keys to both. That's **inheritance** — you're
+  stacking your own per-context layers, full read/write on each.
+- **You're doing contract work at ACME.** You don't own ACME's
+  content — the company does. The way you consume it isn't
+  another locker (lockers are binary — you have the key or you
+  don't). It's more like a **vending machine** in the company
+  hallway. The vending machine is stocked and maintained by
+  whoever owns ACME's content (the curator); you interact with
+  it depending on what kind of access you've been given:
+  - **`ro` (read-only)** — the vending machine itself. You can
+    see everything in the rack, you can buy and take items home
+    (your local clone), but you can't restock the machine. The
+    curator decides what's stocked; you consume.
+  - **`pr` (pull-request)** — the vending machine plus a
+    suggestion slot on the side. Buy what's there, AND drop in
+    "hey, you should stock pen-pocket smocks" notes. The curator
+    reads the slot and either restocks or doesn't. Common in
+    published-team setups
+    ([ADR-0034](adr/0034-published-subscribed-profiles.md)).
+  - **`rw` (read-write)** — you're a co-owner of the vending
+    machine; you have the restocking key. Open the back, add or
+    remove items directly. Reserved for hosts the curator fully
+    trusts (their own machines, co-curators).
+
+Engineers using the published/subscribed pattern consume the
+team's content via an `ro` or `pr` vending machine, and stack
+their own personal layers (in their own lockers, with full
+`rw`) on top via inheritance. Per
+[ADR-0034](adr/0034-published-subscribed-profiles.md) a single
+trust boundary can have multiple curators — the vending
+machine has more than one restocker.
+
+> Cleanly: **uniform = base; per-context layer = profile;
+> locker = a trust boundary you OWN (binary key access); vending
+> machine = a trust boundary someone else owns that you only
+> consume from (`ro`/`pr`/`rw` access modes).** A given trust
+> boundary is a locker from the curator's POV and a vending
+> machine from the consumer's POV — same git repo, different
+> deploy keys. `extends` carries your own keys with you;
+> vending-machine modes are how you consume someone else's
+> content.
 
 ### Analogy 2 — config files with composition
 
@@ -84,13 +141,16 @@ The thing that's NEW vs dotfile management:
 
 | Term | Plain-language gist |
 |---|---|
-| **Profile** | A named context (e.g., `personal`, `work`, `acme-client`) — one drawer in your wardrobe |
-| **Trust boundary** | A locked cabinet (one git repo) — only some hosts have the key. One cabinet can hold multiple drawers |
-| **Inheritance** | A profile can build on another's pieces (`acme-client` builds on `work` builds on `base`) |
-| **Layer** | One drawer's contribution at render time |
+| **Base** | The uniform under everything — universal preferences every host wears |
+| **Profile** | A per-context layer (e.g., `personal`, `work`, `acme-client`) added on top of the uniform |
+| **Trust boundary** | One git repo. From the owner's POV it's a **locker** (binary key access — you have it or you don't). From a consumer's POV it's a **vending machine** (you consume from it; access mode controls whether you can restock) |
+| **Deploy key** | The physical key for one specific trust boundary; in maury, can grant `ro`/`pr`/`rw` access |
+| **Inheritance** (`extends`) | Carrying multiple keys you own and stacking your own per-context layers (`acme-client` extends `work` extends `base`) |
+| **Access mode** | `ro` (vending machine — buy only) / `pr` (vending machine + suggestion slot) / `rw` (you have the restocking key). See §6 |
+| **Layer** | One per-context layer's contribution at render time |
 | **Active profile** | Which context you're "wearing" right now on this machine |
-| **Render** | Composing all the layers into your `~/.claude/` |
-| **Promotion** | Moving a piece from one drawer to a more-shared drawer (e.g., a `work` finding → `base`) |
+| **Render** | Putting on the uniform + layers into your `~/.claude/` |
+| **Promotion** | Moving a piece from one trust boundary to a more-shared one, via curator review (e.g., a `work` finding → `base`) |
 
 That's the whole model. Everything below is precision —
 necessary if you're writing an ADR or auditing a safety property,
@@ -281,6 +341,15 @@ If `lock: true` is set on the host's manifest entry,
 
 > *Inheritance tells you what content flows; access mode tells
 > you who can change the source.*
+
+> **Analogy bridge** (see [Analogy 1](#analogy-1--outfits-lockers-and-vending-machines)
+> above): the access mode is what kind of access you have to
+> someone else's trust boundary, framed as a vending machine.
+> `ro` = the vending machine — buy and consume only. `pr` =
+> vending machine + suggestion slot the curator reads. `rw` =
+> you're a co-owner with the restocking key. The formal
+> three-mode framing below is the load-bearing version; the
+> analogy is the mental hook.
 
 Every child-forebearer relationship in maury has one of three
 **access modes** — describing what the child can do to the
