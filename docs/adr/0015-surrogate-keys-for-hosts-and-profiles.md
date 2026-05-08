@@ -6,6 +6,16 @@
 - 2026-05-06 — added rule-IDs addendum proposing `rule_<32 hex>`
   prefix for rules; subsequently RETRACTED on the same day after
   ADR-0022 made it unnecessary (commit log preserves the trail).
+- 2026-05-07 — corrected the §"Host self-identification" claim
+  that `~/.maury-host-id` is "created by `maury bootstrap host`."
+  As of the Phase 4 implementation, `maury init` creates the
+  file on the new host's first run (see
+  `src/maury/bootstrap/init_cmd.py:120-126`); `maury bootstrap
+  host` is a curator-side command that runs on a *different*
+  host (with rw access to the base repo) and never writes to
+  `~/.maury-host-id` on the host being registered. The "never
+  modified" invariant still holds — once init creates the file,
+  it's immutable.
 
 ## Related tenets
 
@@ -164,10 +174,12 @@ lives in.
 #### Host self-identification
 
 Each host writes its ID once at first bootstrap to
-`~/.maury-host-id`. The file is created by `maury bootstrap host` and
-**never modified**. `socket.gethostname()` becomes a hint for setting
-the *initial* `name` field only — never the source of truth for which
-manifest entry applies to this machine.
+`~/.maury-host-id`. The file is created by `maury init` on the
+host's first run and **never modified** thereafter.
+`socket.gethostname()` is a hint used only to match the host
+against an already-registered manifest entry on first init —
+never the source of truth for which manifest entry applies to
+this machine after the host-id file exists.
 
 If `~/.maury-host-id` is missing (e.g., fresh install before
 bootstrap), maury commands that need to know "which host am I"
@@ -241,8 +253,12 @@ and prints a mapping report. Existing seed manifest in
   v1 with a "run upgrade" message (per
   [ADR-0030](0030-manifest-schema-migrations.md)).
 - ❌ **Bad:** Bootstrap on a new host requires the
-  `~/.maury-host-id` file. `maury bootstrap host` creates it;
-  without it, the host can't identify itself in the manifest.
+  `~/.maury-host-id` file. `maury init` creates it on first
+  run on the new host; without it (e.g., before init has been
+  run), the host can't identify itself in the manifest. The
+  curator-side `maury bootstrap host` registers the *manifest
+  entry* for the new host but does not touch
+  `~/.maury-host-id` on the new machine — that's init's job.
 - ❌ **Bad:** Code refactor is moderate — manifest module
   changes (lookup helpers, validation), rule engine gains
   profile-name resolution pass, all tests updated, seed
@@ -256,8 +272,9 @@ and prints a mapping report. Existing seed manifest in
   backward-compat fallback for hand-written rules).
 - Pre-commit hook checks every `<entity>.yaml`'s embedded
   `name` matches the directory name it lives in.
-- `~/.maury-host-id` is created exactly once at bootstrap
-  and never modified by maury commands afterward.
+- `~/.maury-host-id` is created exactly once by `maury init`
+  on the new host's first run, and never modified by maury
+  commands afterward.
 
 <details>
 <summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
