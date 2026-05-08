@@ -2,6 +2,11 @@
 
 **Status:** Accepted
 **Date:** 2026-05-08
+**Amended:**
+- 2026-05-08 — renamed `standards` → `convention`; corrected render
+  order (precept before convention at each level, so convention wins
+  at same scope); corrected advisory storage (context-level overrides
+  persist in the context overlay repo, not machine-local state).
 
 ## Related tenets
 
@@ -99,19 +104,21 @@ machine.
 - Inheritance: local only. Content does not cascade further.
 - Managed by: the host itself (rw).
 
-#### `standards`
-A set of conventions owned and maintained by this fleet or a
+#### `convention`
+A malleable set of rules owned and maintained by this fleet or a
 member of it.
 
 - Structural position: floating — declared at any structural
   level (base, context, or machine) and cascades downward from
   there.
-- Content character: team or personal conventions the declaring
-  party owns. Examples: code style preferences, PR title formats,
-  tool version pinning policies.
+- Content character: team or personal rules the declaring party
+  owns and can change freely. Examples: code style preferences,
+  PR title formats, tool version pinning policies. The name
+  "convention" signals that deviation is possible and expected —
+  these are rules by consensus, not by decree.
 - Inheritance: cascades to child layers. Child layers can
   override. When multiple child layers converge on similar
-  modifications to the same standard, the render engine (post-V1)
+  modifications to the same convention, the render engine (post-V1)
   may advise consolidating the shared portion back into the parent.
 - Managed by: the declaring party (rw for owner; pr for
   contributors; ro for pure consumers).
@@ -136,39 +143,65 @@ community package (analogous to oh-my-zsh for zsh).
 - Managed by: external source (rw for owner); consuming install
   has pr access to propose changes, ro at render time.
 
-### Standards vs precepts — the same data, different relationship
+### Conventions vs precepts — the same data, different relationship
 
-The same repo can be a `standards` layer for its owner and a
+The same repo can be a `convention` layer for its owner and a
 `precept` layer for its consumers. What differs is the consuming
 install's relationship to it:
 
 ```
 engineering-standards repo
-  ├── team lead's install:   layer=standards, repo_mode=rw   (owns it)
-  ├── senior dev's install:  layer=precept,   repo_mode=pr   (follows; can PR)
-  └── junior dev's install:  layer=precept,   repo_mode=ro   (follows; read-only)
+  ├── team lead's install:   layer=convention, repo_mode=rw   (owns it)
+  ├── senior dev's install:  layer=precept,    repo_mode=pr   (follows; can PR)
+  └── junior dev's install:  layer=precept,    repo_mode=ro   (follows; read-only)
 ```
 
 The PR flow for precept consumers: consumer detects a gap or
-disagreement → opens a PR against the standards repo (if
+disagreement → opens a PR against the convention repo (if
 `repo_mode=pr`) → owner reviews and merges → all consumers
 receive the update on next `maury sync`.
 
+### Render order
+
+The render engine applies layers from widest to narrowest scope.
+Within each structural level, precepts are applied before
+conventions — so a convention at the same level can override a
+precept at that level. Last applied wins when content exists at
+the same scope:
+
+```
+base precepts      → base conventions
+  context precepts → context conventions
+    machine precepts → machine conventions   (narrowest; applied last)
+```
+
+This means a machine-level convention beats a context-level
+precept at render time. That is intentional: a user's own
+conventions should prevail over inherited formal rules. The
+advisory system (post-V1) surfaces the divergence without
+blocking it.
+
 ### Override advisory (post-V1)
 
-When the render engine detects that a child layer overrides
-content inherited from a `precept` layer, it issues an advisory:
+When the render engine detects that a convention overrides content
+inherited from a `precept` layer, it issues an advisory — not a
+warning. The advisory is informational, acknowledgeable, and does
+not re-surface once dismissed:
 
-> "Machine `my-workstation` overrides `tabs-preference` from
-> `team-standards` (precept, owner: `@lead`). If broadly applicable,
-> an upstream PR would propagate this to 9 other consumers. Run
-> `maury advisory acknowledge <id>` to dismiss."
+> "`my-workstation` (context: work) overrides `tabs-preference`
+> from `team-standards` (precept, owner: `@lead`). If broadly
+> applicable, an upstream PR would propagate this to 9 other
+> consumers. `maury advisory acknowledge <id>` to dismiss."
 
-The advisory fires once per unique override. Acknowledged advisories
-are stored in `~/.claude/maury-state/advisories.jsonl` and do not
-re-surface. No advisory is issued for `standards` overrides
-(the declaring party owns the content; child customization is
-expected).
+**Advisory storage** is scoped to the context, not the machine.
+A developer who uses the `work` context on two machines should
+only need to acknowledge once. Acknowledged advisories are stored
+in the context's overlay repo (versioned, synced via `maury sync`)
+rather than in `~/.claude/maury-state/` (which is machine-local).
+The exact storage schema is deferred to ADR-0038.
+
+No advisory is issued for `convention` overrides — the declaring
+party owns the content and child customization is expected.
 
 ### Token efficiency (post-V1)
 
@@ -217,7 +250,7 @@ for repos):
     },
     "git@example.com:org/engineering-standards.git": {
       "name": "engineering-standards",
-      "layer": "standards",
+      "layer": "convention",
       "scope": "profile_3f1a...",
       "description": "Team coding conventions"
     }
@@ -229,10 +262,10 @@ for repos):
 
 - `name` — free-form display label. Not load-bearing; the URL is
   the identity.
-- `layer` — one of `base | context | machine | standards |
+- `layer` — one of `base | context | machine | convention |
   precept`. Required.
 - `scope` — `null` for `base`; a `profile_<hex>` ID for
-  `context` and `standards` layers scoped to a profile; a
+  `context` and `convention` layers scoped to a profile; a
   `host_<hex>` ID for `machine` layers. `precept` layers may
   scope to a profile or be fleet-wide.
 - `description` — optional free-form note for curator reference.
@@ -309,7 +342,7 @@ final CLAUDE.md, which layer it originated from. This provenance
 record enables:
 
 - Correct override cascade (child overrides parent, with
-  standards/precept awareness).
+  convention/precept awareness).
 - V1 advisory generation (post-V1 scope): provenance is the
   prerequisite for detecting precept overrides and issuing
   acknowledgeable advisories.
