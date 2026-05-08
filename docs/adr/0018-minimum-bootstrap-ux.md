@@ -2,9 +2,16 @@
 
 **Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+- 2026-05-07 — step 6 ("first render") expanded with a drift
+  preflight per [ADR-0017](0017-drift-detection-and-reconciliation.md).
+  Init now refuses to silently overwrite pre-existing target-dir
+  content and persists `last-render.json` after a successful apply.
+  See §"Init drift preflight (added 2026-05-07)".
 
 ## Related tenets
 
+- [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
 ## TL;DR
@@ -118,7 +125,12 @@ maury init --from-dir /mnt/usb/maury-base/
    as a deploy key on that repo (or use `gh` if available and the
    `github` backend is in use).
 6. **Run probe + first render.** `maury probe` + render under
-   `~/.claude/`.
+   `~/.claude/`. The render goes through a drift preflight per
+   ADR-0017 and **may refuse and exit 1** if the target dir has
+   pre-existing content — see §"Init drift preflight (added
+   2026-05-07)" below for the bootstrap-case collision behavior,
+   the `--force`/`--non-interactive` flags, and the post-apply
+   `last-render.json` write.
 
 #### `maury bootstrap-snippet` for from-existing-host onboarding
 
@@ -203,6 +215,54 @@ adapter brings its own auth model.
   existing base; it doesn't bootstrap a fleet from scratch. For
   that, see `maury bootstrap repo base` (curator command, Phase 4).
 
+#### Init drift preflight (added 2026-05-07)
+
+The original v1 spec had step 6 render directly into the target
+dir. That violates Tenet 1 ("first, do no harm") on any host
+that already has a `~/.claude/` — for example, the user has been
+hand-managing `CLAUDE.md` for months and is now adopting maury
+to share it across hosts. Silent overwrite would lose that work.
+
+Init now applies the same three-flow drift policy described in
+[ADR-0017 §"Sync flow with drift"][017-flows], with one extra
+case for the no-baseline state:
+
+| State | What init does |
+|---|---|
+| Target dir is empty / nonexistent | Render and apply normally. Persist `last-render.json` post-apply. |
+| Target dir has a `last-render.json` baseline (re-init) | Standard `detect_drift` — same paths as `maury sync`. The three flows below apply. |
+| Target dir has pre-existing files but no baseline (bootstrap-case collision) | Extra case specific to init: scan rendered file paths against on-disk content; any mismatch is a collision. The three flows below apply, with collision-specific phrasing. |
+
+The three flows (table reproduced from ADR-0017's sync flows so
+this ADR is self-contained; the underlying policy is shared):
+
+| Flag | Behavior |
+|---|---|
+| `maury init` (default) | Refuse on any drift or bootstrap-case collision. Point user at `--force` / `--check`. Exit 1 with a list of colliding paths. |
+| `maury init --non-interactive` | Refuse, exit 1. Cron/CI safe. Same set of conditions as default; differs only in the error phrasing (which mentions the flag explicitly so logs are diagnosable). |
+| `maury init --force` | Clobber with a loud warning to stderr. Hand-edits or pre-existing content are overwritten. Rare manual override; appropriate when the user has already audited the target dir. |
+
+`--force` and `--non-interactive` are mutually exclusive; the
+check is a hand-rolled `ClickException` raised at the top of the
+`init` command body, before the `init()` call. (Click 8 doesn't
+have first-class option-group exclusivity, so the check is in
+maury's code, not Click's.)
+
+After a successful apply (whether default-clean or `--force`),
+init persists `last-render.json` to
+`<target>/maury-state/last-render.json` per
+[ADR-0029](0029-maury-state-layout-contract.md), so subsequent
+`maury sync` runs can detect drift against the init-rendered
+state. Without this, a host's first sync after init had no
+baseline and silently fell into ADR-0017's "first-time render"
+no-drift branch — a hole in the safety story.
+
+`--check` (dry-run) still exercises the drift preflight in full
+and reports the would-be refusal; it just skips the actual
+write and the baseline persist.
+
+[017-flows]: 0017-drift-detection-and-reconciliation.md#sync-flow-with-drift
+
 ### Consequences
 
 - ✅ **Good:** One credential + one URL is the minimum the
@@ -222,6 +282,10 @@ adapter brings its own auth model.
   everything else about the new host. Once init's step 3
   completes, maury knows which other repos to clone, what
   deploy keys to generate, etc.
+- ✅ **Good (added 2026-05-07):** Tenet 1 holds across init,
+  not just sync. A host adopting maury onto a populated
+  `~/.claude/` no longer risks silent loss of its pre-maury
+  state.
 - ❌ **Bad:** User must remember/store the base repo URL +
   one auth credential out-of-band (password manager
   recommended). Maury can't solve this without a chicken-
@@ -235,6 +299,12 @@ adapter brings its own auth model.
   base URL filled in.
 - README install table covers the documented pipx-install
   paths per OS.
+- (added 2026-05-07) `maury init` refuses on bootstrap-case
+  collisions by default; `--force` and `--non-interactive`
+  flags wired and mutually exclusive; `last-render.json`
+  written post-apply. Implemented in
+  `src/maury/bootstrap/init_cmd.py` with tests in
+  `tests/unit/test_init.py` and `tests/unit/test_cli_init.py`.
 
 <details>
 <summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>

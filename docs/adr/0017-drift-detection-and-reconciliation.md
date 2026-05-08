@@ -17,6 +17,15 @@
   active-sessions.jsonl), and the user-facing output spirit.
   Closes audit finding M2 (skill referenced in 4 docs without
   being defined).
+- 2026-05-07 — clarified that the three drift flows apply to
+  `maury init` as well as `maury sync`, with one extra
+  bootstrap-case (no `last-render.json` baseline yet) where
+  pre-existing target-dir content is detected via collision
+  scan against rendered file paths. Init now also persists
+  `last-render.json` post-apply so the first subsequent sync
+  has a baseline. See §"Init applies the same drift policy
+  (added 2026-05-07)" and [ADR-0018](0018-minimum-bootstrap-ux.md)
+  §"Init drift preflight (added 2026-05-07)".
 
 ## TL;DR
 
@@ -175,6 +184,60 @@ Three flows from question Q10:
 > overwrite/refuse tradeoffs `--force` covers here. Reader who
 > notices the inconsistency: it's deliberate.
 
+#### Init applies the same drift policy (added 2026-05-07)
+
+The original framing of this ADR was sync-centric: it assumed a
+host already had a `last-render.json` baseline, and "first-time
+render" was implicitly the bootstrap path that wouldn't trigger
+drift detection at all. That left a hole: a host adopting maury
+onto a populated `~/.claude/` (e.g., the user has been
+hand-managing `CLAUDE.md` for months) had nothing protecting its
+pre-maury state from being silently overwritten by `maury init`'s
+first render. Tenet 1 violation, found post-Phase-4 implementation.
+
+`maury init` now applies the same three flows above, with one
+extra case for the no-baseline state:
+
+| Init state | Detection mechanism | Treatment |
+|---|---|---|
+| Target dir empty / nonexistent | n/a | Render and apply normally; persist `last-render.json` post-apply. |
+| Target dir has `last-render.json` (re-init) | Standard `detect_drift` against `DRIFT_SCAN_DIRS` — same code path as sync. | Three flows below. |
+| Target dir populated, no `last-render.json` (bootstrap-case collision) | Scan rendered file paths; any pre-existing on-disk content that differs from rendered content is a "collision." | Three flows below; phrasing differs ("pre-existing" rather than "drift") for clarity. |
+
+The flag mapping (mirrors of the sync flow table above):
+
+| `maury init` flag | Behavior |
+|---|---|
+| (default) | Refuse on any drift / collision; exit 1 with a list of colliding paths and a pointer at `--force` / `--check`. |
+| `--non-interactive` | Refuse, exit 1. Cron/CI safe. |
+| `--force` | Clobber with a loud warning to stderr. Hand-edits / pre-existing content overwritten. |
+
+`--force` and `--non-interactive` are mutually exclusive; the
+check is a hand-rolled `ClickException` in the init command
+body. Same constants and policy helpers as sync — see
+`src/maury/bootstrap/init_cmd.py:_evaluate_collision_policy`
+and `:_evaluate_drift_policy`.
+
+After a successful apply (default-clean or `--force`), init
+persists `last-render.json` per the schema in
+[ADR-0029](0029-maury-state-layout-contract.md). Without this,
+the first subsequent `maury sync` falls into the "first-time
+render" no-drift branch and the safety story has a gap. With it,
+the first sync sees a real baseline and detects any hand-edits
+the user made in the interval.
+
+The reconcile menu (5 hand-edit actions, 3 Claude-write actions)
+is **not** wired into init's default flow — init refuses or
+clobbers, and the user is expected to run `maury reconcile`
+separately if they want the per-file menu. Rationale: init is a
+one-shot bootstrap; the reconcile menu's "skip-once / mark hand-
+managed" semantics make more sense at sync time when the user
+has a relationship with the target dir's content.
+
+See [ADR-0018](0018-minimum-bootstrap-ux.md) §"Init drift
+preflight (added 2026-05-07)" for the init-side narrative and
+the failure case that motivated the change.
+
 #### Multi-source merge conflicts
 
 When the same line is touched by hand-edit, mined fragment, AND
@@ -317,6 +380,10 @@ v1.1 (deferred):
   detection + menu.
 - `maury sync` (Phase 5, shipped) checks drift before render
   and respects `--non-interactive` / `--force` flags.
+- (added 2026-05-07) `maury init` (Phase 4, shipped) checks
+  drift on re-init and bootstrap-case collisions on first
+  init; respects the same `--non-interactive` / `--force`
+  flags; persists `last-render.json` post-apply.
 
 <details>
 <summary><b>Pros and cons of the options</b> (per-option ✅/❌ — click to expand)</summary>
