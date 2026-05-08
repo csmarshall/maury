@@ -47,8 +47,10 @@ smock + name badge at work. Each per-location layer is a
 "get dressed" on a given machine — that's a **render** — maury
 puts on the uniform, then opens whichever locker you have a key
 for in the current context and adds those items, then layers any
-host-specific tweaks on top (a coat if it's cold on this
-particular machine).
+**host-specific tweaks** on top (the well-loved slippers and
+ratty house pants you'd never wear out of the house — fine here,
+embarrassing anywhere else, and you'd never want them to follow
+you to another machine).
 
 A **locker** is a *trust boundary* — one git repo. One locker
 can hold multiple per-context layers if you trust their contents
