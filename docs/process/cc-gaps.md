@@ -1,0 +1,185 @@
+# Claude Code gaps — maury wishlist
+
+This document tracks Claude Code behaviors that maury works around today
+because the feature doesn't exist upstream. Each entry records:
+
+- **The gap** — what's missing
+- **Maury's workaround** — what we do instead
+- **What we'd gain** — how maury's design or UX would improve if CC added it
+- **Upstream status** — known issue, filed, or not yet filed
+
+The intent is twofold: inform maury design decisions (so workarounds can be
+simplified when gaps close), and feed into upstream feature requests to
+Anthropic.
+
+Cross-reference: `docs/claude-code-contract.md` tracks *documented* CC
+behaviors. This file tracks *absent* behaviors.
+
+---
+
+## Lifecycle hooks
+
+### GAP-1: No `ContextCompression` hook
+
+**The gap.** Claude Code has no hook that fires when the context window is
+summarized mid-session. Compression silently discards raw conversation history
+and replaces it with a summary. Maury has no way to detect this happened.
+
+**Maury's workaround.** None. If compression occurs, session-state written by
+earlier hooks may reference context that is no longer in the window. Users are
+expected to manually export state before long sessions (no `maury` command
+exists for this yet; it is a planned capability dependent on this gap closing
+or a suitable workaround being found).
+
+**What we'd gain.**
+- Automatic `session-state.md` checkpoint at compression time — the highest-
+  value moment for a state write, since the session is about to lose raw history.
+- Re-validation that precept layer content (injected via CLAUDE.md) is still
+  represented in the compressed summary. If it was compressed away, maury could
+  nudge the user or re-inject.
+- Accurate `active-sessions.jsonl` records noting compression events, useful
+  for mining (ADR-0026) to understand what a session "saw."
+
+**Upstream status.** Not filed.
+
+---
+
+### GAP-2: No `SessionResume` hook (distinct from `SessionStart`)
+
+**The gap.** `SessionStart` fires once per session — but it fires the same way
+for a *fresh* session and for a *resumed compacted session*. There is no event
+that distinguishes "new context window" from "continuing a previously compressed
+conversation."
+
+**Maury's workaround.** ADR-0025 records a `resumed_from` field in
+`active-sessions.jsonl` when a session is launched via `claude --resume <id>`,
+so maury *can* tell resumed sessions from fresh ones at the data level. The
+remaining limitation: there is no hook that fires *only* on resume, so logic
+that should run only on resume (e.g., precept re-validation, drift check) must
+run on every `SessionStart` and self-filter based on `resumed_from`.
+
+**What we'd gain.**
+- A dedicated `SessionResume` hook that fires only when resuming would let
+  maury scope precept re-validation and drift checks to resume-only, avoiding
+  redundant work on fresh sessions.
+- Cleaner hook scripts: no `resumed_from` null-check needed inside the hook.
+
+**Upstream status.** Not filed.
+
+---
+
+### GAP-3: No `LowContext` / token-warning hook
+
+**The gap.** There is no hook that fires when the session is approaching the
+context window limit, before compression is triggered.
+
+**Maury's workaround.** None. Users hit compression without warning.
+
+**What we'd gain.**
+- Automatic state export before the window fills — the last moment where
+  raw history is available.
+- User-facing warning so they can wrap up a thought or explicitly export state
+  before continuity breaks.
+
+**Upstream status.** Not filed.
+
+---
+
+### GAP-4: No `PreSession` hook (before CLAUDE.md is read)
+
+**The gap.** The earliest hook that fires is `SessionStart`. Based on the CC
+hook firing model (`cc-contract:event-firing-cadence`), `SessionStart` fires
+once the session is open — but CC documentation does not explicitly state
+whether this is before or after CLAUDE.md is loaded into context. *(Assumed:
+CLAUDE.md loads before any hook fires, since hooks are defined in settings.json
+which is read at startup alongside CLAUDE.md. Label: assumed — needs
+empirical verification.)* If correct, there is no hook that runs before config
+is read.
+
+**Maury's workaround.** Users must run `maury sync` manually before starting a
+session. If they forget, they work with a stale CLAUDE.md until the next sync.
+There is no way to auto-sync at session open.
+
+**What we'd gain.**
+- `maury sync --quiet` could run at session open, ensuring config is always
+  current at session start without user intervention.
+- Precept layers (ADR-0037, when drafted) could be fetched and rendered
+  just-in-time before the session loads them.
+
+**Upstream status.** Not filed.
+
+---
+
+## Session and config
+
+### GAP-5: CLAUDE.md is not hot-reloaded
+
+**The gap.** CLAUDE.md is read at session start and not re-read if the file
+changes on disk. Running `maury sync` mid-session updates the file but the
+current session never sees the new content.
+
+**Maury's workaround.** After `maury sync` completes, maury tells the user to
+start a new session to pick up the changes.
+
+**What we'd gain.**
+- A `/reload` command (or equivalent) inside Claude Code to re-read CLAUDE.md
+  on demand would let a mid-session `maury sync` take effect immediately.
+- Alternatively, a hook payload from CC confirming "CLAUDE.md was re-read at
+  timestamp T" would let maury validate the file was picked up.
+
+**Upstream status.** Not filed.
+
+---
+
+### GAP-6: No native profile / external config tracking
+
+**The gap.** Claude Code records session transcripts and auto-memory but has no
+concept of "which external config was active during this session." There is no
+way to query CC to find out which CLAUDE.md content was loaded for a given
+session ID. This is documented in
+[`cc-contract:no-native-profile-tracking`](../claude-code-contract.md#cc-contractno-native-profile-tracking).
+
+**Maury's workaround.** ADR-0025's hooks-and-state-file mechanism: maury writes
+its own `active-sessions.jsonl` at `SessionStart` / `SessionEnd`, recording
+which profile and host were active.
+
+**What we'd gain.**
+- If CC recorded a content-hash or path of the CLAUDE.md it loaded, maury
+  could verify drift without a separate state file.
+- Cross-session mining ([ADR-0026](../adr/0026-profile-aware-mining.md)) could
+  correlate findings to the config that was active without relying on maury's
+  own session records.
+
+**Upstream status.** Not filed.
+
+---
+
+### GAP-7: Hook stdin payload doesn't include context-window metadata
+
+**The gap.** Hook stdin payloads (per
+[`cc-contract:hooks-stdin-payload`](../claude-code-contract.md#cc-contracthooks-stdin-payload))
+include tool name, input, output, session ID, and transcript path. They do not
+include current token count, context window utilization, or whether compression
+has occurred in this session.
+
+**Maury's workaround.** None. Hooks cannot make decisions based on how full the
+context window is.
+
+**What we'd gain.**
+- Token count in the payload would let maury's `Stop` hook decide whether to
+  export state (near-full → export; plenty of room → skip).
+- Compression flag in the payload would let any hook downstream of compression
+  know the context has changed.
+
+**Upstream status.** Not filed.
+
+---
+
+## Action item
+
+See GitHub issue [#4](../../issues/4) — "Research upstream feature request
+process for Claude Code gaps." Before filing any of the above with Anthropic,
+we need to determine the right channel (GitHub discussions, feedback form,
+developer forum) and the right format (reproducer steps? use-case framing?
+both?). The issue tracks that research and will link back here as gaps are
+filed.
