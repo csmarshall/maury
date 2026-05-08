@@ -14,7 +14,7 @@ from maury.bootstrap import init as run_init
 from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
 from maury.doctor import Report, render_json, render_text, run_all
-from maury.drift import detect_drift, read_last_render
+from maury.drift import DriftEntry, detect_drift, read_last_render
 from maury.empirical_tests import HarnessReport, claude_present
 from maury.empirical_tests import run as run_empirical
 from maury.ids import short as short_id
@@ -577,7 +577,7 @@ def reconcile_cmd(
 
     # Interactive prompter: for each entry, show the diff context and
     # the 5-action menu.
-    def _prompter(entry):  # type: ignore[no-untyped-def]
+    def _prompter(entry: DriftEntry) -> ReconcileAction:
         click.echo(f"--- {entry.kind.value:<10} {entry.path}")
         if entry.expected_sha and entry.actual_sha:
             click.echo(f"    baseline: {entry.expected_sha[:12]}  on-disk: {entry.actual_sha[:12]}")

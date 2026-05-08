@@ -45,7 +45,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from maury.drift import DriftEntry, DriftKind, DriftReport
-from maury.render import RenderResult
+from maury.render import RenderedFile, RenderResult
 
 # ---- public action enum -------------------------------------------------
 
@@ -268,7 +268,7 @@ def _apply_action(
     action: ReconcileAction,
     entry: DriftEntry,
     target_dir: Path,
-    rendered_by_path: dict,  # type: ignore[type-arg]  # pragma: no cover - covered via callers
+    rendered_by_path: dict[str, RenderedFile],
     base_repo: Path | None,
     profile_name: str | None,
     host_name: str | None,
@@ -311,7 +311,7 @@ def _do_revert(
     *,
     entry: DriftEntry,
     target_dir: Path,
-    rendered_by_path: dict,  # type: ignore[type-arg]
+    rendered_by_path: dict[str, RenderedFile],
 ) -> ReconcileOutcome:
     """Restore the file to the rendered baseline content."""
     if entry.kind == DriftKind.UNTRACKED:

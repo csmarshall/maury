@@ -100,7 +100,7 @@ class AnthropicSdkClient:
     ) -> None:
         """Initialize. Model defaults to Sonnet 4.6 (good cost/quality tradeoff for mining)."""
         try:
-            from anthropic import Anthropic  # type: ignore[import-not-found]
+            from anthropic import Anthropic
         except ImportError as e:
             raise BackendUnavailableError(
                 "anthropic SDK not installed; install with `pip install maury[sdk]` or use the default `cli` backend."
