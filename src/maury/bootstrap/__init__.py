@@ -6,8 +6,17 @@ Per ADR-0018, two distinct verbs:
 
 Currently shipped:
   - `maury init` (this module's `init_cmd.init`)
+  - `maury bootstrap host` (this module's `host_cmd.bootstrap_host`)
 """
 
+from .host_cmd import BootstrapHostError, BootstrapHostResult, bootstrap_host
 from .init_cmd import InitError, InitResult, init
 
-__all__ = ["InitError", "InitResult", "init"]
+__all__ = [
+    "BootstrapHostError",
+    "BootstrapHostResult",
+    "InitError",
+    "InitResult",
+    "bootstrap_host",
+    "init",
+]

@@ -9,7 +9,8 @@ from pathlib import Path
 import click
 
 from maury import __version__
-from maury.bootstrap import InitError
+from maury.bootstrap import BootstrapHostError, InitError
+from maury.bootstrap import bootstrap_host as run_bootstrap_host
 from maury.bootstrap import init as run_init
 from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
@@ -386,6 +387,87 @@ def probe(output_path: Path | None, hostname_override: str | None) -> None:
 @main.group()
 def bootstrap() -> None:
     """Bootstrap a new host or repo."""
+
+
+# ---- bootstrap host (curator-side host registration, per ADR-0018) ----
+
+
+@bootstrap.command("host")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option("--name", "name", required=True, help="Display name for the new host (should match its hostname).")
+@click.option(
+    "--profile",
+    "profile",
+    required=True,
+    help="Profile (name or ID) the new host belongs to.",
+)
+@click.option(
+    "--base-url",
+    "base_url",
+    default=None,
+    help="Base repo URL. If omitted, copied from another already-registered host's `base` entry.",
+)
+@click.option(
+    "--base-mode",
+    "base_mode",
+    type=click.Choice(["ro", "rw", "pr"], case_sensitive=False),
+    default="ro",
+    show_default=True,
+    help="Access mode for the new host's base repo.",
+)
+@click.option(
+    "--push-policy",
+    "push_policy",
+    type=click.Choice(["permissive", "own_profile_only", "disabled"], case_sensitive=False),
+    default="own_profile_only",
+    show_default=True,
+    help="Push policy for the new host.",
+)
+@click.option("--owner", "owner", default=None, help="Optional owner identifier (email, handle).")
+@click.option("--check", "dry_run", is_flag=True, help="Dry-run: show what would happen, write nothing.")
+def bootstrap_host_cmd(
+    manifest_file: Path | None,
+    name: str,
+    profile: str,
+    base_url: str | None,
+    base_mode: str,
+    push_policy: str,
+    owner: str | None,
+    dry_run: bool,
+) -> None:
+    """Register a new host in the manifest (curator-side)."""
+    from maury.manifest import PushPolicy, RepoMode
+
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    if not mpath.exists():
+        raise click.ClickException(f"manifest file not found: {mpath}")
+
+    try:
+        result = run_bootstrap_host(
+            manifest_path=mpath,
+            name=name,
+            profile=profile,
+            base_url=base_url,
+            base_mode=RepoMode(base_mode.lower()),
+            push_policy=PushPolicy(push_policy.lower()),
+            owner=owner,
+            dry_run=dry_run,
+        )
+    except BootstrapHostError as e:
+        raise click.ClickException(str(e)) from e
+
+    for action in result.actions:
+        click.echo(f"  {action}")
+    click.echo("")
+    click.echo(result.message)
+    if dry_run:
+        click.echo("(--check; no files were written)")
 
 
 # ---- init (the user's first command on a new host, per ADR-0018) -------
