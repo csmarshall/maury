@@ -264,9 +264,10 @@ def test_claude_present_returns_bool() -> None:
 def test_probe_result_is_frozen() -> None:
     p = ProbeResult(name="x", passed=True, detail="ok")
     with pytest.raises(Exception):  # noqa: B017 — FrozenInstanceError on dataclasses.FrozenInstanceError
-        # setattr to avoid `# type: ignore[misc]` — the runtime failure
-        # is the assertion, mypy doesn't need to be involved.
-        setattr(p, "passed", False)
+        # Frozen-mutation invariant test: the runtime failure IS the
+        # assertion. The `[misc]` ignore documents that we know mypy
+        # would catch this statically — and that's exactly what we want.
+        p.passed = False  # type: ignore[misc]
 
 
 def test_harness_report_is_frozen(tmp_path: Path) -> None:
@@ -278,4 +279,5 @@ def test_harness_report_is_frozen(tmp_path: Path) -> None:
         probes=(),
     )
     with pytest.raises(Exception):  # noqa: B017
-        setattr(r, "claude_invoked", True)
+        # Frozen-mutation invariant test (see test_probe_result_is_frozen).
+        r.claude_invoked = True  # type: ignore[misc]

@@ -165,11 +165,10 @@ def test_sdk_client_call_concatenates_text_blocks():
     fake_response.content = [block1, block2]
     fake_client_instance.messages.create.return_value = fake_response
     fake_client_class.return_value = fake_client_instance
-    # setattr (rather than direct attribute assignment) avoids a
-    # mypy `# type: ignore[attr-defined]` — the fake module is
-    # synthesized via `type(sys)("anthropic")` so it has no
-    # statically-known attrs; we deliberately pin one for the test.
-    setattr(fake_anthropic_module, "Anthropic", fake_client_class)
+    # The fake module is synthesized via `type(sys)("anthropic")` and
+    # has no statically-known attrs; we deliberately pin one for the
+    # test so the SUT's `from anthropic import Anthropic` resolves.
+    fake_anthropic_module.Anthropic = fake_client_class  # type: ignore[attr-defined]
 
     with patch.dict(sys.modules, {"anthropic": fake_anthropic_module}):
         client = AnthropicSdkClient(model="claude-test", max_tokens=100)
@@ -195,11 +194,10 @@ def test_sdk_client_call_skips_non_text_blocks():
     fake_response.content = [text_block, tool_block]
     fake_client_instance.messages.create.return_value = fake_response
     fake_client_class.return_value = fake_client_instance
-    # setattr (rather than direct attribute assignment) avoids a
-    # mypy `# type: ignore[attr-defined]` — the fake module is
-    # synthesized via `type(sys)("anthropic")` so it has no
-    # statically-known attrs; we deliberately pin one for the test.
-    setattr(fake_anthropic_module, "Anthropic", fake_client_class)
+    # The fake module is synthesized via `type(sys)("anthropic")` and
+    # has no statically-known attrs; we deliberately pin one for the
+    # test so the SUT's `from anthropic import Anthropic` resolves.
+    fake_anthropic_module.Anthropic = fake_client_class  # type: ignore[attr-defined]
 
     with patch.dict(sys.modules, {"anthropic": fake_anthropic_module}):
         client = AnthropicSdkClient()
