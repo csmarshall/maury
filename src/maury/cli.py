@@ -413,11 +413,25 @@ def bootstrap() -> None:
     help="Where to write the rendered config tree.",
 )
 @click.option("--check", "dry_run", is_flag=True, help="Dry-run: show what would happen, write nothing.")
+@click.option(
+    "--force",
+    "force",
+    is_flag=True,
+    help="Overwrite pre-existing content in the target dir. Hand-edits will be lost.",
+)
+@click.option(
+    "--non-interactive",
+    "non_interactive",
+    is_flag=True,
+    help="Refuse on any pre-existing content collision, exit 1. Cron/CI safe.",
+)
 def init_cmd(
     from_dir: Path | None,
     from_tarball: Path | None,
     target_dir: Path,
     dry_run: bool,
+    force: bool,
+    non_interactive: bool,
 ) -> None:
     """Initialize maury on a new host (first-run bootstrap)."""
     if from_dir is None and from_tarball is None:
@@ -427,6 +441,10 @@ def init_cmd(
         )
     if from_dir is not None and from_tarball is not None:
         raise click.ClickException("--from-dir and --from-tarball are mutually exclusive")
+    if force and non_interactive:
+        raise click.ClickException("--force and --non-interactive are mutually exclusive.")
+
+    drift_mode = "force" if force else ("non-interactive" if non_interactive else "default")
 
     try:
         result = run_init(
@@ -434,6 +452,7 @@ def init_cmd(
             source_tarball=from_tarball,
             target_dir=target_dir,
             dry_run=dry_run,
+            drift_mode=drift_mode,
         )
     except InitError as e:
         raise click.ClickException(str(e)) from e
@@ -444,6 +463,10 @@ def init_cmd(
     click.echo(result.message)
     if dry_run:
         click.echo("(--check; no files were written)")
+    if result.has_errors():
+        for err in result.errors:
+            click.echo(f"  ✗ {err}", err=True)
+        sys.exit(1)
     if not result.host_registered:
         sys.exit(2)  # distinct exit so scripts can detect "host not registered yet"
 

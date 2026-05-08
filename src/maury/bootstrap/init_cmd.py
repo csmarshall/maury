@@ -6,7 +6,10 @@ Per ADR-0018. v1 minimum:
      tarball (--from-tarball). Git clone deferred to a later sub-phase.
   3. Read the manifest from the ingested repo.
   4. Look up this host: by ID file, then by hostname fallback.
-  5. Render base + profile chain + host overlay into the target dir.
+  5. Drift preflight (per ADR-0017 + Tenet 1): refuse to clobber
+     pre-existing content the user might have hand-edited.
+  6. Render base + profile chain + host overlay into the target dir.
+  7. Persist `last-render.json` so subsequent syncs can detect drift.
 
 Future sub-phases:
   - Git URL clone with SSH key generation
@@ -19,11 +22,28 @@ from __future__ import annotations
 import socket
 import tarfile
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
+from maury.drift import (
+    DriftReport,
+    FileFingerprint,
+    LastRender,
+    detect_drift,
+    read_last_render,
+    write_last_render,
+)
 from maury.ids import new_host_id
 from maury.manifest import HOST_ID_FILE, ManifestError, load_manifest
-from maury.render import RenderError, apply_render, render
+from maury.render import RenderError, RenderResult, apply_render, render
+from maury.sync import (
+    DRIFT_MODE_DEFAULT,
+    DRIFT_MODE_FORCE,
+    DRIFT_MODE_NON_INTERACTIVE,
+    DRIFT_SCAN_DIRS,
+)
+
+_DRIFT_MODES = {DRIFT_MODE_DEFAULT, DRIFT_MODE_FORCE, DRIFT_MODE_NON_INTERACTIVE}
 
 
 @dataclass(frozen=True)
@@ -35,6 +55,13 @@ class InitResult:
     host_registered: bool = False
     rendered: bool = False
     message: str = ""
+    drift_report: DriftReport | None = None
+    # "" (no preflight ran), "none", "skipped", "forced", "refused"
+    drift_action: str = ""
+    errors: list[str] = field(default_factory=list)
+
+    def has_errors(self) -> bool:
+        return bool(self.errors)
 
 
 class InitError(ValueError):
@@ -48,13 +75,23 @@ def init(
     target_dir: Path,
     host_id_file: Path = HOST_ID_FILE,
     dry_run: bool = False,
+    drift_mode: str = DRIFT_MODE_DEFAULT,
 ) -> InitResult:
     """Run the init flow against an already-ingested or to-be-ingested repo.
 
     Exactly one of `source_dir` or `source_tarball` must be provided.
     Returns an InitResult describing what happened (created host id?
     found the host? what was rendered?).
+
+    `drift_mode` controls the preflight behavior when target_dir already
+    has content (per ADR-0017's three sync flows, mirrored here):
+      - "default": refuse on any pre-existing content collision (or, on
+        re-init, on detected drift); points the user at --force.
+      - "force": clobber with a loud warning. Hand-edits will be lost.
+      - "non-interactive": refuse with errors set; exit-1 from the CLI.
     """
+    if drift_mode not in _DRIFT_MODES:
+        raise InitError(f"unknown drift_mode {drift_mode!r}; expected one of {sorted(_DRIFT_MODES)}")
     if (source_dir is None) == (source_tarball is None):
         raise InitError("provide exactly one of --from-dir or --from-tarball")
 
@@ -138,11 +175,81 @@ def init(
     except RenderError as e:
         raise InitError(f"render failed: {e}") from e
 
+    # 5a. Drift preflight (per ADR-0017 + Tenet 1).
+    last = read_last_render(target_dir)
+    drift_report: DriftReport | None = None
+    drift_action: str = ""
+    drift_errors: list[str] = []
+
+    if last is None:
+        # Bootstrap case. There's no maury baseline to compare against,
+        # but the target dir might already contain content the user
+        # hand-managed (e.g., a pre-maury `~/.claude/`). Refuse to
+        # silently overwrite it.
+        collisions = _detect_collisions(rendered=result, target_dir=target_dir)
+        if collisions:
+            drift_action, drift_errors, collision_warnings = _evaluate_collision_policy(
+                collisions=collisions,
+                target_dir=target_dir,
+                drift_mode=drift_mode,
+            )
+            actions.extend(collision_warnings)
+        else:
+            drift_action = "none"
+    else:
+        # Re-init case. Same drift policy as `maury sync`.
+        drift_report = detect_drift(
+            target_dir=target_dir,
+            last=last,
+            untracked_scan_dirs=DRIFT_SCAN_DIRS,
+        )
+        if drift_report.has_drift():
+            drift_action, drift_errors, drift_warnings = _evaluate_drift_policy(
+                drift_report=drift_report,
+                drift_mode=drift_mode,
+            )
+            actions.extend(drift_warnings)
+        else:
+            drift_action = "none"
+
+    if drift_errors:
+        return InitResult(
+            actions=actions,
+            host_id_created=host_id_created,
+            host_registered=True,
+            rendered=False,
+            message=(
+                f"refused to render onto {target_dir}: see errors. Use --force to overwrite or --check to inspect."
+            ),
+            drift_report=drift_report,
+            drift_action=drift_action,
+            errors=drift_errors,
+        )
+
     apply_actions = apply_render(result, target_dir, dry_run=dry_run)
     actions.extend(apply_actions)
     if result.warnings:
         for w in result.warnings:
             actions.append(f"warning: {w}")
+
+    # 5b. Persist last-render.json baseline so subsequent syncs can
+    # detect drift. Skip on dry-run (don't pollute state with a
+    # hypothetical render).
+    if not dry_run:
+        new_baseline = LastRender(
+            schema_version=1,
+            rendered_at=_now_iso(),
+            host_id=matched_hid,
+            profile_id=profile_id,
+            files=[
+                FileFingerprint.from_bytes(
+                    path=f.target_path,
+                    content=f.content,
+                )
+                for f in result.files
+            ],
+        )
+        write_last_render(target_dir, new_baseline)
 
     return InitResult(
         actions=actions,
@@ -154,6 +261,110 @@ def init(
             f"(profile {manifest.profiles[profile_id].name!r}); "
             f"{len(result.files)} file(s) {'would be ' if dry_run else ''}written to {target_dir}."
         ),
+        drift_report=drift_report,
+        drift_action=drift_action,
+    )
+
+
+def _now_iso() -> str:
+    """UTC ISO-8601 timestamp matching the format used by sync's baseline writes."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _detect_collisions(*, rendered: RenderResult, target_dir: Path) -> list[str]:
+    """Return target paths that already exist on disk with content
+    different from what would be rendered.
+
+    Used in the bootstrap branch (no last-render.json baseline). Files
+    already on disk that match the render output byte-for-byte are not
+    collisions — apply_render would no-op on them.
+    """
+    collisions: list[str] = []
+    for f in rendered.files:
+        full = target_dir / f.target_path
+        if not full.is_file():
+            continue
+        if full.read_bytes() != f.content:
+            collisions.append(f.target_path)
+    return collisions
+
+
+def _evaluate_collision_policy(
+    *,
+    collisions: list[str],
+    target_dir: Path,
+    drift_mode: str,
+) -> tuple[str, list[str], list[str]]:
+    """Decide what to do with bootstrap-case collisions.
+
+    Returns (drift_action, errors, warnings). Errors signal refusal;
+    warnings are advisory (e.g., "--force overwriting N files").
+    """
+    preview = ", ".join(collisions[:5]) + (", ..." if len(collisions) > 5 else "")
+    if drift_mode == DRIFT_MODE_FORCE:
+        return (
+            "forced",
+            [],
+            [
+                f"warning: --force overwriting {len(collisions)} pre-existing "
+                f"file(s) in {target_dir} that maury has not seen before "
+                f"({preview}). Hand-edits will be lost."
+            ],
+        )
+    if drift_mode == DRIFT_MODE_NON_INTERACTIVE:
+        return (
+            "refused",
+            [
+                f"--non-interactive: refusing to overwrite {len(collisions)} "
+                f"pre-existing file(s) in {target_dir} that maury has not "
+                f"seen before ({preview}). Re-run interactively or with --force."
+            ],
+            [],
+        )
+    return (
+        "refused",
+        [
+            f"target dir {target_dir} contains {len(collisions)} pre-existing "
+            f"file(s) that maury would overwrite ({preview}). "
+            f"Re-run with --force to overwrite (these will be lost) or "
+            f"--check to inspect. After --force, future syncs use drift "
+            f"detection to protect hand-edits."
+        ],
+        [],
+    )
+
+
+def _evaluate_drift_policy(
+    *,
+    drift_report: DriftReport,
+    drift_mode: str,
+) -> tuple[str, list[str], list[str]]:
+    """Decide what to do with re-init drift (last-render.json present).
+
+    Mirrors sync.py's drift policy. Returns (drift_action, errors, warnings).
+    """
+    counts = drift_report.summary_counts()
+    summary = f"modified={counts['modified']}, missing={counts['missing']}, untracked={counts['untracked']}"
+    if drift_mode == DRIFT_MODE_FORCE:
+        return (
+            "forced",
+            [],
+            [f"warning: --force clobbering drift ({summary}). Hand-edits will be overwritten."],
+        )
+    if drift_mode == DRIFT_MODE_NON_INTERACTIVE:
+        return (
+            "refused",
+            [f"--non-interactive: refusing on drift ({summary}). Re-run interactively or with --force."],
+            [],
+        )
+    return (
+        "refused",
+        [
+            f"drift detected on this host's target dir ({summary}). "
+            f"Re-run with --force to overwrite (hand-edits will be lost), "
+            f"--check to inspect, or `maury reconcile` (interactive resolution)."
+        ],
+        [],
     )
 
 

@@ -163,3 +163,208 @@ def test_init_tarball_missing_raises(tmp_path):
     with pytest.raises(InitError) as ei:
         init(source_tarball=tmp_path / "nope.tar.gz", target_dir=tmp_path / "out")
     assert "not found" in str(ei.value).lower()
+
+
+# ---- drift preflight (per ADR-0017 + Tenet 1) --------------------------
+
+
+def test_init_unknown_drift_mode_raises(tmp_path):
+    with pytest.raises(InitError) as ei:
+        init(
+            source_dir=tmp_path / "ignored",
+            target_dir=tmp_path / "out",
+            drift_mode="bogus",
+        )
+    assert "drift_mode" in str(ei.value)
+
+
+def test_init_clean_target_writes_last_render(tmp_path):
+    """A successful init persists last-render.json so future syncs can detect drift."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.rendered is True
+    assert result.drift_action == "none"
+    last_render_path = target / "maury-state" / "last-render.json"
+    assert last_render_path.is_file()
+    content = json.loads(last_render_path.read_text())
+    assert content["schema_version"] == 1
+    assert any(f["path"] == "CLAUDE.md" for f in content["files"])
+
+
+def test_init_dry_run_does_not_write_last_render(tmp_path):
+    """--check leaves no maury-state behind."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    init(
+        source_dir=repo,
+        target_dir=target,
+        host_id_file=host_id_file,
+        dry_run=True,
+    )
+    assert not (target / "maury-state").exists()
+
+
+def test_init_default_mode_refuses_pre_existing_collision(tmp_path):
+    """Bootstrap case: target dir already has a CLAUDE.md → refuse by default."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    target.mkdir()
+    (target / "CLAUDE.md").write_text("user's pre-existing notes\n")
+    host_id_file = tmp_path / ".maury-host-id"
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.rendered is False
+    assert result.drift_action == "refused"
+    assert result.has_errors()
+    assert any("pre-existing" in e for e in result.errors)
+    # Pre-existing content preserved
+    assert (target / "CLAUDE.md").read_text() == "user's pre-existing notes\n"
+    # No baseline written when we refused
+    assert not (target / "maury-state").exists()
+
+
+def test_init_force_mode_overwrites_pre_existing_collision(tmp_path):
+    """--force clobbers pre-existing content with a loud warning."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    target.mkdir()
+    (target / "CLAUDE.md").write_text("hand-edited\n")
+    host_id_file = tmp_path / ".maury-host-id"
+    result = init(
+        source_dir=repo,
+        target_dir=target,
+        host_id_file=host_id_file,
+        drift_mode="force",
+    )
+    assert result.rendered is True
+    assert result.drift_action == "forced"
+    assert not result.has_errors()
+    assert any("--force" in a and "overwriting" in a for a in result.actions)
+    # Hand-edit gone; rendered content present
+    assert "hand-edited" not in (target / "CLAUDE.md").read_text()
+    # Baseline was written so next sync can detect future drift
+    assert (target / "maury-state" / "last-render.json").is_file()
+
+
+def test_init_non_interactive_mode_refuses_pre_existing_collision(tmp_path):
+    """--non-interactive refuses with a cron/CI-friendly error."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    target.mkdir()
+    (target / "CLAUDE.md").write_text("pre-existing\n")
+    host_id_file = tmp_path / ".maury-host-id"
+    result = init(
+        source_dir=repo,
+        target_dir=target,
+        host_id_file=host_id_file,
+        drift_mode="non-interactive",
+    )
+    assert result.rendered is False
+    assert result.drift_action == "refused"
+    assert result.has_errors()
+    assert any("--non-interactive" in e for e in result.errors)
+
+
+def test_init_byte_identical_pre_existing_is_not_a_collision(tmp_path):
+    """If pre-existing files match what we'd render byte-for-byte, no collision.
+
+    Strategy: render once into a throwaway target, copy that output into
+    a fresh target dir without the maury-state baseline, then run init
+    again. The bootstrap branch should see no collisions.
+    """
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    # First render produces the canonical content.
+    seed_target = tmp_path / "seed-out"
+    init(
+        source_dir=repo,
+        target_dir=seed_target,
+        host_id_file=tmp_path / ".host-id-seed",
+    )
+    # Copy rendered files (NOT maury-state) into a fresh target, so init
+    # will treat it as bootstrap-with-pre-existing-content.
+    target = tmp_path / "out"
+    target.mkdir()
+    for src in seed_target.rglob("*"):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(seed_target)
+        if rel.parts[0] == "maury-state":
+            continue
+        dst = target / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(src.read_bytes())
+
+    host_id_file = tmp_path / ".maury-host-id"
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.rendered is True, result.errors
+    assert result.drift_action == "none"
+    assert not result.has_errors()
+
+
+def test_init_re_init_clean_proceeds(tmp_path):
+    """Second init after a clean first init: no drift, proceeds normally."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    # Re-run; nothing changed on disk
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.rendered is True
+    assert result.drift_action == "none"
+
+
+def test_init_re_init_default_refuses_on_drift(tmp_path):
+    """Second init after user hand-edited a maury-rendered file: refuse."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    # User hand-edits the rendered file.
+    (target / "CLAUDE.md").write_text("hand-edited after init\n")
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.rendered is False
+    assert result.drift_action == "refused"
+    assert result.has_errors()
+    assert any("drift detected" in e for e in result.errors)
+    # Hand-edit preserved
+    assert (target / "CLAUDE.md").read_text() == "hand-edited after init\n"
+
+
+def test_init_re_init_force_clobbers_drift(tmp_path):
+    """--force on re-init drift: clobber with warning, baseline updated."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    (target / "CLAUDE.md").write_text("drift\n")
+    result = init(
+        source_dir=repo,
+        target_dir=target,
+        host_id_file=host_id_file,
+        drift_mode="force",
+    )
+    assert result.rendered is True
+    assert result.drift_action == "forced"
+    assert "drift" not in (target / "CLAUDE.md").read_text()
+    assert any("--force" in a and "clobbering" in a for a in result.actions)
+
+
+def test_init_dry_run_still_reports_collision(tmp_path):
+    """--check + pre-existing content: report the would-be refusal, write nothing."""
+    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    target.mkdir()
+    (target / "CLAUDE.md").write_text("pre-existing\n")
+    host_id_file = tmp_path / ".maury-host-id"
+    result = init(
+        source_dir=repo,
+        target_dir=target,
+        host_id_file=host_id_file,
+        dry_run=True,
+    )
+    assert result.drift_action == "refused"
+    assert result.has_errors()
+    # Original content untouched even though we evaluated drift.
+    assert (target / "CLAUDE.md").read_text() == "pre-existing\n"
