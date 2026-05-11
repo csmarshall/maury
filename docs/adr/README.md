@@ -183,6 +183,7 @@ The interaction surface with the agent it manages config for.
 | [`0012`](0012-llm-backend.md) | LLM backend abstraction (`claude -p` default; SDK opt-in) |
 | [`0013`](0013-active-in-session-capture.md) | Active capture: skill + hook + slash command for in-session staging |
 | [`0036`](0036-open-standards-alignment.md) | Cross-vendor open-standards alignment (Agent Skills, AGENTS.md, MCP, AAF) |
+| [`0040`](0040-render-pipeline.md) | Render pipeline: source file layout, target surface, LLM condensation, agent routing guidance |
 
 Companion: [`docs/claude-code-contract.md`](../claude-code-contract.md)
 (every Claude Code behavior maury depends on, with verification
@@ -231,6 +232,10 @@ status).
 - [`0034`](0034-published-subscribed-profiles.md) — Published/subscribed profiles (gap K part 2)
 - [`0035`](0035-audit-log.md) — Audit log (Phase 10)
 - [`0036`](0036-open-standards-alignment.md) — Cross-vendor open-standards alignment
+- [`0037`](0037-layer-taxonomy-and-repo-discovery.md) — Layer taxonomy (base/mode/rules), repo marker file, render order, distributed manifest
+- [`0038`](0038-precept-acquisition-model.md) — Rules/precept acquisition, advisory lifecycle, semver versioning, `maury repo init`
+- [`0039`](0039-bootstrap-and-host-lifecycle.md) — Bootstrap flow, mode-scoped host identity, agency init, mode change process
+- [`0040`](0040-render-pipeline.md) — Render pipeline: source file naming, full target surface, LLM condensation, agent routing guidance, `maury agency validate`
 
 ---
 
