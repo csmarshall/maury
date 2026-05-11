@@ -60,7 +60,7 @@ def _make_seed_repo(tmp_path: Path, *, hostname: str = "synthetic-host") -> Path
 # ---- error inputs -------------------------------------------------------
 
 
-def test_sync_missing_manifest_raises(tmp_path):
+def test_sync_missing_manifest_raises(tmp_path: Path) -> None:
     with pytest.raises(SyncError) as ei:
         sync(
             manifest_path=tmp_path / "nope.json",
@@ -70,7 +70,7 @@ def test_sync_missing_manifest_raises(tmp_path):
     assert "manifest not found" in str(ei.value)
 
 
-def test_sync_unknown_host_id_raises(tmp_path):
+def test_sync_unknown_host_id_raises(tmp_path: Path) -> None:
     """If ~/.maury-host-id has a value not in the manifest, fail loud."""
     seed = _make_seed_repo(tmp_path)
     host_id_file = tmp_path / ".maury-host-id"
@@ -85,7 +85,7 @@ def test_sync_unknown_host_id_raises(tmp_path):
     assert "not in manifest" in str(ei.value)
 
 
-def test_sync_unknown_hostname_raises(tmp_path):
+def test_sync_unknown_hostname_raises(tmp_path: Path) -> None:
     """No id file + hostname not in manifest → SyncError."""
     seed = _make_seed_repo(tmp_path, hostname="some-other-host")
     host_id_file = tmp_path / ".maury-host-id"  # doesn't exist
@@ -102,7 +102,7 @@ def test_sync_unknown_hostname_raises(tmp_path):
 # ---- happy path: clone + render -----------------------------------------
 
 
-def test_sync_clones_then_renders(tmp_path):
+def test_sync_clones_then_renders(tmp_path: Path) -> None:
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     repos_root = tmp_path / "repos"
     target = tmp_path / "out"
@@ -125,7 +125,7 @@ def test_sync_clones_then_renders(tmp_path):
     assert "base rule" in content
 
 
-def test_sync_second_run_pulls_instead_of_clones(tmp_path):
+def test_sync_second_run_pulls_instead_of_clones(tmp_path: Path) -> None:
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     repos_root = tmp_path / "repos"
     target = tmp_path / "out"
@@ -149,7 +149,7 @@ def test_sync_second_run_pulls_instead_of_clones(tmp_path):
     assert result.repos[0].action == "up-to-date"
 
 
-def test_sync_dry_run_writes_nothing(tmp_path):
+def test_sync_dry_run_writes_nothing(tmp_path: Path) -> None:
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     repos_root = tmp_path / "repos"
     target = tmp_path / "out"
@@ -171,7 +171,7 @@ def test_sync_dry_run_writes_nothing(tmp_path):
     assert "dry-run" in result.repos[0].detail
 
 
-def test_sync_dry_run_against_existing_clone_reports_pull(tmp_path):
+def test_sync_dry_run_against_existing_clone_reports_pull(tmp_path: Path) -> None:
     """If the clone already exists, dry-run should say 'would pull'."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     repos_root = tmp_path / "repos"
@@ -197,7 +197,7 @@ def test_sync_dry_run_against_existing_clone_reports_pull(tmp_path):
     assert "dry-run" in result.repos[0].detail
 
 
-def test_sync_progress_callback_invoked_per_repo(tmp_path):
+def test_sync_progress_callback_invoked_per_repo(tmp_path: Path) -> None:
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     seen: list[RepoSyncResult] = []
     sync(
@@ -215,7 +215,7 @@ def test_sync_progress_callback_invoked_per_repo(tmp_path):
 # ---- error paths in repo sync -------------------------------------------
 
 
-def test_sync_unsupported_backend_skipped_not_failed(tmp_path):
+def test_sync_unsupported_backend_skipped_not_failed(tmp_path: Path) -> None:
     """Backends maury doesn't yet support are skipped with a warning, not errored."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     # Mutate the manifest to add a p4 backend
@@ -243,7 +243,7 @@ def test_sync_unsupported_backend_skipped_not_failed(tmp_path):
     assert not result.has_errors()
 
 
-def test_sync_clone_failure_recorded_as_error(tmp_path):
+def test_sync_clone_failure_recorded_as_error(tmp_path: Path) -> None:
     """A bad URL → repo result has action='error', sync stops before render."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     mpath = seed / ".meta" / "manifest.json"
@@ -264,7 +264,7 @@ def test_sync_clone_failure_recorded_as_error(tmp_path):
     assert result.render_result is None
 
 
-def test_sync_render_skipped_when_base_repo_missing(tmp_path):
+def test_sync_render_skipped_when_base_repo_missing(tmp_path: Path) -> None:
     """If the host's manifest doesn't declare a 'base' repo, render is skipped."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     mpath = seed / ".meta" / "manifest.json"
@@ -292,7 +292,7 @@ def test_sync_render_skipped_when_base_repo_missing(tmp_path):
 # ---- drift detection wired into sync ------------------------------------
 
 
-def test_sync_writes_last_render_after_first_apply(tmp_path):
+def test_sync_writes_last_render_after_first_apply(tmp_path: Path) -> None:
     """First sync (no prior last-render.json) writes the baseline."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -310,7 +310,7 @@ def test_sync_writes_last_render_after_first_apply(tmp_path):
     assert any(f["path"] == "CLAUDE.md" for f in content["files"])
 
 
-def test_sync_first_run_no_drift_action(tmp_path):
+def test_sync_first_run_no_drift_action(tmp_path: Path) -> None:
     """First sync sets drift_action='none' (no baseline to compare)."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     result = sync(
@@ -323,7 +323,7 @@ def test_sync_first_run_no_drift_action(tmp_path):
     assert result.drift_report is None  # no baseline → no report
 
 
-def test_sync_unchanged_target_second_run_no_drift(tmp_path):
+def test_sync_unchanged_target_second_run_no_drift(tmp_path: Path) -> None:
     """Second sync with no hand-edits sees clean state."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -345,7 +345,7 @@ def test_sync_unchanged_target_second_run_no_drift(tmp_path):
     assert not result.drift_report.has_drift()
 
 
-def test_sync_default_mode_refuses_on_modified_drift(tmp_path):
+def test_sync_default_mode_refuses_on_modified_drift(tmp_path: Path) -> None:
     """Default drift_mode refuses if user hand-edited a rendered file."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -371,7 +371,7 @@ def test_sync_default_mode_refuses_on_modified_drift(tmp_path):
     assert (target / "CLAUDE.md").read_text() == "hand-edited content\n"
 
 
-def test_sync_force_mode_clobbers_drift(tmp_path):
+def test_sync_force_mode_clobbers_drift(tmp_path: Path) -> None:
     """--force clobbers hand-edits with a loud warning."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -396,7 +396,7 @@ def test_sync_force_mode_clobbers_drift(tmp_path):
     assert "hand-edited" not in (target / "CLAUDE.md").read_text()
 
 
-def test_sync_non_interactive_mode_refuses_on_drift(tmp_path):
+def test_sync_non_interactive_mode_refuses_on_drift(tmp_path: Path) -> None:
     """--non-interactive refuses (cron/CI safe) on any drift, exit 1 (errors)."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -419,7 +419,7 @@ def test_sync_non_interactive_mode_refuses_on_drift(tmp_path):
     assert any("--non-interactive" in e for e in result.errors)
 
 
-def test_sync_unknown_drift_mode_raises(tmp_path):
+def test_sync_unknown_drift_mode_raises(tmp_path: Path) -> None:
     """Bogus drift_mode values fail loud at the API boundary."""
     with pytest.raises(SyncError) as ei:
         sync(
@@ -431,7 +431,7 @@ def test_sync_unknown_drift_mode_raises(tmp_path):
     assert "drift_mode" in str(ei.value)
 
 
-def test_sync_dry_run_does_not_write_last_render(tmp_path):
+def test_sync_dry_run_does_not_write_last_render(tmp_path: Path) -> None:
     """--check (dry_run) produces a report but doesn't pollute baseline."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -446,7 +446,7 @@ def test_sync_dry_run_does_not_write_last_render(tmp_path):
     assert not (target / "maury-state").exists()
 
 
-def test_sync_force_after_drift_writes_new_baseline(tmp_path):
+def test_sync_force_after_drift_writes_new_baseline(tmp_path: Path) -> None:
     """After --force clobber, last-render.json is updated to current state."""
     seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -477,7 +477,7 @@ def test_sync_force_after_drift_writes_new_baseline(tmp_path):
 # ---- end drift wiring ---------------------------------------------------
 
 
-def test_sync_uses_host_id_file_when_present(tmp_path):
+def test_sync_uses_host_id_file_when_present(tmp_path: Path) -> None:
     seed = _make_seed_repo(tmp_path, hostname="not-this-hostname")
     mpath = seed / ".meta" / "manifest.json"
     m = json.loads(mpath.read_text())

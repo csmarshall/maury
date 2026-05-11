@@ -46,7 +46,7 @@ def _basic_manifest() -> tuple[Manifest, str, str]:
 # ---- rendering --------------------------------------------------------
 
 
-def test_render_with_only_base_claude_md(tmp_path):
+def test_render_with_only_base_claude_md(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "# base content\nrule one\n"})
     m, pid, hid = _basic_manifest()
 
@@ -63,7 +63,7 @@ def test_render_with_only_base_claude_md(tmp_path):
     assert list(files) == ["CLAUDE.md"]
 
 
-def test_render_concatenates_profile_fragment(tmp_path):
+def test_render_concatenates_profile_fragment(tmp_path: Path) -> None:
     repo = _make_repo(
         tmp_path,
         {
@@ -80,7 +80,7 @@ def test_render_concatenates_profile_fragment(tmp_path):
     assert content.index("base rule") < content.index("home rule")
 
 
-def test_render_concatenates_host_overlay(tmp_path):
+def test_render_concatenates_host_overlay(tmp_path: Path) -> None:
     repo = _make_repo(
         tmp_path,
         {
@@ -99,7 +99,7 @@ def test_render_concatenates_host_overlay(tmp_path):
     assert "host-overlay:toad" in content
 
 
-def test_render_provenance_header_includes_sha(tmp_path):
+def test_render_provenance_header_includes_sha(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     m, pid, hid = _basic_manifest()
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -107,7 +107,7 @@ def test_render_provenance_header_includes_sha(tmp_path):
     assert "sha " in content  # provenance header has sha excerpts
 
 
-def test_render_skips_when_no_claude_md(tmp_path):
+def test_render_skips_when_no_claude_md(tmp_path: Path) -> None:
     """No CLAUDE.md anywhere -> no CLAUDE.md in the render output."""
     repo = _make_repo(tmp_path, {"settings.json": "{}\n"})
     m, pid, hid = _basic_manifest()
@@ -118,7 +118,7 @@ def test_render_skips_when_no_claude_md(tmp_path):
 # ---- file-overlay (agents/, skills/, bin/) ----------------------------
 
 
-def test_render_agents_file_overlay(tmp_path):
+def test_render_agents_file_overlay(tmp_path: Path) -> None:
     repo = _make_repo(
         tmp_path,
         {
@@ -135,7 +135,7 @@ def test_render_agents_file_overlay(tmp_path):
     assert any("agents/security-reviewer.md" in w for w in result.warnings)
 
 
-def test_render_skills_file_overlay_no_conflict(tmp_path):
+def test_render_skills_file_overlay_no_conflict(tmp_path: Path) -> None:
     repo = _make_repo(
         tmp_path,
         {
@@ -152,7 +152,7 @@ def test_render_skills_file_overlay_no_conflict(tmp_path):
     assert not result.warnings
 
 
-def test_render_bin_files_get_executable_mode(tmp_path):
+def test_render_bin_files_get_executable_mode(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"bin/claude-notify": "#!/bin/sh\necho hi\n"})
     m, pid, hid = _basic_manifest()
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -163,7 +163,7 @@ def test_render_bin_files_get_executable_mode(tmp_path):
 # ---- inheritance --------------------------------------------------------
 
 
-def test_render_walks_inheritance_chain(tmp_path):
+def test_render_walks_inheritance_chain(tmp_path: Path) -> None:
     """profile 'leaf' extends 'mid' extends 'root'; all three contribute CLAUDE.md."""
     repo = _make_repo(
         tmp_path,
@@ -203,7 +203,7 @@ def test_render_walks_inheritance_chain(tmp_path):
 # ---- input validation --------------------------------------------------
 
 
-def test_render_unknown_profile_raises(tmp_path):
+def test_render_unknown_profile_raises(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     m, _pid, hid = _basic_manifest()
     with pytest.raises(RenderError) as ei:
@@ -216,7 +216,7 @@ def test_render_unknown_profile_raises(tmp_path):
     assert "not in manifest" in str(ei.value)
 
 
-def test_render_unknown_host_raises(tmp_path):
+def test_render_unknown_host_raises(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     m, pid, _hid = _basic_manifest()
     with pytest.raises(RenderError) as ei:
@@ -229,7 +229,7 @@ def test_render_unknown_host_raises(tmp_path):
     assert "not in manifest" in str(ei.value)
 
 
-def test_render_host_profile_mismatch_raises(tmp_path):
+def test_render_host_profile_mismatch_raises(tmp_path: Path) -> None:
     """Passing a profile that doesn't match the host's assigned profile raises."""
     repo = _make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     pid_a = new_profile_id()
@@ -245,7 +245,7 @@ def test_render_host_profile_mismatch_raises(tmp_path):
     assert "bound to profile" in str(ei.value)
 
 
-def test_render_unknown_profile_repo_raises(tmp_path):
+def test_render_unknown_profile_repo_raises(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     m, pid, hid = _basic_manifest()
     with pytest.raises(RenderError) as ei:
@@ -262,7 +262,7 @@ def test_render_unknown_profile_repo_raises(tmp_path):
 # ---- apply -------------------------------------------------------------
 
 
-def test_apply_writes_files_to_target(tmp_path):
+def test_apply_writes_files_to_target(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "hello\n"})
     m, pid, hid = _basic_manifest()
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -272,7 +272,7 @@ def test_apply_writes_files_to_target(tmp_path):
     assert any("wrote" in a for a in actions)
 
 
-def test_apply_dry_run_writes_nothing(tmp_path):
+def test_apply_dry_run_writes_nothing(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "hello\n"})
     m, pid, hid = _basic_manifest()
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -282,7 +282,7 @@ def test_apply_dry_run_writes_nothing(tmp_path):
     assert any("would write" in a for a in actions)
 
 
-def test_apply_reports_unchanged_for_identical_content(tmp_path):
+def test_apply_reports_unchanged_for_identical_content(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "hello\n"})
     m, pid, hid = _basic_manifest()
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -292,7 +292,7 @@ def test_apply_reports_unchanged_for_identical_content(tmp_path):
     assert all("unchanged" in a for a in actions)
 
 
-def test_apply_creates_subdirectories(tmp_path):
+def test_apply_creates_subdirectories(tmp_path: Path) -> None:
     repo = _make_repo(
         tmp_path,
         {
@@ -310,7 +310,7 @@ def test_apply_creates_subdirectories(tmp_path):
 # ---- end-to-end against the real seed manifest -----------------------
 
 
-def test_render_against_seed_template(tmp_path):
+def test_render_against_seed_template(tmp_path: Path) -> None:
     """Render the shipped base-template against its shipped manifest."""
     seed_root = Path(__file__).resolve().parents[2] / "base-template"
     if not (seed_root / ".meta" / "manifest.json").exists():

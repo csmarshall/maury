@@ -21,13 +21,13 @@ from maury.doctor.report import Severity
 # ---- length / over-specification -----------------------------------------
 
 
-def test_short_file_no_length_finding():
+def test_short_file_no_length_finding() -> None:
     text = "# Code style\n- short and tight\n"
     findings = run_all(text, "test.md")
     assert not any(f.check_id == "over-specified" for f in findings)
 
 
-def test_warn_at_lines_threshold():
+def test_warn_at_lines_threshold() -> None:
     text = "\n".join(["- line"] * (LINES_WARN + 1)) + "\n"
     findings = run_all(text, "test.md")
     overspec = [f for f in findings if f.check_id == "over-specified"]
@@ -35,7 +35,7 @@ def test_warn_at_lines_threshold():
     assert overspec[0].severity == Severity.WARN
 
 
-def test_error_at_lines_threshold():
+def test_error_at_lines_threshold() -> None:
     text = "\n".join(["- line"] * (LINES_ERROR + 1)) + "\n"
     findings = run_all(text, "test.md")
     overspec = [f for f in findings if f.check_id == "over-specified"]
@@ -43,7 +43,7 @@ def test_error_at_lines_threshold():
     assert overspec[0].severity == Severity.ERROR
 
 
-def test_warn_at_chars_threshold():
+def test_warn_at_chars_threshold() -> None:
     # short on lines but long on chars
     text = "x" * (CHARS_WARN + 1)
     findings = run_all(text, "test.md")
@@ -51,7 +51,7 @@ def test_warn_at_chars_threshold():
     assert any(f.severity == Severity.WARN for f in overspec)
 
 
-def test_error_at_chars_threshold():
+def test_error_at_chars_threshold() -> None:
     text = "x" * (CHARS_ERROR + 1)
     findings = run_all(text, "test.md")
     overspec = [f for f in findings if f.check_id == "over-specified"]
@@ -61,39 +61,39 @@ def test_error_at_chars_threshold():
 # ---- platitudes ----------------------------------------------------------
 
 
-def test_platitude_write_clean_code():
+def test_platitude_write_clean_code() -> None:
     text = "- Write clean code at all times.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "platitude"]
     assert len(findings) == 1
     assert findings[0].line == 1
 
 
-def test_platitude_good_code():
+def test_platitude_good_code() -> None:
     text = "- Always strive for good code.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "platitude"]
     assert len(findings) == 1
 
 
-def test_platitude_be_careful():
+def test_platitude_be_careful() -> None:
     text = "- Be careful with database changes.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "platitude"]
     assert len(findings) == 1
 
 
-def test_platitude_best_practices_unqualified():
+def test_platitude_best_practices_unqualified() -> None:
     text = "- Follow best practices.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "platitude"]
     assert len(findings) == 1
 
 
-def test_platitude_best_practices_qualified_does_not_fire():
+def test_platitude_best_practices_qualified_does_not_fire() -> None:
     text = "- Use best practices for retry logic in @docs/retry.md\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "platitude"]
     # "best practices for X" is not flagged as a platitude because it's qualified
     assert findings == []
 
 
-def test_platitude_one_finding_per_line():
+def test_platitude_one_finding_per_line() -> None:
     """Multiple platitude phrases on one line should produce a single finding."""
     text = "- write clean code and follow best practices\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "platitude"]
@@ -103,32 +103,32 @@ def test_platitude_one_finding_per_line():
 # ---- standard conventions ------------------------------------------------
 
 
-def test_standard_convention_camelCase():  # noqa: N802 — testing camelCase detection by name
+def test_standard_convention_camelCase() -> None:  # noqa: N802 — testing camelCase detection by name
     text = "- Use camelCase in JavaScript.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "standard-convention"]
     assert len(findings) == 1
 
 
-def test_standard_convention_snake_case():
+def test_standard_convention_snake_case() -> None:
     text = "- Use snake_case for variables.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "standard-convention"]
     assert len(findings) == 1
 
 
-def test_standard_convention_pep8():
+def test_standard_convention_pep8() -> None:
     text = "- Follow PEP 8.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "standard-convention"]
     assert len(findings) == 1
 
 
-def test_standard_convention_kebab_case_for_url_does_not_fire():
+def test_standard_convention_kebab_case_for_url_does_not_fire() -> None:
     """kebab-case for URL paths is genuinely a project convention worth stating."""
     text = "- Use kebab-case for URL paths\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "standard-convention"]
     assert findings == []
 
 
-def test_standard_convention_quote_style_with_rationale_does_not_fire():
+def test_standard_convention_quote_style_with_rationale_does_not_fire() -> None:
     text = "- Use single quotes when interpolating environment variables.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "standard-convention"]
     assert findings == []
@@ -137,13 +137,13 @@ def test_standard_convention_quote_style_with_rationale_does_not_fire():
 # ---- tutorial-style ------------------------------------------------------
 
 
-def test_tutorial_style_overview_header():
+def test_tutorial_style_overview_header() -> None:
     text = "# Overview\n\nThis project does stuff.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "tutorial-style"]
     assert any(f.line == 1 for f in findings)
 
 
-def test_tutorial_style_codebase_consists():
+def test_tutorial_style_codebase_consists() -> None:
     text = "The codebase consists of three layers.\n"
     findings = [f for f in run_all(text, "t.md") if f.check_id == "tutorial-style"]
     assert len(findings) == 1
@@ -152,7 +152,7 @@ def test_tutorial_style_codebase_consists():
 # ---- file-by-file --------------------------------------------------------
 
 
-def test_file_by_file_run_of_four_or_more():
+def test_file_by_file_run_of_four_or_more() -> None:
     text = """
 # Architecture
 - src/auth.py: handles authentication
@@ -164,7 +164,7 @@ def test_file_by_file_run_of_four_or_more():
     assert len(findings) == 1
 
 
-def test_file_by_file_short_run_does_not_fire():
+def test_file_by_file_short_run_does_not_fire() -> None:
     """Three or fewer file references in a row is not yet a 'description.'"""
     text = """
 - src/auth.py: handles auth
@@ -177,7 +177,7 @@ def test_file_by_file_short_run_does_not_fire():
 # ---- clean files ---------------------------------------------------------
 
 
-def test_canonical_short_clean_file():
+def test_canonical_short_clean_file() -> None:
     """A small, well-formed CLAUDE.md should produce zero findings."""
     text = """# Code style
 - Use ES modules (import/export) syntax, not CommonJS (require)
@@ -194,14 +194,14 @@ def test_canonical_short_clean_file():
 # ---- renderers -----------------------------------------------------------
 
 
-def test_render_text_with_no_findings():
+def test_render_text_with_no_findings() -> None:
     report = Report(source_path="x.md", line_count=10, char_count=200)
     out = render_text(report)
     assert "looks clean" in out
     assert "x.md" in out
 
 
-def test_render_text_with_findings():
+def test_render_text_with_findings() -> None:
     text = "- write clean code\n- use camelCase\n"
     findings = run_all(text, "t.md")
     report = Report(
@@ -216,7 +216,7 @@ def test_render_text_with_findings():
     assert "rubric:" in out
 
 
-def test_render_json_is_parseable():
+def test_render_json_is_parseable() -> None:
     text = "- write clean code\n"
     findings = run_all(text, "t.md")
     report = Report(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from maury.ids import is_host_id, is_profile_id, new_host_id, new_profile_id
@@ -68,7 +70,7 @@ VALID_JSON = f"""
 # ---- ID generation -----------------------------------------------------
 
 
-def test_id_generators_produce_recognized_format():
+def test_id_generators_produce_recognized_format() -> None:
     hid = new_host_id()
     pid = new_profile_id()
     assert is_host_id(hid)
@@ -77,7 +79,7 @@ def test_id_generators_produce_recognized_format():
     assert not is_profile_id(hid)
 
 
-def test_id_collision_resistance():
+def test_id_collision_resistance() -> None:
     """100 IDs should all be unique."""
     ids = {new_host_id() for _ in range(100)}
     assert len(ids) == 100
@@ -86,21 +88,21 @@ def test_id_collision_resistance():
 # ---- v2 parse ----------------------------------------------------------
 
 
-def test_parse_valid_v2_manifest():
+def test_parse_valid_v2_manifest() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.version == 2
     assert set(m.profiles) == {P_BASE, P_HOME, P_WORK}
     assert set(m.hosts) == {H_TOAD, H_WORK}
 
 
-def test_parse_extracts_profile_metadata():
+def test_parse_extracts_profile_metadata() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.profiles[P_BASE].name == "base"
     assert m.profiles[P_BASE].description == "Universal"
     assert m.profiles[P_BASE].extends is None
 
 
-def test_parse_extracts_host_with_profile_id():
+def test_parse_extracts_host_with_profile_id() -> None:
     m = parse_manifest(VALID_JSON)
     toad = m.hosts[H_TOAD]
     assert toad.name == "toad"
@@ -109,7 +111,7 @@ def test_parse_extracts_host_with_profile_id():
     assert toad.lock is False
 
 
-def test_parse_locked_host():
+def test_parse_locked_host() -> None:
     m = parse_manifest(VALID_JSON)
     work = m.hosts[H_WORK]
     assert work.name == "work-laptop"
@@ -117,13 +119,13 @@ def test_parse_locked_host():
     assert work.push_policy == PushPolicy.DISABLED
 
 
-def test_parse_default_repo_backend_is_git():
+def test_parse_default_repo_backend_is_git() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.hosts[H_TOAD].repos["base"].backend == "git"
     assert m.hosts[H_TOAD].repos["base"].backend_config is None
 
 
-def test_parse_repo_with_backend():
+def test_parse_repo_with_backend() -> None:
     import json as _json
 
     payload = {
@@ -141,7 +143,7 @@ def test_parse_repo_with_backend():
     assert m.hosts[H_TOAD].repos["base"].backend == "github"
 
 
-def test_parse_repo_with_backend_config():
+def test_parse_repo_with_backend_config() -> None:
     import json as _json
 
     payload = {
@@ -167,7 +169,7 @@ def test_parse_repo_with_backend_config():
     assert m.hosts[H_WORK].repos["work"].backend_config == {"depot": "//maury/work"}
 
 
-def test_parse_invalid_backend_config_type_raises():
+def test_parse_invalid_backend_config_type_raises() -> None:
     import json as _json
 
     payload = {
@@ -192,7 +194,7 @@ def test_parse_invalid_backend_config_type_raises():
     assert "backend_config" in str(ei.value)
 
 
-def test_load_from_file(tmp_path):
+def test_load_from_file(tmp_path: Path) -> None:
     p = tmp_path / "manifest.json"
     p.write_text(VALID_JSON)
     m = load_manifest(p)
@@ -202,7 +204,7 @@ def test_load_from_file(tmp_path):
 # ---- v1 rejection ------------------------------------------------------
 
 
-def test_v1_manifest_rejected_with_upgrade_message():
+def test_v1_manifest_rejected_with_upgrade_message() -> None:
     v1 = '{"version": 1, "profiles": {}, "hosts": {}}'
     with pytest.raises(ManifestError) as ei:
         parse_manifest(v1, source="legacy.json")
@@ -210,7 +212,7 @@ def test_v1_manifest_rejected_with_upgrade_message():
     assert "upgrade" in str(ei.value)
 
 
-def test_unsupported_version_rejected():
+def test_unsupported_version_rejected() -> None:
     bad = '{"version": 99, "profiles": {}, "hosts": {}}'
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
@@ -220,14 +222,14 @@ def test_unsupported_version_rejected():
 # ---- key validation ----------------------------------------------------
 
 
-def test_invalid_profile_id_raises():
+def test_invalid_profile_id_raises() -> None:
     bad = '{"version": 2, "profiles": {"home": {"name": "home", "extends": null}}, "hosts": {}}'
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
     assert "valid profile ID" in str(ei.value)
 
 
-def test_invalid_host_id_raises():
+def test_invalid_host_id_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
@@ -238,14 +240,14 @@ def test_invalid_host_id_raises():
     assert "valid host ID" in str(ei.value)
 
 
-def test_missing_name_raises():
+def test_missing_name_raises() -> None:
     bad = f'{{"version": 2, "profiles": {{"{P_HOME}": {{"extends": null}}}}, "hosts": {{}}}}'
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
     assert "missing 'name'" in str(ei.value)
 
 
-def test_missing_host_profile_raises():
+def test_missing_host_profile_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
@@ -256,7 +258,7 @@ def test_missing_host_profile_raises():
     assert "missing 'profile'" in str(ei.value)
 
 
-def test_invalid_push_policy_raises():
+def test_invalid_push_policy_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
@@ -268,7 +270,7 @@ def test_invalid_push_policy_raises():
     assert "invalid push_policy" in str(ei.value)
 
 
-def test_invalid_repo_mode_raises():
+def test_invalid_repo_mode_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
@@ -280,7 +282,7 @@ def test_invalid_repo_mode_raises():
     assert "invalid mode" in str(ei.value)
 
 
-def test_unknown_top_level_keys_raise():
+def test_unknown_top_level_keys_raise() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null, "weird": true}}}},'
@@ -294,12 +296,12 @@ def test_unknown_top_level_keys_raise():
 # ---- cross-validation --------------------------------------------------
 
 
-def test_validate_clean_manifest():
+def test_validate_clean_manifest() -> None:
     m = parse_manifest(VALID_JSON)
     assert validate_manifest(m) == []
 
 
-def test_validate_catches_host_referencing_unknown_profile():
+def test_validate_catches_host_referencing_unknown_profile() -> None:
     m = Manifest(
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
@@ -309,7 +311,7 @@ def test_validate_catches_host_referencing_unknown_profile():
     assert any("profile_ghost" in e for e in errors)
 
 
-def test_validate_catches_extends_unknown_profile():
+def test_validate_catches_extends_unknown_profile() -> None:
     m = Manifest(
         version=2,
         profiles={P_HOME: ProfileSpec(name="home", extends="profile_ghostghostghostghostghostghost00")},
@@ -318,7 +320,7 @@ def test_validate_catches_extends_unknown_profile():
     assert any("profile_ghost" in e for e in errors)
 
 
-def test_validate_catches_duplicate_profile_names():
+def test_validate_catches_duplicate_profile_names() -> None:
     m = Manifest(
         version=2,
         profiles={
@@ -330,7 +332,7 @@ def test_validate_catches_duplicate_profile_names():
     assert any("duplicate profile name" in e for e in errors)
 
 
-def test_validate_catches_duplicate_host_names():
+def test_validate_catches_duplicate_host_names() -> None:
     m = Manifest(
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
@@ -346,12 +348,12 @@ def test_validate_catches_duplicate_host_names():
 # ---- inheritance chain ------------------------------------------------
 
 
-def test_inheritance_chain_flat():
+def test_inheritance_chain_flat() -> None:
     m = Manifest(version=2, profiles={P_HOME: ProfileSpec(name="home")})
     assert m.inheritance_chain(P_HOME) == [P_HOME]
 
 
-def test_inheritance_chain_one_level():
+def test_inheritance_chain_one_level() -> None:
     m = Manifest(
         version=2,
         profiles={
@@ -362,7 +364,7 @@ def test_inheritance_chain_one_level():
     assert m.inheritance_chain(P_HOME) == [P_BASE, P_HOME]
 
 
-def test_inheritance_chain_cycle_raises():
+def test_inheritance_chain_cycle_raises() -> None:
     m = Manifest(
         version=2,
         profiles={
@@ -378,23 +380,23 @@ def test_inheritance_chain_cycle_raises():
 # ---- name<->id resolution ---------------------------------------------
 
 
-def test_profile_id_by_name():
+def test_profile_id_by_name() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.profile_id_by_name("home") == P_HOME
     assert m.profile_id_by_name("nonexistent") is None
 
 
-def test_host_id_by_name_exact():
+def test_host_id_by_name_exact() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.host_id_by_name("toad") == H_TOAD
 
 
-def test_host_id_by_name_strips_dotted_suffix():
+def test_host_id_by_name_strips_dotted_suffix() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.host_id_by_name("toad.local") == H_TOAD
 
 
-def test_resolve_profile_accepts_name_or_id():
+def test_resolve_profile_accepts_name_or_id() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.resolve_profile("home") == P_HOME
     assert m.resolve_profile(P_HOME) == P_HOME
@@ -402,7 +404,7 @@ def test_resolve_profile_accepts_name_or_id():
     assert m.resolve_profile("profile_unknownunknownunknownunknown00") is None
 
 
-def test_resolve_host_accepts_name_or_id():
+def test_resolve_host_accepts_name_or_id() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.resolve_host("toad") == H_TOAD
     assert m.resolve_host(H_TOAD) == H_TOAD
@@ -412,7 +414,7 @@ def test_resolve_host_accepts_name_or_id():
 # ---- dump round-trip ---------------------------------------------------
 
 
-def test_dump_round_trip():
+def test_dump_round_trip() -> None:
     m = parse_manifest(VALID_JSON)
     dumped = dump_manifest(m)
     m2 = parse_manifest(dumped)
@@ -420,7 +422,7 @@ def test_dump_round_trip():
     assert m2.hosts == m.hosts
 
 
-def test_dump_includes_backend_when_non_default():
+def test_dump_includes_backend_when_non_default() -> None:
     m = Manifest(
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
@@ -438,7 +440,7 @@ def test_dump_includes_backend_when_non_default():
     assert '"backend": "github"' in dumped
 
 
-def test_dump_omits_backend_for_default_git():
+def test_dump_omits_backend_for_default_git() -> None:
     m = Manifest(
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
@@ -459,17 +461,17 @@ def test_dump_omits_backend_for_default_git():
 # ---- known_profiles helpers --------------------------------------------
 
 
-def test_known_profiles_from_returns_id_set():
+def test_known_profiles_from_returns_id_set() -> None:
     m = parse_manifest(VALID_JSON)
     assert known_profiles_from(m) == {P_BASE, P_HOME, P_WORK}
 
 
-def test_known_profile_names_from_returns_name_set():
+def test_known_profile_names_from_returns_name_set() -> None:
     m = parse_manifest(VALID_JSON)
     assert known_profile_names_from(m) == {"base", "home", "work"}
 
 
-def test_known_profiles_from_none_returns_empty_set():
+def test_known_profiles_from_none_returns_empty_set() -> None:
     assert known_profiles_from(None) == set()
     assert known_profile_names_from(None) == set()
 
@@ -477,7 +479,7 @@ def test_known_profiles_from_none_returns_empty_set():
 # ---- seed manifest sanity ----------------------------------------------
 
 
-def test_seed_manifest_is_valid(tmp_path):
+def test_seed_manifest_is_valid(tmp_path: Path) -> None:
     """The shipped seed manifest must parse and validate cleanly."""
     from pathlib import Path
 

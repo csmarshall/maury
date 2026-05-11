@@ -43,13 +43,13 @@ def _make_minimal_repo(tmp_path: Path, *, hostname: str = "synthetic-host") -> P
 # ---- error inputs -------------------------------------------------------
 
 
-def test_init_requires_exactly_one_source(tmp_path):
+def test_init_requires_exactly_one_source(tmp_path: Path) -> None:
     with pytest.raises(InitError) as ei:
         init(source_dir=None, source_tarball=None, target_dir=tmp_path / "out")
     assert "exactly one" in str(ei.value).lower()
 
 
-def test_init_rejects_both_sources(tmp_path):
+def test_init_rejects_both_sources(tmp_path: Path) -> None:
     with pytest.raises(InitError):
         init(
             source_dir=tmp_path,
@@ -58,13 +58,13 @@ def test_init_rejects_both_sources(tmp_path):
         )
 
 
-def test_init_missing_source_dir_raises(tmp_path):
+def test_init_missing_source_dir_raises(tmp_path: Path) -> None:
     with pytest.raises(InitError) as ei:
         init(source_dir=tmp_path / "nonexistent", target_dir=tmp_path / "out")
     assert "not found" in str(ei.value).lower()
 
 
-def test_init_missing_manifest_raises(tmp_path):
+def test_init_missing_manifest_raises(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "CLAUDE.md").write_text("nope\n")
@@ -76,7 +76,7 @@ def test_init_missing_manifest_raises(tmp_path):
 # ---- happy paths -------------------------------------------------------
 
 
-def test_init_writes_host_id_file_when_missing(tmp_path):
+def test_init_writes_host_id_file_when_missing(tmp_path: Path) -> None:
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     host_id_file = tmp_path / ".maury-host-id"
     result = init(
@@ -89,7 +89,7 @@ def test_init_writes_host_id_file_when_missing(tmp_path):
     assert result.host_id_created is True
 
 
-def test_init_reuses_existing_host_id_file(tmp_path):
+def test_init_reuses_existing_host_id_file(tmp_path: Path) -> None:
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     host_id_file = tmp_path / ".maury-host-id"
     existing = "host_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -99,7 +99,7 @@ def test_init_reuses_existing_host_id_file(tmp_path):
     assert result.host_id_created is False
 
 
-def test_init_renders_to_target_when_host_resolved_by_hostname(tmp_path):
+def test_init_renders_to_target_when_host_resolved_by_hostname(tmp_path: Path) -> None:
     """Manifest hostname matches socket.gethostname() -> render proceeds."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -110,7 +110,7 @@ def test_init_renders_to_target_when_host_resolved_by_hostname(tmp_path):
     assert (target / "CLAUDE.md").is_file()
 
 
-def test_init_dry_run_writes_nothing(tmp_path):
+def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
@@ -129,7 +129,7 @@ def test_init_dry_run_writes_nothing(tmp_path):
 # ---- unregistered host (returns clear message; doesn't raise) ----------
 
 
-def test_init_unregistered_host_returns_friendly_message(tmp_path):
+def test_init_unregistered_host_returns_friendly_message(tmp_path: Path) -> None:
     """Hostname not in manifest -> result.host_registered=False with guidance."""
     repo = _make_minimal_repo(tmp_path, hostname="some-other-host")
     target = tmp_path / "out"
@@ -145,7 +145,7 @@ def test_init_unregistered_host_returns_friendly_message(tmp_path):
 # ---- tarball ingestion -------------------------------------------------
 
 
-def test_init_from_tarball_extracts_and_renders(tmp_path):
+def test_init_from_tarball_extracts_and_renders(tmp_path: Path) -> None:
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     # Pack the repo into a tarball with a single top-level dir
     tarball = tmp_path / "maury-base.tar.gz"
@@ -159,7 +159,7 @@ def test_init_from_tarball_extracts_and_renders(tmp_path):
     assert (target / "CLAUDE.md").is_file()
 
 
-def test_init_tarball_missing_raises(tmp_path):
+def test_init_tarball_missing_raises(tmp_path: Path) -> None:
     with pytest.raises(InitError) as ei:
         init(source_tarball=tmp_path / "nope.tar.gz", target_dir=tmp_path / "out")
     assert "not found" in str(ei.value).lower()
@@ -168,7 +168,7 @@ def test_init_tarball_missing_raises(tmp_path):
 # ---- drift preflight (per ADR-0017 + Tenet 1) --------------------------
 
 
-def test_init_unknown_drift_mode_raises(tmp_path):
+def test_init_unknown_drift_mode_raises(tmp_path: Path) -> None:
     with pytest.raises(InitError) as ei:
         init(
             source_dir=tmp_path / "ignored",
@@ -178,7 +178,7 @@ def test_init_unknown_drift_mode_raises(tmp_path):
     assert "drift_mode" in str(ei.value)
 
 
-def test_init_clean_target_writes_last_render(tmp_path):
+def test_init_clean_target_writes_last_render(tmp_path: Path) -> None:
     """A successful init persists last-render.json so future syncs can detect drift."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -193,7 +193,7 @@ def test_init_clean_target_writes_last_render(tmp_path):
     assert any(f["path"] == "CLAUDE.md" for f in content["files"])
 
 
-def test_init_dry_run_does_not_write_last_render(tmp_path):
+def test_init_dry_run_does_not_write_last_render(tmp_path: Path) -> None:
     """--check leaves no maury-state behind."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -207,7 +207,7 @@ def test_init_dry_run_does_not_write_last_render(tmp_path):
     assert not (target / "maury-state").exists()
 
 
-def test_init_default_mode_refuses_pre_existing_collision(tmp_path):
+def test_init_default_mode_refuses_pre_existing_collision(tmp_path: Path) -> None:
     """Bootstrap case: target dir already has a CLAUDE.md → refuse by default."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -225,7 +225,7 @@ def test_init_default_mode_refuses_pre_existing_collision(tmp_path):
     assert not (target / "maury-state").exists()
 
 
-def test_init_force_mode_overwrites_pre_existing_collision(tmp_path):
+def test_init_force_mode_overwrites_pre_existing_collision(tmp_path: Path) -> None:
     """--force clobbers pre-existing content with a loud warning."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -248,7 +248,7 @@ def test_init_force_mode_overwrites_pre_existing_collision(tmp_path):
     assert (target / "maury-state" / "last-render.json").is_file()
 
 
-def test_init_non_interactive_mode_refuses_pre_existing_collision(tmp_path):
+def test_init_non_interactive_mode_refuses_pre_existing_collision(tmp_path: Path) -> None:
     """--non-interactive refuses with a cron/CI-friendly error."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -267,7 +267,7 @@ def test_init_non_interactive_mode_refuses_pre_existing_collision(tmp_path):
     assert any("--non-interactive" in e for e in result.errors)
 
 
-def test_init_byte_identical_pre_existing_is_not_a_collision(tmp_path):
+def test_init_byte_identical_pre_existing_is_not_a_collision(tmp_path: Path) -> None:
     """If pre-existing files match what we'd render byte-for-byte, no collision.
 
     Strategy: render once into a throwaway target, copy that output into
@@ -303,7 +303,7 @@ def test_init_byte_identical_pre_existing_is_not_a_collision(tmp_path):
     assert not result.has_errors()
 
 
-def test_init_re_init_clean_proceeds(tmp_path):
+def test_init_re_init_clean_proceeds(tmp_path: Path) -> None:
     """Second init after a clean first init: no drift, proceeds normally."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -315,7 +315,7 @@ def test_init_re_init_clean_proceeds(tmp_path):
     assert result.drift_action == "none"
 
 
-def test_init_re_init_default_refuses_on_drift(tmp_path):
+def test_init_re_init_default_refuses_on_drift(tmp_path: Path) -> None:
     """Second init after user hand-edited a maury-rendered file: refuse."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -332,7 +332,7 @@ def test_init_re_init_default_refuses_on_drift(tmp_path):
     assert (target / "CLAUDE.md").read_text() == "hand-edited after init\n"
 
 
-def test_init_re_init_force_clobbers_drift(tmp_path):
+def test_init_re_init_force_clobbers_drift(tmp_path: Path) -> None:
     """--force on re-init drift: clobber with warning, baseline updated."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -351,7 +351,7 @@ def test_init_re_init_force_clobbers_drift(tmp_path):
     assert any("--force" in a and "clobbering" in a for a in result.actions)
 
 
-def test_init_dry_run_still_reports_collision(tmp_path):
+def test_init_dry_run_still_reports_collision(tmp_path: Path) -> None:
     """--check + pre-existing content: report the would-be refusal, write nothing."""
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"

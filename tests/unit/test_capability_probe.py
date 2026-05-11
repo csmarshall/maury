@@ -6,6 +6,10 @@ can be exercised on any host.
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 import maury.capability.probe as probe_module
 from maury.capability.probe import (
     detect_gui,
@@ -32,7 +36,7 @@ from maury.capability.schema import (
 # ---- helpers --------------------------------------------------------------
 
 
-def patch(monkeypatch, **overrides):
+def patch(monkeypatch: Any, **overrides: Any) -> None:
     """Patch the probe module's OS-interaction shims."""
     for name, value in overrides.items():
         monkeypatch.setattr(probe_module, name, value)
@@ -41,14 +45,14 @@ def patch(monkeypatch, **overrides):
 # ---- detect_os ------------------------------------------------------------
 
 
-def test_detect_os_darwin(monkeypatch):
+def test_detect_os_darwin(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _system=lambda: "Darwin", _platform_mac_ver=lambda: "14.5")
     os_kind, ver = detect_os()
     assert os_kind == OS.DARWIN
     assert ver == "14.5"
 
 
-def test_detect_os_linux(monkeypatch):
+def test_detect_os_linux(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _system=lambda: "Linux",
@@ -59,7 +63,7 @@ def test_detect_os_linux(monkeypatch):
     assert "6.5" in ver
 
 
-def test_detect_os_freebsd(monkeypatch):
+def test_detect_os_freebsd(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _system=lambda: "FreeBSD",
@@ -70,7 +74,7 @@ def test_detect_os_freebsd(monkeypatch):
     assert "14.2" in ver
 
 
-def test_detect_os_other(monkeypatch):
+def test_detect_os_other(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _system=lambda: "Haiku",
@@ -83,17 +87,17 @@ def test_detect_os_other(monkeypatch):
 # ---- detect_userland ------------------------------------------------------
 
 
-def test_userland_gnu_when_sed_version_succeeds(monkeypatch):
+def test_userland_gnu_when_sed_version_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _run=lambda cmd, timeout=2.0: (0, "GNU sed version 4.9"))
     assert detect_userland(OS.LINUX) == UserlandFlavor.GNU
 
 
-def test_userland_bsd_when_sed_version_fails(monkeypatch):
+def test_userland_bsd_when_sed_version_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _run=lambda cmd, timeout=2.0: (1, "sed: illegal option"))
     assert detect_userland(OS.DARWIN) == UserlandFlavor.BSD
 
 
-def test_userland_falls_back_to_os_default_on_unrecognized(monkeypatch):
+def test_userland_falls_back_to_os_default_on_unrecognized(monkeypatch: pytest.MonkeyPatch) -> None:
     """If sed --version exits 0 but we don't see GNU markers, fall back to OS default."""
     patch(monkeypatch, _run=lambda cmd, timeout=2.0: (0, "some other sed implementation"))
     assert detect_userland(OS.LINUX) == UserlandFlavor.GNU
@@ -103,7 +107,7 @@ def test_userland_falls_back_to_os_default_on_unrecognized(monkeypatch):
 # ---- detect_tool ----------------------------------------------------------
 
 
-def test_detect_tool_present_with_gnu_marker(monkeypatch):
+def test_detect_tool_present_with_gnu_marker(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _which=lambda name: f"/usr/bin/{name}",
@@ -116,14 +120,14 @@ def test_detect_tool_present_with_gnu_marker(monkeypatch):
     assert "GNU sed" in t.version
 
 
-def test_detect_tool_absent(monkeypatch):
+def test_detect_tool_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _which=lambda name: None)
     t = detect_tool("nonexistent", default_userland=UserlandFlavor.GNU)
     assert t.path is None
     assert t.flavor == UserlandFlavor.UNKNOWN
 
 
-def test_detect_g_prefixed_tool_is_always_gnu(monkeypatch):
+def test_detect_g_prefixed_tool_is_always_gnu(monkeypatch: pytest.MonkeyPatch) -> None:
     """gsed, gawk, etc. are always GNU regardless of host userland."""
     patch(
         monkeypatch,
@@ -137,22 +141,22 @@ def test_detect_g_prefixed_tool_is_always_gnu(monkeypatch):
 # ---- detect_gui -----------------------------------------------------------
 
 
-def test_gui_macos_local_session(monkeypatch):
+def test_gui_macos_local_session(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _env=lambda name: "")
     assert detect_gui(OS.DARWIN) is True
 
 
-def test_gui_macos_ssh_session(monkeypatch):
+def test_gui_macos_ssh_session(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _env=lambda name: "x" if name == "SSH_TTY" else "")
     assert detect_gui(OS.DARWIN) is False
 
 
-def test_gui_linux_with_display(monkeypatch):
+def test_gui_linux_with_display(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _env=lambda name: ":0" if name == "DISPLAY" else "")
     assert detect_gui(OS.LINUX) is True
 
 
-def test_gui_linux_with_wayland(monkeypatch):
+def test_gui_linux_with_wayland(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _env=lambda name: "wayland-0" if name == "WAYLAND_DISPLAY" else "",
@@ -160,12 +164,12 @@ def test_gui_linux_with_wayland(monkeypatch):
     assert detect_gui(OS.LINUX) is True
 
 
-def test_gui_linux_headless(monkeypatch):
+def test_gui_linux_headless(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _env=lambda name: "")
     assert detect_gui(OS.LINUX) is False
 
 
-def test_gui_freebsd_headless_default(monkeypatch):
+def test_gui_freebsd_headless_default(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _env=lambda name: "")
     assert detect_gui(OS.FREEBSD) is False
 
@@ -173,22 +177,22 @@ def test_gui_freebsd_headless_default(monkeypatch):
 # ---- detect_notifications -------------------------------------------------
 
 
-def test_notifications_macos_picks_osascript():
+def test_notifications_macos_picks_osascript() -> None:
     n = detect_notifications(OS.DARWIN, has_osascript=True, has_notify_send=False, has_logger=True)
     assert n == NotificationMech.OSASCRIPT
 
 
-def test_notifications_linux_picks_notify_send():
+def test_notifications_linux_picks_notify_send() -> None:
     n = detect_notifications(OS.LINUX, has_osascript=False, has_notify_send=True, has_logger=True)
     assert n == NotificationMech.NOTIFY_SEND
 
 
-def test_notifications_freebsd_falls_back_to_logger():
+def test_notifications_freebsd_falls_back_to_logger() -> None:
     n = detect_notifications(OS.FREEBSD, has_osascript=False, has_notify_send=False, has_logger=True)
     assert n == NotificationMech.LOGGER
 
 
-def test_notifications_none_when_nothing_available():
+def test_notifications_none_when_nothing_available() -> None:
     n = detect_notifications(OS.LINUX, has_osascript=False, has_notify_send=False, has_logger=False)
     assert n == NotificationMech.NONE
 
@@ -196,7 +200,7 @@ def test_notifications_none_when_nothing_available():
 # ---- detect_security_posture ---------------------------------------------
 
 
-def test_security_posture_non_macos_is_trusted(monkeypatch):
+def test_security_posture_non_macos_is_trusted(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(monkeypatch, _path_exists=lambda p: False, _run=lambda cmd, timeout=2.0: (1, ""))
     posture, vendor, blocked = detect_security_posture(OS.LINUX)
     assert posture == SecurityPosture.TRUSTED
@@ -204,7 +208,7 @@ def test_security_posture_non_macos_is_trusted(monkeypatch):
     assert blocked == []
 
 
-def test_security_posture_jamf_detected(monkeypatch):
+def test_security_posture_jamf_detected(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _path_exists=lambda p: str(p) == "/Library/Application Support/JamfPro",
@@ -216,7 +220,7 @@ def test_security_posture_jamf_detected(monkeypatch):
     assert "applescript_automation" in blocked
 
 
-def test_security_posture_kandji_detected(monkeypatch):
+def test_security_posture_kandji_detected(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _path_exists=lambda p: str(p) == "/Library/Kandji",
@@ -227,7 +231,7 @@ def test_security_posture_kandji_detected(monkeypatch):
     assert vendor == "kandji"
 
 
-def test_security_posture_macos_with_profiles_command(monkeypatch):
+def test_security_posture_macos_with_profiles_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """`profiles -P` returning anything other than 'no profiles installed' = managed."""
     patch(
         monkeypatch,
@@ -243,7 +247,7 @@ def test_security_posture_macos_with_profiles_command(monkeypatch):
     assert vendor == "unknown"
 
 
-def test_security_posture_macos_unmanaged(monkeypatch):
+def test_security_posture_macos_unmanaged(monkeypatch: pytest.MonkeyPatch) -> None:
     patch(
         monkeypatch,
         _path_exists=lambda p: False,
@@ -260,22 +264,22 @@ def test_security_posture_macos_unmanaged(monkeypatch):
 # ---- detect_privileged_writes --------------------------------------------
 
 
-def test_privileged_writes_freebsd_is_manual():
+def test_privileged_writes_freebsd_is_manual() -> None:
     assert detect_privileged_writes(OS.FREEBSD) == PrivilegedWrites.MANUAL
 
 
-def test_privileged_writes_macos_is_auto():
+def test_privileged_writes_macos_is_auto() -> None:
     assert detect_privileged_writes(OS.DARWIN) == PrivilegedWrites.AUTO
 
 
-def test_privileged_writes_linux_is_auto():
+def test_privileged_writes_linux_is_auto() -> None:
     assert detect_privileged_writes(OS.LINUX) == PrivilegedWrites.AUTO
 
 
 # ---- end-to-end probe ----------------------------------------------------
 
 
-def test_probe_runs_against_real_host():
+def test_probe_runs_against_real_host() -> None:
     """Smoke test: probe should never raise on the host we're running on."""
     caps = probe()
     assert caps.hostname  # non-empty
@@ -285,12 +289,12 @@ def test_probe_runs_against_real_host():
     assert caps.probed_at  # ISO timestamp set
 
 
-def test_probe_with_hostname_override():
+def test_probe_with_hostname_override() -> None:
     caps = probe(hostname_override="phantom-host")
     assert caps.hostname == "phantom-host"
 
 
-def test_probe_simulated_managed_mac_downgrades_notifications(monkeypatch):
+def test_probe_simulated_managed_mac_downgrades_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
     """A managed mac with osascript installed should downgrade notification mech to logger."""
     patch(
         monkeypatch,
@@ -316,7 +320,7 @@ def test_probe_simulated_managed_mac_downgrades_notifications(monkeypatch):
 # ---- schema serialization -------------------------------------------------
 
 
-def test_capabilities_round_trip():
+def test_capabilities_round_trip() -> None:
     caps = Capabilities(
         hostname="test-host",
         os=OS.LINUX,

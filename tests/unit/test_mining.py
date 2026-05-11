@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from maury.mining import (
     EXTRACTION_PROMPT,
@@ -21,12 +22,12 @@ from maury.mining import (
 # ---- helpers ------------------------------------------------------------
 
 
-def _write_jsonl(path: Path, events: list[dict]) -> None:
+def _write_jsonl(path: Path, events: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
 
-def _user_event(text: str, *, session: str = "s1", ts: str = "2026-05-06T12:00:00Z") -> dict:
+def _user_event(text: str, *, session: str = "s1", ts: str = "2026-05-06T12:00:00Z") -> dict[str, Any]:
     return {
         "type": "user",
         "sessionId": session,
@@ -35,7 +36,7 @@ def _user_event(text: str, *, session: str = "s1", ts: str = "2026-05-06T12:00:0
     }
 
 
-def _assistant_event(text: str) -> dict:
+def _assistant_event(text: str) -> dict[str, Any]:
     return {
         "type": "assistant",
         "message": {"role": "assistant", "content": text},
@@ -45,7 +46,7 @@ def _assistant_event(text: str) -> dict:
 # ---- transcripts.walk_user_messages_in_file -----------------------------
 
 
-def test_walk_yields_real_user_messages(tmp_path):
+def test_walk_yields_real_user_messages(tmp_path: Path) -> None:
     jsonl = tmp_path / "transcript.jsonl"
     _write_jsonl(
         jsonl,
@@ -62,7 +63,7 @@ def test_walk_yields_real_user_messages(tmp_path):
     assert msgs[0].text.startswith("This is a real")
 
 
-def test_walk_drops_system_injected_prefixes(tmp_path):
+def test_walk_drops_system_injected_prefixes(tmp_path: Path) -> None:
     jsonl = tmp_path / "t.jsonl"
     _write_jsonl(
         jsonl,
@@ -78,7 +79,7 @@ def test_walk_drops_system_injected_prefixes(tmp_path):
     assert "genuine user message" in msgs[0].text
 
 
-def test_walk_drops_too_short(tmp_path):
+def test_walk_drops_too_short(tmp_path: Path) -> None:
     jsonl = tmp_path / "t.jsonl"
     _write_jsonl(
         jsonl,
@@ -91,7 +92,7 @@ def test_walk_drops_too_short(tmp_path):
     assert len(msgs) == 1
 
 
-def test_walk_drops_too_long(tmp_path):
+def test_walk_drops_too_long(tmp_path: Path) -> None:
     jsonl = tmp_path / "t.jsonl"
     _write_jsonl(
         jsonl,
@@ -104,7 +105,7 @@ def test_walk_drops_too_long(tmp_path):
     assert len(msgs) == 1
 
 
-def test_walk_handles_content_blocks(tmp_path):
+def test_walk_handles_content_blocks(tmp_path: Path) -> None:
     """message.content can be a list of blocks instead of a string."""
     jsonl = tmp_path / "t.jsonl"
     _write_jsonl(
@@ -130,7 +131,7 @@ def test_walk_handles_content_blocks(tmp_path):
     assert "Second block" in msgs[0].text
 
 
-def test_walk_skips_invalid_json_lines(tmp_path):
+def test_walk_skips_invalid_json_lines(tmp_path: Path) -> None:
     jsonl = tmp_path / "t.jsonl"
     jsonl.write_text(
         json.dumps(_user_event("Real message that should be picked up here.")) + "\n"
@@ -140,7 +141,7 @@ def test_walk_skips_invalid_json_lines(tmp_path):
     assert len(msgs) == 2
 
 
-def test_walk_skips_non_user_events(tmp_path):
+def test_walk_skips_non_user_events(tmp_path: Path) -> None:
     jsonl = tmp_path / "t.jsonl"
     _write_jsonl(
         jsonl,
@@ -154,7 +155,7 @@ def test_walk_skips_non_user_events(tmp_path):
     assert len(msgs) == 1
 
 
-def test_walk_drops_mostly_non_alpha_content(tmp_path):
+def test_walk_drops_mostly_non_alpha_content(tmp_path: Path) -> None:
     """Terminal output / file paths / mostly numeric content shouldn't pass."""
     jsonl = tmp_path / "t.jsonl"
     _write_jsonl(
@@ -168,7 +169,7 @@ def test_walk_drops_mostly_non_alpha_content(tmp_path):
     assert len(msgs) == 1
 
 
-def test_walk_user_messages_recurses_subdirs(tmp_path):
+def test_walk_user_messages_recurses_subdirs(tmp_path: Path) -> None:
     """walk_user_messages walks all .jsonl files under a project dir."""
     proj = tmp_path / "project"
     _write_jsonl(proj / "a.jsonl", [_user_event("Message A from one transcript file.")])
@@ -179,7 +180,7 @@ def test_walk_user_messages_recurses_subdirs(tmp_path):
     assert any("Message B" in t for t in texts)
 
 
-def test_walk_unreadable_file_returns_empty(tmp_path):
+def test_walk_unreadable_file_returns_empty(tmp_path: Path) -> None:
     """An unreadable file returns no messages, not an exception."""
     msgs = list(walk_user_messages_in_file(tmp_path / "nonexistent.jsonl", project="p"))
     assert msgs == []
@@ -198,7 +199,7 @@ def _msg(text: str, i: int = 0) -> TranscriptMessage:
     )
 
 
-def test_make_windows_chunks_correctly():
+def test_make_windows_chunks_correctly() -> None:
     msgs = [_msg(f"msg {i}", i) for i in range(120)]
     windows = make_windows(msgs, "p", window_size=50)
     assert len(windows) == 3
@@ -209,18 +210,18 @@ def test_make_windows_chunks_correctly():
     assert windows[2].index == 2
 
 
-def test_make_windows_empty_input():
+def test_make_windows_empty_input() -> None:
     assert make_windows([], "p", window_size=50) == []
 
 
-def test_make_windows_smaller_than_window_size():
+def test_make_windows_smaller_than_window_size() -> None:
     msgs = [_msg("a"), _msg("b")]
     windows = make_windows(msgs, "p", window_size=50)
     assert len(windows) == 1
     assert len(windows[0].messages) == 2
 
 
-def test_window_first_last_timestamps():
+def test_window_first_last_timestamps() -> None:
     msgs = [_msg("a", 0), _msg("b", 1), _msg("c", 2)]
     windows = make_windows(msgs, "p", window_size=10)
     w = windows[0]
@@ -231,7 +232,7 @@ def test_window_first_last_timestamps():
 # ---- extractor.format_window_for_prompt ---------------------------------
 
 
-def test_format_window_includes_timestamps_and_text():
+def test_format_window_includes_timestamps_and_text() -> None:
     msgs = [_msg("first text", 0), _msg("second text", 1)]
     windows = make_windows(msgs, "p", window_size=10)
     out = format_window_for_prompt(windows[0])
@@ -259,7 +260,7 @@ class _StubLLM:
         return self.responses.pop(0)
 
 
-def test_extract_from_messages_parses_valid_jsonl_response():
+def test_extract_from_messages_parses_valid_jsonl_response() -> None:
     msgs = [_msg(f"text {i}", i) for i in range(50)]
     llm = _StubLLM(
         [
@@ -279,7 +280,7 @@ def test_extract_from_messages_parses_valid_jsonl_response():
     assert llm.calls  # at least one call made
 
 
-def test_extract_from_messages_handles_finding_none_sentinel():
+def test_extract_from_messages_handles_finding_none_sentinel() -> None:
     msgs = [_msg("text", 0)]
     llm = _StubLLM(['{"finding": "none"}'])
     result = extract_from_messages(msgs, llm=llm, project="test", window_size=50)
@@ -287,7 +288,7 @@ def test_extract_from_messages_handles_finding_none_sentinel():
     assert result.findings == []
 
 
-def test_extract_from_messages_skips_invalid_lines():
+def test_extract_from_messages_skips_invalid_lines() -> None:
     """LLM might wrap output in prose; we still pick up the JSON."""
     msgs = [_msg("text", 0)]
     response = (
@@ -302,7 +303,7 @@ def test_extract_from_messages_skips_invalid_lines():
     assert result.findings[0].text == "be concise"
 
 
-def test_extract_from_messages_skips_findings_missing_required_fields():
+def test_extract_from_messages_skips_findings_missing_required_fields() -> None:
     msgs = [_msg("text", 0)]
     response = (
         '{"kind": "workflow"}\n'  # missing scope_hint and text
@@ -316,7 +317,7 @@ def test_extract_from_messages_skips_findings_missing_required_fields():
     assert result.findings[0].text == "complete one"
 
 
-def test_extract_from_messages_processes_multiple_windows():
+def test_extract_from_messages_processes_multiple_windows() -> None:
     msgs = [_msg(f"text {i}", i) for i in range(120)]
     llm = _StubLLM(
         [
@@ -333,7 +334,7 @@ def test_extract_from_messages_processes_multiple_windows():
     assert "from window 2" in texts
 
 
-def test_extract_from_messages_respects_max_windows():
+def test_extract_from_messages_respects_max_windows() -> None:
     msgs = [_msg(f"text {i}", i) for i in range(200)]
     llm = _StubLLM(['{"finding": "none"}'] * 10)
     result = extract_from_messages(msgs, llm=llm, project="test", window_size=50, max_windows=2)
@@ -341,7 +342,7 @@ def test_extract_from_messages_respects_max_windows():
     assert len(llm.calls) == 2
 
 
-def test_extract_from_messages_calls_progress_callbacks():
+def test_extract_from_messages_calls_progress_callbacks() -> None:
     msgs = [_msg("x", 0)] * 50
     llm = _StubLLM(['{"finding": "none"}'])
     starts: list[ExtractionWindow] = []
@@ -359,17 +360,17 @@ def test_extract_from_messages_calls_progress_callbacks():
     assert dones[0][1] == []  # findings
 
 
-def test_extract_from_messages_continues_past_window_failure():
+def test_extract_from_messages_continues_past_window_failure() -> None:
     """If one window's LLM call raises, mining continues with the rest."""
     msgs = [_msg(f"x {i}", i) for i in range(150)]
 
     class _FailFirst:
         name = "stub"
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.n = 0
 
-        def call(self, prompt, *, timeout=120.0):
+        def call(self, prompt: str, *, timeout: float = 120.0) -> str:
             self.n += 1
             if self.n == 1:
                 raise RuntimeError("first call fails")
@@ -385,7 +386,7 @@ def test_extract_from_messages_continues_past_window_failure():
 # ---- extraction prompt sanity ------------------------------------------
 
 
-def test_extraction_prompt_is_non_empty_and_has_schema():
+def test_extraction_prompt_is_non_empty_and_has_schema() -> None:
     """Sanity: the prompt template is well-formed enough to be useful."""
     assert "ONE JSON object per line" in EXTRACTION_PROMPT
     assert "kind" in EXTRACTION_PROMPT
@@ -396,7 +397,7 @@ def test_extraction_prompt_is_non_empty_and_has_schema():
 # ---- system-injected prefixes registry ----------------------------------
 
 
-def test_system_injected_prefixes_includes_known_patterns():
+def test_system_injected_prefixes_includes_known_patterns() -> None:
     """Smoke: the registry of patterns includes the ones the prototype found."""
     expected = (
         "[Request interrupted",

@@ -11,6 +11,7 @@ import json
 import socket
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from maury.cli import main
@@ -39,7 +40,7 @@ def _make_minimal_repo(tmp_path: Path, *, hostname: str) -> Path:
     return repo
 
 
-def test_init_cli_force_and_non_interactive_mutually_exclusive(tmp_path, monkeypatch):
+def test_init_cli_force_and_non_interactive_mutually_exclusive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))  # confine ~/.maury-host-id
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     runner = CliRunner()
@@ -59,7 +60,9 @@ def test_init_cli_force_and_non_interactive_mutually_exclusive(tmp_path, monkeyp
     assert "mutually exclusive" in result.output
 
 
-def test_init_cli_default_refuses_on_pre_existing_collision_exits_1(tmp_path, monkeypatch):
+def test_init_cli_default_refuses_on_pre_existing_collision_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -76,7 +79,7 @@ def test_init_cli_default_refuses_on_pre_existing_collision_exits_1(tmp_path, mo
     assert (target / "CLAUDE.md").read_text() == "pre-existing\n"
 
 
-def test_init_cli_force_overwrites_pre_existing(tmp_path, monkeypatch):
+def test_init_cli_force_overwrites_pre_existing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -92,7 +95,7 @@ def test_init_cli_force_overwrites_pre_existing(tmp_path, monkeypatch):
     assert "hand-edited" not in (target / "CLAUDE.md").read_text()
 
 
-def test_init_cli_non_interactive_refuses_with_exit_1(tmp_path, monkeypatch):
+def test_init_cli_non_interactive_refuses_with_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
@@ -114,7 +117,7 @@ def test_init_cli_non_interactive_refuses_with_exit_1(tmp_path, monkeypatch):
     assert "--non-interactive" in (result.output + result.stderr)
 
 
-def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path, monkeypatch):
+def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"

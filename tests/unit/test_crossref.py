@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from maury.mining.crossref import (
     CrossRefSummary,
     crossref_finding,
@@ -55,7 +57,7 @@ class _StubLLM:
 # ---- crossref_finding (single) ------------------------------------------
 
 
-def test_crossref_parses_state_and_action():
+def test_crossref_parses_state_and_action() -> None:
     llm = _StubLLM(
         '{"state": "PRESENT_AND_REINFORCED", '
         '"claude_md_quote": "use ruff for linting", '
@@ -69,13 +71,13 @@ def test_crossref_parses_state_and_action():
     assert result.suggested_action == "investigate-why-not-followed"
 
 
-def test_crossref_includes_current_claude_md_in_prompt():
+def test_crossref_includes_current_claude_md_in_prompt() -> None:
     llm = _StubLLM('{"state": "NEW", "claude_md_quote": "", "rationale": "x", "suggested_action": "propose-new"}')
     crossref_finding(_finding(), llm=llm, current_claude_md="THIS_IS_THE_CURRENT_MD")
     assert "THIS_IS_THE_CURRENT_MD" in llm.calls[0]
 
 
-def test_crossref_prompt_distinguishes_with_vs_without_history():
+def test_crossref_prompt_distinguishes_with_vs_without_history() -> None:
     """The temporal-awareness header changes between modes."""
     llm = _StubLLM('{"state": "NEW", "claude_md_quote": "", "rationale": "x", "suggested_action": "propose-new"}')
 
@@ -91,7 +93,7 @@ def test_crossref_prompt_distinguishes_with_vs_without_history():
     assert "user was establishing the rule" in with_history_prompt
 
 
-def test_crossref_handles_extra_prose_around_json():
+def test_crossref_handles_extra_prose_around_json() -> None:
     """LLM may wrap output in prose; we still pull out the JSON object."""
     llm = _StubLLM(
         "Here is my classification:\n"
@@ -103,7 +105,7 @@ def test_crossref_handles_extra_prose_around_json():
     assert result.state == "PRESENT_AND_CLEAR"
 
 
-def test_crossref_unparseable_response_falls_back_to_new():
+def test_crossref_unparseable_response_falls_back_to_new() -> None:
     """If the LLM returns no JSON at all, default to NEW so nothing is silently suppressed."""
     llm = _StubLLM("I cannot parse this finding; sorry")
     result = crossref_finding(_finding(), llm=llm, current_claude_md="x")
@@ -112,7 +114,7 @@ def test_crossref_unparseable_response_falls_back_to_new():
     assert result.suggested_action == "propose-new"
 
 
-def test_crossref_invalid_json_falls_back_to_new():
+def test_crossref_invalid_json_falls_back_to_new() -> None:
     """If JSON is malformed, also fall back safely to NEW."""
     llm = _StubLLM('{"state": "NEW", "claude_md_quote": "x"')  # truncated
     result = crossref_finding(_finding(), llm=llm, current_claude_md="x")
@@ -120,7 +122,7 @@ def test_crossref_invalid_json_falls_back_to_new():
     assert "JSON invalid" in result.rationale or "unparseable" in result.rationale
 
 
-def test_crossref_includes_finding_evidence_in_prompt():
+def test_crossref_includes_finding_evidence_in_prompt() -> None:
     """Evidence quote and finding text should be present so the LLM can match them."""
     llm = _StubLLM('{"state": "NEW", "claude_md_quote": "", "rationale": "x", "suggested_action": "propose-new"}')
     f = _finding(text="USER_PREFERENCE_TEXT")
@@ -133,12 +135,12 @@ def test_crossref_includes_finding_evidence_in_prompt():
 # ---- get_claude_md_at_timestamp -----------------------------------------
 
 
-def test_temporal_lookup_returns_none_when_not_a_git_repo(tmp_path):
+def test_temporal_lookup_returns_none_when_not_a_git_repo(tmp_path: Path) -> None:
     """Non-git dir -> None gracefully."""
     assert get_claude_md_at_timestamp(tmp_path, "CLAUDE.md", "2026-05-06T12:00:00Z") is None
 
 
-def test_temporal_lookup_via_real_git(tmp_path):
+def test_temporal_lookup_via_real_git(tmp_path: Path) -> None:
     """Smoke test against a real git repo on disk."""
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -186,7 +188,7 @@ def test_temporal_lookup_via_real_git(tmp_path):
     assert "second version" in out
 
 
-def test_temporal_lookup_returns_none_when_file_did_not_exist_at_commit(tmp_path):
+def test_temporal_lookup_returns_none_when_file_did_not_exist_at_commit(tmp_path: Path) -> None:
     repo = tmp_path / "r"
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -200,11 +202,13 @@ def test_temporal_lookup_returns_none_when_file_did_not_exist_at_commit(tmp_path
     assert out is None
 
 
-def test_temporal_lookup_handles_git_command_failure_gracefully(tmp_path, monkeypatch):
+def test_temporal_lookup_handles_git_command_failure_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """If git itself errors out, return None rather than raising."""
     (tmp_path / ".git").mkdir()  # pretend we're in a repo
 
-    def boom(*a, **kw):
+    def boom(*a: object, **kw: object) -> None:
         raise subprocess.CalledProcessError(returncode=128, cmd=["git"])
 
     monkeypatch.setattr(subprocess, "run", boom)
@@ -214,7 +218,7 @@ def test_temporal_lookup_handles_git_command_failure_gracefully(tmp_path, monkey
 # ---- crossref_findings (bulk) -------------------------------------------
 
 
-def test_crossref_findings_buckets_by_state():
+def test_crossref_findings_buckets_by_state() -> None:
     findings = [_finding(text=t) for t in ["a", "b", "c"]]
     # Three different states across the three findings
     responses = iter(
@@ -228,7 +232,7 @@ def test_crossref_findings_buckets_by_state():
     class _Multi:
         name = "multi"
 
-        def call(self, prompt, *, timeout=120.0):
+        def call(self, prompt: str, *, timeout: float = 120.0) -> str:
             return next(responses)
 
     summary = crossref_findings(findings, llm=_Multi(), current_claude_md="X")
@@ -239,29 +243,29 @@ def test_crossref_findings_buckets_by_state():
     assert summary.by_state["PRESENT_BUT_UNCLEAR"] == []
 
 
-def test_crossref_findings_calls_progress_callback():
+def test_crossref_findings_calls_progress_callback() -> None:
     findings = [_finding(text="x"), _finding(text="y")]
     llm = _StubLLM('{"state": "NEW", "claude_md_quote": "", "rationale": "r", "suggested_action": "propose-new"}')
     seen: list[tuple[int, int]] = []
 
-    def progress(i, total, finding, result):
+    def progress(i: int, total: int, finding: object, result: object) -> None:
         seen.append((i, total))
 
     crossref_findings(findings, llm=llm, current_claude_md="X", on_progress=progress)
     assert seen == [(1, 2), (2, 2)]
 
 
-def test_crossref_findings_continues_past_failure():
+def test_crossref_findings_continues_past_failure() -> None:
     """One failed crossref call shouldn't kill the whole batch."""
     findings = [_finding(text="a"), _finding(text="b")]
 
     class _FailFirst:
         name = "f"
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.n = 0
 
-        def call(self, prompt, *, timeout=120.0):
+        def call(self, prompt: str, *, timeout: float = 120.0) -> str:
             self.n += 1
             if self.n == 1:
                 raise RuntimeError("network down")
@@ -274,15 +278,15 @@ def test_crossref_findings_continues_past_failure():
     assert any("failed" in r for r in rationales)
 
 
-def test_crossref_findings_uses_repo_for_temporal_lookup(tmp_path, monkeypatch):
+def test_crossref_findings_uses_repo_for_temporal_lookup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When repo_path is given, temporal lookup is consulted per finding."""
     findings = [_finding(text="a")]
     llm = _StubLLM('{"state": "NEW", "claude_md_quote": "", "rationale": "r", "suggested_action": "propose-new"}')
 
     # Mock temporal lookup to return a known string
-    called_with: list[tuple] = []
+    called_with: list[tuple[Path, str, str]] = []
 
-    def mock_temporal(repo, rel, ts):
+    def mock_temporal(repo: Path, rel: str, ts: str) -> str:
         called_with.append((repo, rel, ts))
         return "HISTORICAL_MD_CONTENT"
 
@@ -294,7 +298,7 @@ def test_crossref_findings_uses_repo_for_temporal_lookup(tmp_path, monkeypatch):
     assert "HISTORICAL_MD_CONTENT" in llm.calls[0]
 
 
-def test_crossref_summary_empty_starts_with_all_buckets():
+def test_crossref_summary_empty_starts_with_all_buckets() -> None:
     s = CrossRefSummary.empty()
     assert set(s.by_state) == {"NEW", "PRESENT_AND_CLEAR", "PRESENT_BUT_UNCLEAR", "PRESENT_AND_REINFORCED"}
     assert s.total() == 0

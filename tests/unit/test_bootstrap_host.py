@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -18,7 +19,7 @@ def _make_manifest(tmp_path: Path, *, with_existing_host: bool = True) -> Path:
     """Write a minimal manifest at tmp_path/manifest.json. By default it has
     one already-registered host so `bootstrap host` can infer the base URL."""
     pid = new_profile_id()
-    payload: dict = {
+    payload: dict[str, Any] = {
         "version": 2,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {},

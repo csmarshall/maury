@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -49,7 +51,7 @@ def _make_render_result(*files: tuple[str, bytes]) -> RenderResult:
     )
 
 
-def _scripted_prompter(answers: dict[str, ReconcileAction]):
+def _scripted_prompter(answers: dict[str, ReconcileAction]) -> Callable[[DriftEntry], ReconcileAction]:
     """Returns a prompter that maps drift entries to pre-decided actions by path."""
 
     def _prompter(entry: DriftEntry) -> ReconcileAction:
@@ -64,7 +66,7 @@ def _scripted_prompter(answers: dict[str, ReconcileAction]):
 
 
 class TestModuleSurface:
-    def test_all_actions_lists_every_enum_member(self):
+    def test_all_actions_lists_every_enum_member(self) -> None:
         assert set(ALL_ACTIONS) == set(ReconcileAction)
         # Order matters for the menu UI; verify the documented order.
         assert list(ALL_ACTIONS) == [
@@ -75,7 +77,7 @@ class TestModuleSurface:
             ReconcileAction.SKIP_ONCE,
         ]
 
-    def test_action_values_are_kebab_lowercase(self):
+    def test_action_values_are_kebab_lowercase(self) -> None:
         # Values are stable identifiers; user-typeable.
         assert ReconcileAction.ADOPT.value == "adopt"
         assert ReconcileAction.ADAPT.value == "adapt"
@@ -83,12 +85,12 @@ class TestModuleSurface:
         assert ReconcileAction.REVERT.value == "revert"
         assert ReconcileAction.SKIP_ONCE.value == "skip-once"
 
-    def test_captures_path_lives_under_staging(self, tmp_path):
+    def test_captures_path_lives_under_staging(self, tmp_path: Path) -> None:
         cp = captures_path(tmp_path)
         assert cp.name == CAPTURES_FILENAME
         assert cp.parent.name == "maury-staging"
 
-    def test_hand_managed_path_layout(self, tmp_path):
+    def test_hand_managed_path_layout(self, tmp_path: Path) -> None:
         hm = hand_managed_path(base_repo=tmp_path, profile_name="personal", host_name="ws1")
         assert hm == tmp_path / "profiles" / "personal" / "hosts" / "ws1" / HAND_MANAGED_FILENAME
 
@@ -97,7 +99,7 @@ class TestModuleSurface:
 
 
 class TestEmptyDrift:
-    def test_no_drift_no_outcomes(self, tmp_path):
+    def test_no_drift_no_outcomes(self, tmp_path: Path) -> None:
         report = DriftReport(entries=[], has_last_render=True)
         summary = reconcile(
             drift_report=report,
@@ -108,7 +110,7 @@ class TestEmptyDrift:
         assert summary.outcomes == []
         assert not summary.has_errors()
 
-    def test_only_expected_entries_no_outcomes(self, tmp_path):
+    def test_only_expected_entries_no_outcomes(self, tmp_path: Path) -> None:
         report = DriftReport(
             entries=[_drift_entry("ok.md", kind=DriftKind.EXPECTED)],
             has_last_render=True,
@@ -126,7 +128,7 @@ class TestEmptyDrift:
 
 
 class TestSkipOnce:
-    def test_skip_once_takes_no_action(self, tmp_path):
+    def test_skip_once_takes_no_action(self, tmp_path: Path) -> None:
         # Set up a hand-edited file
         (tmp_path / "CLAUDE.md").write_text("hand-edited\n")
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
@@ -147,7 +149,7 @@ class TestSkipOnce:
 
 
 class TestRevert:
-    def test_revert_restores_modified_file_to_render_content(self, tmp_path):
+    def test_revert_restores_modified_file_to_render_content(self, tmp_path: Path) -> None:
         (tmp_path / "CLAUDE.md").write_text("hand-edited content\n")
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
         rendered = _make_render_result(("CLAUDE.md", b"original render\n"))
@@ -160,7 +162,7 @@ class TestRevert:
         assert summary.paths_reverted == 1
         assert (tmp_path / "CLAUDE.md").read_bytes() == b"original render\n"
 
-    def test_revert_recreates_missing_file(self, tmp_path):
+    def test_revert_recreates_missing_file(self, tmp_path: Path) -> None:
         # File was deleted by the user — revert should re-create it from render.
         report = DriftReport(
             entries=[_drift_entry("CLAUDE.md", kind=DriftKind.MISSING, actual_sha=None)],
@@ -175,7 +177,7 @@ class TestRevert:
         )
         assert (tmp_path / "CLAUDE.md").read_bytes() == b"recreated\n"
 
-    def test_revert_removes_untracked_file(self, tmp_path):
+    def test_revert_removes_untracked_file(self, tmp_path: Path) -> None:
         # User added a file maury doesn't render. Revert = remove it.
         target = tmp_path / "skills" / "user-added.md"
         target.parent.mkdir(parents=True)
@@ -193,7 +195,7 @@ class TestRevert:
         assert not target.exists()
         assert summary.outcomes[0].detail == "untracked file removed"
 
-    def test_revert_modified_file_not_in_render_raises(self, tmp_path):
+    def test_revert_modified_file_not_in_render_raises(self, tmp_path: Path) -> None:
         # Should not normally happen; flag as an error (render-vs-baseline mismatch).
         (tmp_path / "vanished.md").write_text("local content\n")
         report = DriftReport(entries=[_drift_entry("vanished.md")], has_last_render=True)
@@ -210,7 +212,7 @@ class TestRevert:
         # File NOT touched (we errored before writing)
         assert (tmp_path / "vanished.md").read_text() == "local content\n"
 
-    def test_revert_creates_parent_dirs(self, tmp_path):
+    def test_revert_creates_parent_dirs(self, tmp_path: Path) -> None:
         # Render output has a file deep in subdirs that doesn't exist on disk yet.
         report = DriftReport(
             entries=[_drift_entry("agents/deep/nested.md", kind=DriftKind.MISSING)],
@@ -230,7 +232,7 @@ class TestRevert:
 
 
 class TestMarkManaged:
-    def test_mark_managed_creates_hand_managed_file(self, tmp_path):
+    def test_mark_managed_creates_hand_managed_file(self, tmp_path: Path) -> None:
         target = tmp_path / "target"
         target.mkdir()
         (target / "CLAUDE.md").write_text("hand-edited\n")
@@ -254,7 +256,7 @@ class TestMarkManaged:
         # Original on-disk file untouched
         assert (target / "CLAUDE.md").read_text() == "hand-edited\n"
 
-    def test_mark_managed_appends_to_existing(self, tmp_path):
+    def test_mark_managed_appends_to_existing(self, tmp_path: Path) -> None:
         base_repo = tmp_path / "base-repo"
         # Pre-existing hand-managed.json with one entry
         hm = base_repo / "profiles" / "personal" / "hosts" / "ws1" / "hand-managed.json"
@@ -275,7 +277,7 @@ class TestMarkManaged:
         # Both paths present, sorted
         assert data["paths"] == ["existing.md", "new.md"]
 
-    def test_mark_managed_idempotent(self, tmp_path):
+    def test_mark_managed_idempotent(self, tmp_path: Path) -> None:
         """Marking the same path twice doesn't duplicate it."""
         base_repo = tmp_path / "base-repo"
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
@@ -293,7 +295,7 @@ class TestMarkManaged:
         data = json.loads(hm.read_text())
         assert data["paths"] == ["CLAUDE.md"]  # single entry
 
-    def test_mark_managed_without_args_errors(self, tmp_path):
+    def test_mark_managed_without_args_errors(self, tmp_path: Path) -> None:
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
         summary = reconcile(
             drift_report=report,
@@ -305,7 +307,7 @@ class TestMarkManaged:
         assert summary.has_errors()
         assert any("mark-managed requires" in e for e in summary.errors)
 
-    def test_mark_managed_refuses_unknown_schema_version(self, tmp_path):
+    def test_mark_managed_refuses_unknown_schema_version(self, tmp_path: Path) -> None:
         base_repo = tmp_path / "base-repo"
         hm = base_repo / "profiles" / "p" / "hosts" / "h" / "hand-managed.json"
         hm.parent.mkdir(parents=True)
@@ -328,7 +330,7 @@ class TestMarkManaged:
 
 
 class TestAdopt:
-    def test_adopt_writes_capture_file(self, tmp_path):
+    def test_adopt_writes_capture_file(self, tmp_path: Path) -> None:
         (tmp_path / "CLAUDE.md").write_text("My personal preference.\n")
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
         summary = reconcile(
@@ -349,7 +351,7 @@ class TestAdopt:
         assert rec["session_id"] == "abc123"
         assert rec["body_excerpt"] == "My personal preference.\n"
 
-    def test_adopt_does_not_modify_local_file(self, tmp_path):
+    def test_adopt_does_not_modify_local_file(self, tmp_path: Path) -> None:
         (tmp_path / "CLAUDE.md").write_text("hand-edited\n")
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
         reconcile(
@@ -361,7 +363,7 @@ class TestAdopt:
         # File unchanged per ADR-0017
         assert (tmp_path / "CLAUDE.md").read_text() == "hand-edited\n"
 
-    def test_adopt_appends_to_existing_captures_file(self, tmp_path):
+    def test_adopt_appends_to_existing_captures_file(self, tmp_path: Path) -> None:
         cp = captures_path(tmp_path)
         cp.parent.mkdir(parents=True)
         cp.write_text(json.dumps({"existing": "record"}) + "\n")
@@ -378,7 +380,7 @@ class TestAdopt:
         # Existing record preserved, new appended
         assert json.loads(lines[0]) == {"existing": "record"}
 
-    def test_adopt_truncates_long_body_excerpt(self, tmp_path):
+    def test_adopt_truncates_long_body_excerpt(self, tmp_path: Path) -> None:
         big = "x" * 5000
         (tmp_path / "big.md").write_text(big)
         report = DriftReport(entries=[_drift_entry("big.md")], has_last_render=True)
@@ -393,7 +395,7 @@ class TestAdopt:
         assert "(truncated)" in rec["body_excerpt"]
         assert len(rec["body_excerpt"]) < 5000
 
-    def test_adopt_handles_binary_files(self, tmp_path):
+    def test_adopt_handles_binary_files(self, tmp_path: Path) -> None:
         (tmp_path / "bin/data").parent.mkdir()
         (tmp_path / "bin/data").write_bytes(b"\x00\x01\x02\xff")
         report = DriftReport(entries=[_drift_entry("bin/data")], has_last_render=True)
@@ -412,7 +414,7 @@ class TestAdopt:
 
 
 class TestAdaptFallback:
-    def test_adapt_falls_back_to_adopt_with_marker(self, tmp_path):
+    def test_adapt_falls_back_to_adopt_with_marker(self, tmp_path: Path) -> None:
         (tmp_path / "CLAUDE.md").write_text("text\n")
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
         summary = reconcile(
@@ -433,7 +435,7 @@ class TestAdaptFallback:
 
 
 class TestMixedScenarios:
-    def test_walk_processes_each_actionable_entry(self, tmp_path):
+    def test_walk_processes_each_actionable_entry(self, tmp_path: Path) -> None:
         # 4 drift entries: one each of MODIFIED, MISSING, UNTRACKED, EXPECTED
         # The EXPECTED one shouldn't be prompted.
         target = tmp_path / "target"
@@ -476,7 +478,7 @@ class TestMixedScenarios:
         # modified.md left as-is (skip-once)
         assert (target / "modified.md").read_text() == "hand-edited\n"
 
-    def test_one_action_error_does_not_abort_the_rest(self, tmp_path):
+    def test_one_action_error_does_not_abort_the_rest(self, tmp_path: Path) -> None:
         # First entry's action errors (mark-managed without args);
         # second entry's skip-once should still process.
         report = DriftReport(
@@ -507,7 +509,7 @@ class TestMixedScenarios:
 
 
 class TestReconcileSummary:
-    def test_default_summary_is_empty_and_clean(self):
+    def test_default_summary_is_empty_and_clean(self) -> None:
         s = ReconcileSummary()
         assert s.outcomes == []
         assert s.captures_written == 0
@@ -517,7 +519,7 @@ class TestReconcileSummary:
         assert s.paths_falling_back_to_adopt == 0
         assert not s.has_errors()
 
-    def test_has_errors_reflects_errors_list(self):
+    def test_has_errors_reflects_errors_list(self) -> None:
         s = ReconcileSummary(errors=["something"])
         assert s.has_errors()
 
@@ -526,7 +528,7 @@ class TestReconcileSummary:
 
 
 class TestReconcileOutcome:
-    def test_outcome_is_frozen(self):
+    def test_outcome_is_frozen(self) -> None:
         from dataclasses import FrozenInstanceError
 
         o = ReconcileOutcome(path="x", action=ReconcileAction.SKIP_ONCE)

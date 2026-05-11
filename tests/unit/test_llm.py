@@ -19,44 +19,44 @@ from maury.llm import (
 # ---- factory ------------------------------------------------------------
 
 
-def test_get_backend_default_is_cli(monkeypatch):
+def test_get_backend_default_is_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MAURY_LLM_BACKEND", raising=False)
     client = get_backend()
     assert client.name == "cli"
     assert isinstance(client, ClaudeCliClient)
 
 
-def test_get_backend_explicit_cli():
+def test_get_backend_explicit_cli() -> None:
     client = get_backend("cli")
     assert client.name == "cli"
 
 
-def test_get_backend_env_var_overrides_default(monkeypatch):
+def test_get_backend_env_var_overrides_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAURY_LLM_BACKEND", "cli")
     client = get_backend()
     assert client.name == "cli"
 
 
-def test_get_backend_explicit_arg_overrides_env(monkeypatch):
+def test_get_backend_explicit_arg_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAURY_LLM_BACKEND", "sdk")
     # Even with env=sdk, explicit arg wins. Use cli to avoid SDK dep.
     client = get_backend("cli")
     assert client.name == "cli"
 
 
-def test_get_backend_unknown_raises():
+def test_get_backend_unknown_raises() -> None:
     with pytest.raises(ValueError) as ei:
         get_backend("yolo")
     assert "yolo" in str(ei.value)
     assert "expected 'cli' or 'sdk'" in str(ei.value)
 
 
-def test_get_backend_case_insensitive():
+def test_get_backend_case_insensitive() -> None:
     client = get_backend("CLI")
     assert client.name == "cli"
 
 
-def test_get_backend_strips_whitespace(monkeypatch):
+def test_get_backend_strips_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAURY_LLM_BACKEND", "  cli  ")
     client = get_backend()
     assert client.name == "cli"
@@ -65,7 +65,7 @@ def test_get_backend_strips_whitespace(monkeypatch):
 # ---- ClaudeCliClient ----------------------------------------------------
 
 
-def test_cli_client_invokes_claude_p_with_stdin(monkeypatch):
+def test_cli_client_invokes_claude_p_with_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     """The CLI client should pass the prompt on stdin and return stdout."""
     mock_run = MagicMock(
         return_value=subprocess.CompletedProcess(
@@ -90,7 +90,7 @@ def test_cli_client_invokes_claude_p_with_stdin(monkeypatch):
     assert cmd_kwargs["check"] is True
 
 
-def test_cli_client_uses_custom_claude_path(monkeypatch):
+def test_cli_client_uses_custom_claude_path(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr=""))
     monkeypatch.setattr(subprocess, "run", mock_run)
 
@@ -101,8 +101,8 @@ def test_cli_client_uses_custom_claude_path(monkeypatch):
     assert cmd_args[0] == ["/opt/custom/claude", "-p"]
 
 
-def test_cli_client_missing_binary_raises_backend_unavailable(monkeypatch):
-    def boom(*a, **kw):
+def test_cli_client_missing_binary_raises_backend_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*a: object, **kw: object) -> None:
         raise FileNotFoundError("no claude")
 
     monkeypatch.setattr(subprocess, "run", boom)
@@ -113,8 +113,8 @@ def test_cli_client_missing_binary_raises_backend_unavailable(monkeypatch):
     assert "MAURY_LLM_BACKEND=sdk" in str(ei.value)
 
 
-def test_cli_client_nonzero_exit_raises_backend_unavailable(monkeypatch):
-    def fail(*a, **kw):
+def test_cli_client_nonzero_exit_raises_backend_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*a: object, **kw: object) -> None:
         raise subprocess.CalledProcessError(returncode=2, cmd=["claude", "-p"], stderr="something broke\n")
 
     monkeypatch.setattr(subprocess, "run", fail)
@@ -125,7 +125,7 @@ def test_cli_client_nonzero_exit_raises_backend_unavailable(monkeypatch):
     assert "something broke" in str(ei.value)
 
 
-def test_cli_client_passes_timeout(monkeypatch):
+def test_cli_client_passes_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr=""))
     monkeypatch.setattr(subprocess, "run", mock_run)
 
@@ -139,7 +139,7 @@ def test_cli_client_passes_timeout(monkeypatch):
 # ---- AnthropicSdkClient -------------------------------------------------
 
 
-def test_sdk_client_raises_backend_unavailable_when_anthropic_not_installed(monkeypatch):
+def test_sdk_client_raises_backend_unavailable_when_anthropic_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulate `from anthropic import Anthropic` failing.
 
     We patch the import via sys.modules so the lazy-import inside the
@@ -152,7 +152,7 @@ def test_sdk_client_raises_backend_unavailable_when_anthropic_not_installed(monk
     assert "anthropic SDK not installed" in str(ei.value)
 
 
-def test_sdk_client_call_concatenates_text_blocks():
+def test_sdk_client_call_concatenates_text_blocks() -> None:
     """Assistant response can be multiple text blocks; result joins them."""
     fake_anthropic_module = type(sys)("anthropic")
     fake_client_class = MagicMock()
@@ -182,7 +182,7 @@ def test_sdk_client_call_concatenates_text_blocks():
     )
 
 
-def test_sdk_client_call_skips_non_text_blocks():
+def test_sdk_client_call_skips_non_text_blocks() -> None:
     """Tool-use or other non-text blocks shouldn't appear in the joined output."""
     fake_anthropic_module = type(sys)("anthropic")
     fake_client_class = MagicMock()
@@ -209,7 +209,7 @@ def test_sdk_client_call_skips_non_text_blocks():
 # ---- protocol conformance ----------------------------------------------
 
 
-def test_both_backends_satisfy_llm_client_protocol():
+def test_both_backends_satisfy_llm_client_protocol() -> None:
     """Structural typing check: both classes should satisfy LLMClient."""
     cli: LLMClient = ClaudeCliClient()  # type-check only; not invoked
     assert cli.name == "cli"

@@ -38,6 +38,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # Marker the comment-stripping probe appends to its hook command.
 # If the shell strips trailing `#`-comments correctly, the redirect
@@ -142,7 +143,7 @@ def _write_probe_scripts(scripts_dir: Path, out_dir: Path) -> dict[str, Path]:
     }
 
 
-def _build_settings(out_dir: Path, scripts: dict[str, Path]) -> dict[str, object]:
+def _build_settings(out_dir: Path, scripts: dict[str, Path]) -> dict[str, Any]:
     """Construct a Claude Code settings.json that installs the three probe hooks.
 
     Per Claude Code docs, hooks live under settings["hooks"][<event>] as a list
