@@ -10,7 +10,7 @@ conversation or in an ADR, this file is what it's referring to.
 1. **[The mental model](#the-mental-model)** below — start here if
    you've never used maury. ~3 minutes. Plain-language analogies,
    no jargon.
-2. **[The six core concepts](#the-six-core-concepts)** — formal
+2. **[The core concepts](#the-core-concepts)** — formal
    definitions. Reach for these when you need precision (writing
    an ADR, debugging a render, auditing a safety property).
 3. **[Theoretical foundations](#theoretical-foundations)** — the
@@ -25,8 +25,8 @@ conversation or in an ADR, this file is what it's referring to.
 If you've ever managed dotfiles across multiple machines
 (`.bashrc`, `.vimrc`, etc.) you already know maury's premise.
 **Maury is the richer version of that, specialized for your
-Claude Code config (`~/.claude/`), with two extra ideas: profiles
-and inheritance.**
+Claude Code config (`~/.claude/`), with two extra ideas: modes
+and layered composition.**
 
 Two analogies, both useful:
 
@@ -35,55 +35,56 @@ Two analogies, both useful:
 Imagine your `~/.claude/` directory is your **outfit for the day**.
 
 Every outfit has the same **uniform underneath** — your t-shirt
-and jeans. That's the `base` profile: it travels with you to
+and jeans. That's the `base` layer: it travels with you to
 every location, and you wear it under everything else. Universal
 preferences (writing voice, code style, identity terms) go here
-so you don't have to copy them into every per-context layer.
+so you don't have to copy them into every per-mode layer.
 
 On top of the uniform, you add whatever's in **the locker at the
 location you're currently at** — flip-flops + a hoodie at home,
 smock + name badge at work. Each per-location layer is a
-**profile** (`personal`, `work`, `acme-client`, …). When you
+**mode** (`personal`, `work`, `work:client-acme`, …). When you
 "get dressed" on a given machine — that's a **render** — maury
 puts on the uniform, then opens whichever locker you have a key
-for in the current context and adds those items, then layers any
+for in the current mode and adds those items, then layers any
 **host-specific tweaks** on top (the well-loved slippers and
 ratty house pants you'd never wear out of the house — fine here,
 embarrassing anywhere else, and you'd never want them to follow
 you to another machine).
 
-A **locker** is a *trust boundary* — one git repo. One locker
-can hold multiple per-context layers if you trust their contents
-to coexist (a `consulting` locker might hold both `acme-client`
-and `globex-client` items, both visible to anyone with the
-consulting locker key). Each locker has its own key. Your home
-laptop has the home-locker key; your work laptop has the
-work-locker key; **neither has the other's**. That's not policy
-you have to enforce — it's physical: the work laptop literally
-cannot open the home locker because it doesn't have the key (a
-`git clone` against the personal repo fails for lack of SSH
-credentials).
+A **locker** is one git repo. One locker can hold a mode plus
+its nested child modes if you trust their contents to coexist (a
+`work` locker might hold both `work:client-acme` and
+`work:client-globex` items, both visible to anyone with the
+work-locker key). Each locker has its own key. Your home laptop
+has the home-locker key; your work laptop has the work-locker
+key; **neither has the other's**. That's not policy you have to
+enforce — it's physical: the work laptop literally cannot open
+the home locker because it doesn't have the key (a `git clone`
+against the personal repo fails for lack of SSH credentials).
 
 The base-uniform locker is special: every host has its key,
 because base is what you always wear.
 
-#### Going somewhere new — inheritance vs. consuming someone else's content
+#### Going somewhere new — sublayers vs. consuming someone else's content
 
 Two patterns for picking up gear from a location:
 
-- **You're going to the beach.** Beach is a sub-context of home —
-  you carry your home-locker key with you. The `beach` profile
-  `extends: home`, so beach's gear (beach bag, sunscreen, towel)
-  layers on top of home's gear (flip-flops). You own both lockers
-  and have keys to both. That's **inheritance** — you're
-  stacking your own per-context layers, full read/write on each.
+- **You're going to the beach.** Beach is a sub-mode of home —
+  you carry your home-locker key with you. The `home:beach`
+  mode is declared as a child of `home` in the mode tree, so
+  beach's gear (beach bag, sunscreen, towel) layers on top of
+  home's gear (flip-flops). You own both lockers and have keys
+  to both. That's **the mode tree** — you're stacking your own
+  per-mode layers, full read/write on each.
 - **You're doing contract work at ACME.** You don't own ACME's
-  content — the company does. The way you consume it isn't
-  another locker (lockers are binary — you have the key or you
-  don't). It's more like a **vending machine** in the company
-  hallway. The vending machine is stocked and maintained by
-  whoever owns ACME's content (the curator); you interact with
-  it depending on what kind of access you've been given:
+  rules content — the company does. The way you consume it
+  isn't another locker (lockers are binary — you have the key
+  or you don't). It's more like a **vending machine** in the
+  company hallway. The vending machine is a `rules` repo,
+  stocked and maintained by whoever owns ACME's rules (the
+  curator); you interact with it depending on what kind of
+  access you've been given:
   - **`ro` (read-only)** — the vending machine itself. You can
     see everything in the rack, you can buy and take items home
     (your local clone), but you can't restock the machine. The
@@ -92,141 +93,343 @@ Two patterns for picking up gear from a location:
     suggestion slot on the side. Buy what's there, AND drop in
     "hey, you should stock pen-pocket smocks" notes. The curator
     reads the slot and either restocks or doesn't. Common in
-    published-team setups
+    shared-rules-repo setups
     ([ADR-0034](adr/0034-published-subscribed-profiles.md)).
   - **`rw` (read-write)** — you're a co-owner of the vending
     machine; you have the restocking key. Open the back, add or
     remove items directly. Reserved for hosts the curator fully
     trusts (their own machines, co-curators).
 
-Engineers using the published/subscribed pattern consume the
-team's content via an `ro` or `pr` vending machine, and stack
-their own personal layers (in their own lockers, with full
-`rw`) on top via inheritance. Per
+Engineers consuming a shared rules repo interact with it via an
+`ro` or `pr` vending machine, and stack their own per-mode
+layers (in their own lockers, with full `rw`) on top via the
+mode tree. Per
 [ADR-0034](adr/0034-published-subscribed-profiles.md) a single
-trust boundary can have multiple curators — the vending
-machine has more than one restocker.
+rules repo can have multiple curators — the vending machine has
+more than one restocker.
 
-> Cleanly: **uniform = base; per-context layer = profile;
-> locker = a trust boundary you OWN (binary key access); vending
-> machine = a trust boundary someone else owns that you only
-> consume from (`ro`/`pr`/`rw` access modes).** A given trust
-> boundary is a locker from the curator's POV and a vending
+> Cleanly: **uniform = base; per-mode layer = mode; locker =
+> a `base` or `mode` repo you OWN (binary key access); vending
+> machine = a `rules` repo someone else owns that you only
+> consume from (`ro`/`pr`/`rw` access modes).** A given
+> `rules` repo is a locker from the curator's POV and a vending
 > machine from the consumer's POV — same git repo, different
-> deploy keys. `extends` carries your own keys with you;
-> vending-machine modes are how you consume someone else's
-> content.
+> deploy keys. The mode tree carries your own keys with you;
+> vending-machine access modes are how you consume someone
+> else's rules content.
 
 ### Analogy 2 — config files with composition
 
-If you'd rather think in code: maury's `base` profile is like
+If you'd rather think in code: maury's `base` layer is like
 your shared `~/.bashrc.common`, sourced everywhere. A specific
-profile (`work`, `personal`) is like a `~/.bashrc.work` that
-extends the common one. The host overlay is the per-machine
-tweak.
+mode (`work`, `personal`) is like a `~/.bashrc.work` that
+extends the common one. The host-tagged sections are the
+per-machine tweaks.
 
 The thing that's NEW vs dotfile management:
 
-- **Profile inheritance** — a profile can extend another. So
-  `acme-client` extends `work` extends `base`, and rendering
-  composes all three. (Like CSS classes inheriting from base
-  styles, or Docker images layered on a base image.)
-- **Trust boundaries** — each profile lives in a git repo with
+- **Mode tree** — modes form an arbitrary-depth tree. So
+  `work:client-acme` is a child of `work`, which is a child of
+  `base`, and rendering composes all three. (Like CSS classes
+  inheriting from base styles, or Docker images layered on a
+  base image.)
+- **Trust boundaries** — each layer lives in a git repo with
   per-host SSH deploy keys. The work laptop literally cannot
   fetch the bytes of personal content. Privacy is enforced
   server-side, not by client-side filtering.
-- **Active profile** — at any moment a host is "in" exactly one
-  profile. Switching is deliberate (and safeguarded — see
+- **Active mode** — at any moment a host is "in" exactly one
+  mode chain. Switching is deliberate (and safeguarded — see
   [ADR-0025](adr/0025-profile-switching-session-safeguards.md)).
 
 ### One-line summary of each term
 
 | Term | Plain-language gist |
 |---|---|
-| **Base** | The uniform under everything — universal preferences every host wears |
-| **Profile** | A per-context layer (e.g., `personal`, `work`, `acme-client`) added on top of the uniform |
+| **Agency** | The bounded set of repos and hosts maury manages together as a single installation; identified by a stable `agency_id` UUID |
+| **Base** | The uniform under everything — universal preferences every host wears. Exactly one per agency |
+| **Mode** | A per-mode layer (e.g., `personal`, `work`, `work:client-acme`) added on top of the uniform. Modes form an arbitrary-depth tree below base |
+| **Rules** | A shareable layer of conventions/precepts; floats anywhere in the tree as a sublayer of `base` or any `mode` |
+| **Sublayer** | A direct dependency of a layer, declared in that layer's `.meta/maury-marker.json` |
+| **Marker file** | `.meta/maury-marker.json` — committed file in every maury-managed repo declaring its layer type, agency, and direct sublayers |
 | **Trust boundary** | One git repo. From the owner's POV it's a **locker** (binary key access — you have it or you don't). From a consumer's POV it's a **vending machine** (you consume from it; access mode controls whether you can restock) |
 | **Deploy key** | The physical key for one specific trust boundary; in maury, can grant `ro`/`pr`/`rw` access |
-| **Inheritance** (`extends`) | Carrying multiple keys you own and stacking your own per-context layers (`acme-client` extends `work` extends `base`) |
-| **Access mode** | `ro` (vending machine — buy only) / `pr` (vending machine + suggestion slot) / `rw` (you have the restocking key). See §6 |
-| **Layer** | One per-context layer's contribution at render time |
-| **Active profile** | Which context you're "wearing" right now on this machine |
+| **`repo_mode`** | Access subtype declared on a sublayer entry: `ro` (read-only), `pr` (PR-able), `rw` (full write). For `rules` sublayers, also distinguishes convention semantics from precept semantics |
+| **Environment tags** | Free-form tags a host declares at bootstrap (e.g., `["ubuntu", "laptop", "work-desk"]`); the render engine matches them against env-tagged sections |
+| **Layer** | One source of content composed at render time |
+| **Active mode** | Which mode chain you're "wearing" right now on this machine |
 | **Render** | Putting on the uniform + layers into your `~/.claude/` |
 | **Promotion** | Moving a piece from one trust boundary to a more-shared one, via curator review (e.g., a `work` finding → `base`) |
 
 That's the whole model. Everything below is precision —
 necessary if you're writing an ADR or auditing a safety property,
 skippable on first read. (The wardrobe analogy is intentionally
-loose; the formal sections distinguish profile-vs-trust-boundary
+loose; the formal sections distinguish mode-vs-trust-boundary
 in ways the analogy blurs, so come back here if anything is
 unclear later.)
 
 ---
 
-## The six core concepts
+## The core concepts
 
-These six terms are load-bearing across every ADR. They are not
+These terms are load-bearing across every ADR. They are not
 synonymous with each other — and they are not synonymous with
 Claude Code's terms of art (which sometimes use the same words to
 mean different things).
 
-### 1. Profile
+### 1. Agency
 
-A **profile** is a user-defined namespace of configuration content
-— a CLAUDE.md fragment, skills, hooks, settings, and rules — that
-applies when a host is "in" that profile.
+An **agency** is the bounded management unit — the totality of
+repos and hosts maury manages together as a single installation.
+The name reflects that maury *is* an agent operating on the
+user's behalf across multiple hosts and modalities; the bounded
+unit it operates within is therefore an agency.
 
-Profiles are registered in `.meta/manifest.json`. They have:
+Every agency has:
 
-- A surrogate ID (`profile_<32 hex>`, per [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md))
-- A human-friendly name (`personal`, `work`, `acme-client`, …)
-- An optional single parent profile via `extends:` (see
-  [Inheritance](#3-inheritance) below)
+- A stable **`agency_id`** — a UUID generated once at
+  `maury agency init` (per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md))
+  and never changed.
+- Exactly **one** `base` repo (the structural root).
+- Zero or more `mode` repos descending from base.
+- Zero or more `rules` repos attached as sublayers of `base` or
+  any `mode`.
 
-Profiles are user-defined and unbounded. There's nothing in
-maury's schema that hardcodes "personal" or "work" — those are
-just names you happened to register. Per
-[ADR-0001](adr/0001-n-profiles.md). The "context the user is
-working in right now" framing is in [§5 Active profile](#5-active-profile);
-this section defines what a profile *is* structurally.
+The `agency_id` appears in every layer's marker file:
 
-### 2. Trust boundary
+- On `base` and `mode` repos, it is a **membership claim** —
+  this repo belongs to this agency. A mismatch at registration
+  is a hard error.
+- On `rules` repos, it is a **provenance claim** — this repo
+  was originally created by this agency. Cross-agency
+  consumption of `rules` repos is expected and supported; the
+  `agency_id` is informational only.
 
-A **trust boundary** is the unit of read/write access. One trust
-boundary = one git repo. Per
+Per [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md),
+the agency is bounded but not centralized. There is no flat
+agency-wide registry; every layer declares its own direct
+sublayers, and traversal from base outward produces the
+complete agency view.
+
+### 2. Layer types
+
+Every repo in a maury installation has a **layer type**. There
+are exactly **three** types, recorded in the marker file's
+`layer` field:
+
+| Type | Dimension | Reusable? | Content character |
+|---|---|---|---|
+| `base` | structural root (×1) | agency-wide | global defaults; contains env-tagged sections |
+| `mode` | WHAT (nested tree) | per-chain | mode-specific config; contains env-tagged and host-tagged sections |
+| `rules` | floating | yes — many consumers | shareable conventions / precepts; access subtype = `repo_mode` |
+
+Per [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md),
+the agency's configuration is shaped by **two orthogonal
+dimensions**:
+
+| Dimension | Question | How it is expressed |
+|---|---|---|
+| **WHAT** | What is the user doing? | `mode` chain (a nested tree below `base`) |
+| **WHERE/HOW** | On which physical box, in what kind of environment? | Environment-tagged sections inside `base` and `mode` repos; host-tagged sections inside `mode` repos for machine-specific content |
+
+Environment is **content**, not a layer type. Machine-specific
+content is also **content** (host-tagged sections inside the
+relevant mode repo), with a private-narrow-scoped child mode
+repo as an escape hatch when access isolation is required.
+
+#### `base`
+
+The agency-wide foundation. Exactly **one** per agency.
+
+- Structural root; all other layers descend from it.
+- Content character: agency-wide defaults — CLAUDE.md preamble,
+  shared tool configs, conventions the agency curator
+  maintains. May contain environment-tagged sections.
+- Hosts do **not** register to `base`. They register to a mode.
+- Managed by: agency curator (`rw`); all hosts read the
+  rendered output.
+
+#### `mode`
+
+A named configuration mode — what the user is doing on this
+hardware. Modes form an **arbitrary-depth tree**, not flat
+siblings: `base → mode:work → mode:work:client-acme`.
+
+- A mode cannot be a child of two parent modes simultaneously
+  (tree, not graph — no diamond inheritance).
+- A host has **one active mode chain** at a time.
+- Content character: mode-specific config. May contain
+  environment-tagged sections (for OS- or location-shaped
+  variants) and host-tagged sections (for machine-specific
+  content).
+- Each mode repo's marker file carries a `hosts` dict. Hosts
+  register against modes (per
+  [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)).
+- Managed by: whoever has `rw` on the mode repo.
+
+Nested mode IDs are `mode_<hex>` surrogate keys per
+[ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md)
+(renamed from `profile_<hex>`; this is a breaking schema change
+requiring a version bump per
+[ADR-0030](adr/0030-manifest-schema-migrations.md)).
+
+#### `rules`
+
+A shareable layer of rules — conventions for the owner,
+precepts for consumers.
+
+- Structural position: **floating** — declared as a sublayer of
+  any other layer (`base` or any mode in the tree) and
+  cascading from that attachment point downward.
+- Content character: rules content. Whether the rules are a
+  convention (the owner's content) or a precept (an external
+  source the consumer follows) is a property of the
+  **consumer's relationship**, not the repo's content. The
+  same rules repo can have both relationships across its
+  consumers.
+- Managed by: governed by the declaring layer's `repo_mode`
+  value. The owner has `rw`; subscribers have `pr` or `ro`.
+  Governance metadata in `.meta/maury-governance.json` declares
+  owners and the PR target — see
+  [ADR-0038](adr/0038-precept-acquisition-model.md).
+
+### 3. Sublayers
+
+A **sublayer** is a direct dependency of a layer, declared in
+that layer's `.meta/maury-marker.json`. Per
+[ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), each
+layer declares its **direct dependencies only** — there is no
+flat agency-wide registry of every repo.
+
+Three load-bearing properties:
+
+1. **Locality of change.** A team adding a new rules repo to
+   their mode edits only the mode's marker file, not the base.
+2. **Stable base.** Replacing the base affects only the base's
+   direct sublayers, not the entire agency topology.
+3. **Distributed authorship.** Each layer's curator owns their
+   own sublayer declarations; no single party gate-keeps the
+   registry.
+
+#### Marker file schema
+
+The marker file is the per-layer manifest. Example for a `mode`
+repo with two `rules` sublayers:
+
+```json
+{
+  "schema_version": 1,
+  "layer": "mode",
+  "agency_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sublayers": [
+    {
+      "url": "git@github.com:eng-standards/rules-linting.git",
+      "repo_mode": "ro"
+    },
+    {
+      "url": "git@github.com:acme-corp/rules-team.git",
+      "repo_mode": "pr"
+    }
+  ],
+  "hosts": {
+    "host_abc123def456": {
+      "registered_at": "2026-01-15T10:00:00Z",
+      "environment_tags": ["ubuntu", "laptop", "work-desk"]
+    }
+  }
+}
+```
+
+- **`schema_version`** — integer, currently `1`. Bumps follow
+  [ADR-0030](adr/0030-manifest-schema-migrations.md).
+- **`layer`** — one of `base`, `mode`, `rules`.
+- **`agency_id`** — UUID. Membership claim on `base` and
+  `mode`; provenance claim on `rules`.
+- **`sublayers`** — list of direct dependencies. Each entry
+  has a `url` (the surrogate key per
+  [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md))
+  and, for `rules` sublayers, a `repo_mode`.
+- **`hosts`** — dict keyed by `host_<hex>`, present only in
+  `mode` repos. Each entry carries `registered_at` and
+  `environment_tags`.
+
+Field names are fully spelled out. No abbreviations.
+
+#### The mode tree
+
+A typical layout (work mode hosted on a corporate GitHub org;
+home mode hosted on a personal Codeberg account; rules from a
+third-party engineering-standards org):
+
+```mermaid
+flowchart TD
+    base["base
+(agency root)"]
+    work["mode:work
+(corporate GitHub)"]
+    home["mode:home
+(personal Codeberg)"]
+    acme["mode:work:client-acme"]
+    globex["mode:work:client-globex"]
+    rules_lint["rules-linting
+(eng-standards)"]
+    rules_team["rules-team
+(acme-corp)"]
+
+    base --> work
+    base --> home
+    work --> acme
+    work --> globex
+    work -.repo_mode: ro.-> rules_lint
+    work -.repo_mode: pr.-> rules_team
+    home -.repo_mode: ro.-> rules_lint
+```
+
+In real installations work and home repos almost never live in
+the same org or even on the same provider; documentation
+examples reflect this.
+
+### 4. Trust boundary
+
+A **trust boundary** is the unit of read/write access. One
+trust boundary = one git repo. Per
 [ADR-0002](adr/0002-repo-per-trust-boundary.md).
 
-Multiple profiles can live inside one trust boundary if you trust
-those profiles to see each other's content. Crossing a trust
-boundary requires a separate repo + separate deploy keys per host
-(per [ADR-0003](adr/0003-per-host-deploy-keys.md)).
+Multiple modes in the mode tree can live inside one trust
+boundary (e.g., `work` and `work:client-acme` both in
+`mode-work`) if you trust those modes to see each other's
+content. Crossing a trust boundary requires a separate repo +
+separate deploy keys per host (per
+[ADR-0003](adr/0003-per-host-deploy-keys.md)).
 
-> **Profile ≠ trust boundary.** A profile is a *content namespace*;
-> a trust boundary is an *access scope*. The `personal` and `work`
-> profiles are typically in *different* repos (different trust
+> **Mode ≠ trust boundary.** A mode is a *content namespace*;
+> a trust boundary is an *access scope*. The `home` and `work`
+> modes are typically in *different* repos (different trust
 > boundaries) because you don't want the work-laptop fetching
-> personal content. But the `acme-client` and `globex-client`
-> profiles might share one repo (one trust boundary called
-> "consulting") if you trust those clients' contexts to coexist.
+> personal content. But the `work:client-acme` and
+> `work:client-globex` modes might share one repo (one trust
+> boundary called `mode-work`) if you trust those clients'
+> modes to coexist.
 
-### 3. Inheritance
+### 5. Mode tree and inheritance
 
-**Inheritance** is the *extends* relationship between profiles.
-Profile A *extends* profile B means: when rendering for A, base +
-B's content + A's content all compose into the final
-`~/.claude/`. A is the *child*, B is the *parent*.
+The **mode tree** is the parent-child relationship between
+modes. Mode `A` declared as a sublayer of mode `B` means: when
+rendering for `A`, base + B's content + A's content all compose
+into the final `~/.claude/`. `A` is the *child*, `B` is the
+*parent*.
 
 Two structural rules:
 
-- **Single-parent only.** A profile extends exactly zero or one
-  parents. No diamond inheritance. (Per
-  [ADR-0001](adr/0001-n-profiles.md).)
-- **Acyclic.** The extends chain must terminate; no cycles. The
-  manifest validator enforces this.
+- **Single-parent only.** A mode is a child of exactly one
+  parent. No diamond inheritance. (Per
+  [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md).)
+- **Acyclic.** The mode tree is a forest of trees rooted at
+  `base`. The marker validator enforces this.
 
-This means the inheritance graph is a **forest of trees** rooted
-at the implicit `base` (every render starts from `base` even if a
-profile doesn't explicitly extend it).
+This means the mode hierarchy is a **tree** rooted at `base`
+(every render starts from `base` even if a mode doesn't
+explicitly declare it as ancestor — base is the implicit
+root).
 
 Concrete example:
 
@@ -236,8 +439,8 @@ flowchart TD
     personal[personal]
     work[work]
     research[research]
-    acme[acme-client]
-    globex[globex-client]
+    acme["work:client-acme"]
+    globex["work:client-globex"]
 
     base --> personal
     base --> work
@@ -248,157 +451,222 @@ flowchart TD
 
 In this tree:
 
-- `personal` extends `base` directly.
-- `work` extends `base` directly.
-- `acme-client` extends `work` extends `base` (chain length 2).
-- `globex-client` extends `work` extends `base` (chain length 2).
-- `research` extends `base` directly.
+- `personal` is a direct child of `base`.
+- `work` is a direct child of `base`.
+- `work:client-acme` is a child of `work`, which is a child of
+  `base` (chain length 2).
+- `work:client-globex` is a child of `work`, which is a child
+  of `base` (chain length 2).
+- `research` is a direct child of `base`.
 
-Reading the chain "root to leaf" for `acme-client`: `base → work
-→ acme-client`. The render engine walks this chain and composes
-content according to [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)'s
+Reading the chain "root to leaf" for `work:client-acme`:
+`base → work → work:client-acme`. The render engine walks this
+chain and composes content according to
+[ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)'s
 refinement-by-default semantics.
 
-**The inheritance graph IS the trust graph for cross-context
-promotion.** A finding in `acme-client` can be promoted to:
+**The mode tree IS the trust graph for cross-mode promotion.**
+A finding in `work:client-acme` can be promoted to:
 
-- `acme-client` itself (no promotion needed; just commit there)
-- `work` (its parent — flows to `acme-client` AND `globex-client`
-  via inheritance)
+- `work:client-acme` itself (no promotion needed; just commit
+  there)
+- `work` (its parent — flows to `work:client-acme` AND
+  `work:client-globex` via the tree)
 - `base` (the root — flows to every descendant)
 
-A finding in `acme-client` CANNOT be promoted directly to
-`globex-client` even though they share a parent — you have to go
-through `work` (the shared parent) or `base` (the shared root).
+A finding in `work:client-acme` CANNOT be promoted directly to
+`work:client-globex` even though they share a parent — you have
+to go through `work` (the shared parent) or `base` (the shared
+root).
 
 > **What ADR-0009 covers vs. what ADR-0027 adds:**
 > [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
 > establishes the *cross-trust-boundary promotion mechanics* —
 > the proposal queue, curator review, audit trail.
 > [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md)
-> adds the *inheritance-graph constraint* on top: promotion
-> can only flow along extends edges (or shared-root paths), so
-> lateral cross-profile promotion is forbidden by the graph
-> itself, not just by the curator's discretion. The two
-> compose: ADR-0009 says "how" promotion happens; ADR-0027
-> says "where in the graph it's permitted to happen."
+> adds the *mode-tree constraint* on top: promotion can only
+> flow along tree edges (or shared-root paths), so lateral
+> cross-mode promotion is forbidden by the graph itself, not
+> just by the curator's discretion. The two compose: ADR-0009
+> says "how" promotion happens; ADR-0027 says "where in the
+> graph it's permitted to happen."
 
-### 4. Layer
+### 6. Layer (at render time)
 
 A **layer** is one source of content that the render engine
-composes into the final `~/.claude/`. There are three kinds:
+composes into the final `~/.claude/`. Per
+[ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md)'s
+attachment-point render order:
 
-- **Base layer** — the implicit root. Every render includes base.
-- **Profile chain layers** — each profile in the inheritance
-  chain, root-to-leaf. For `acme-client` above: `work`, then
-  `acme-client`.
-- **Host overlay layer** — host-specific content under
-  `profiles/<active-profile>/hosts/<host>/`. Per-host capabilities,
-  per-host hand-managed paths, etc.
+```
+base content
+  → rules declared by base                         (attachment: base)
+  → mode chain content (widest → narrowest)
+      → rules declared by each mode in the chain  (attachment: that mode level)
+        → env-tagged sections applied throughout
+          (matched against the host's environment_tags)
+```
 
-Render order is always `base → profile chain (root → leaf) → host
-overlay`. Refinement and replacement semantics per
-[ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md).
+Highest priority is **last applied**. The order is
+intent-driven: deeper attachment in the hierarchy = higher
+specificity. A project-level `rules` override beats a
+base-level one because it was declared closer to the work
+being done. Host-tagged content inside a mode repo is a
+property of that mode's content layer, applied at that mode's
+position in the chain; it does not float separately.
 
-> **Profile ≠ layer.** A profile *contributes a layer* during
-> render. The same profile can contribute different layers on
-> different hosts (because each host has its own host overlay
-> directory under that profile).
+#### Unified tiebreaker rule
 
-### 5. Active profile
+When two pieces of content compete at the same level:
 
-A host has, at any moment, exactly **one active profile.** The
-active profile is *the leaf* of the inheritance chain — the
-specific named profile the host has been bound to. It determines
-which full inheritance chain (leaf-to-root) renders into the
-host's `~/.claude/`.
+> **Narrower scope wins. At equal scope, the latest git commit
+> timestamp wins.**
 
-> **Active profile ≠ context.** The active profile is the leaf
-> only (one named profile). "Context" — when used in maury docs
-> as a term-of-art — means *active profile PLUS its full
-> inheritance chain*. They appear adjacent in the glossary
-> because they're related, but they're not synonyms. When
-> someone says "the work context," they mean `work` plus
-> everything `work` extends from (typically `base`); when they
-> say "the active profile is `work`," they mean just `work`.
+The attachment-point model resolves cross-level conflicts
+before the timestamp tiebreaker comes into play. Timestamp
+resolution is only invoked for **same-level** conflicts.
 
-A host's active profile is set by:
+> **Mode ≠ layer.** A mode *contributes a layer* during
+> render. The same mode can contribute different layers on
+> different hosts (because each host has its own
+> environment-tagged and host-tagged sections matched against
+> its declared `environment_tags`).
 
-- `maury init` (initial assignment).
-- `maury profile use <name>` (with safeguards per
-  [ADR-0025](adr/0025-profile-switching-session-safeguards.md)).
-- Manual edit of the host's manifest entry (with all the same
+### 7. Active mode
+
+A host has, at any moment, exactly **one active mode.** The
+active mode is *the leaf* of the mode chain — the specific
+named mode the host has been bound to. It determines which
+full chain (leaf-to-root) renders into the host's
+`~/.claude/`.
+
+> **Active mode ≠ mode chain.** The active mode is the leaf
+> only (one named mode). The "mode chain" is *active mode PLUS
+> its full chain of ancestors back to base*. They appear
+> adjacent in the glossary because they're related, but
+> they're not synonyms. When someone says "the work mode
+> chain," they mean `work` plus everything `work` extends from
+> (typically `base`); when they say "the active mode is
+> `work`," they mean just `work`.
+
+A host's active mode is set by:
+
+- `maury init` (initial assignment, per
+  [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)).
+- `maury mode deregister` followed by `maury mode bootstrap`
+  (with safeguards per
+  [ADR-0025](adr/0025-profile-switching-session-safeguards.md);
+  mode change is a two-operation sequence, not a single atomic
+  switch).
+- Manual edit of the host's marker entry (with all the same
   validation as the above).
 
-If `lock: true` is set on the host's manifest entry,
-`maury profile use` refuses to change the active profile (per
+If `lock: true` is set on the host's marker entry, mode change
+commands refuse to proceed (per
 [ADR-0001](adr/0001-n-profiles.md)).
 
-> **"Context" in maury usually means "active profile + its
-> inheritance chain."** When someone says *"this should apply to
-> my work context,"* they mean *"this should apply to the active
-> profile `work` and any profile that extends `work`."*
+### 8. Mode-scoped host identity
 
-### 6. Inheritance access mode
+Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md), the
+`host_<hex>` ID scheme from
+[ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md)
+is **mode-scoped, not device-stable.**
 
-> *Inheritance tells you what content flows; access mode tells
-> you who can change the source.*
+A given physical machine that bootstraps into multiple modes
+over its lifetime accumulates **multiple** `host_<hex>` IDs —
+one per mode-registration — and each ID is permanently tied to
+"this hardware in that mode."
 
-> **Analogy bridge** (see [Analogy 1](#analogy-1--outfits-lockers-and-vending-machines)
-> above): the access mode is what kind of access you have to
-> someone else's trust boundary, framed as a vending machine.
-> `ro` = the vending machine — buy and consume only. `pr` =
-> vending machine + suggestion slot the curator reads. `rw` =
-> you're a co-owner with the restocking key. The formal
-> three-mode framing below is the load-bearing version; the
-> analogy is the mental hook.
+`~/.maury-host-id` stores the **current mode-registration ID**
+— the `host_<hex>` for whichever mode this hardware is
+presently bootstrapped into. It is written once at bootstrap,
+cleared on deregistration, and re-written with a new ID on the
+next bootstrap. Old IDs stay retired in their mode's `hosts`
+dict (retained for audit; never reused).
 
-Every child-forebearer relationship in maury has one of three
-**access modes** — describing what the child can do to the
-forebearer's *canonical* state (not the rendered output, which
-is always read-only). The three modes are universal vocabulary
-that ADRs reach for when describing contribution flows.
+Why mode-scoped:
+
+- Audit history is unambiguous. Any `host_<hex>` reference
+  always means a specific hardware-in-mode registration.
+- Aligns with ADR-0037's structural fact that hosts register
+  against modes (not against base) — there is nowhere
+  agency-wide to record a stable cross-mode host ID.
+- Replacement-hardware recovery is a content-copy, not an
+  identity-transfer (per Tenet 6, identity is not name).
+
+### 9. `repo_mode` (access subtype)
+
+> *The mode tree tells you what content flows; `repo_mode`
+> tells you who can change the source.*
+
+> **Analogy bridge** (see
+> [Analogy 1](#analogy-1--outfits-lockers-and-vending-machines)
+> above): `repo_mode` is what kind of access the consuming
+> layer has to a sublayer's source repo, framed as a vending
+> machine. `ro` = the vending machine — buy and consume only.
+> `pr` = vending machine + suggestion slot the curator reads.
+> `rw` = you're a co-owner with the restocking key.
+
+Every sublayer entry (where the consumer is a `rules` repo)
+has a `repo_mode` describing what the consuming layer can do
+to the sublayer's *canonical* state (not the rendered output,
+which is always read-only):
 
 | Mode | Read | Write | Used when |
 |---|---|---|---|
-| **`ro`** | yes | none | Default. Child consumes parent content; no path to modify the parent's source directly from this host. |
-| **`pr`** | yes | via pull request, requires curator approval | Child can submit changes for review; curator merges. Specified in [ADR-0033](adr/0033-pr-repo-mode.md); **lands in manifest schema v3** alongside the existing `ro`/`rw`. Mechanically, `pr` is a workflow layered on top of `ro` deploy-key access plus a side channel (e.g., GitHub PR via `gh`); the mode value just makes the contract explicit in the manifest. |
-| **`rw`** | yes | direct push | Full trust. Curator hosts have this on the repos they maintain. |
+| **`ro`** | yes | none | Default for external rules repos. Consumer follows; no path to modify the sublayer's source from this layer. **Precept semantics.** |
+| **`pr`** | yes | via pull request, requires curator approval | Consumer can submit changes for review; curator merges. Specified in [ADR-0033](adr/0033-pr-repo-mode.md). **Precept semantics.** |
+| **`rw`** | yes | direct push | Full trust. Curator hosts have this on the rules repos they maintain. **Convention semantics.** |
 
-The mode is a property of the **access path** — specifically the
-deploy key the child's host holds for the forebearer's source
-repo (per [ADR-0003](adr/0003-per-host-deploy-keys.md), which
-today enumerates `ro` and `rw`). It is not a property of the
-abstract relationship between two profiles.
+The `repo_mode` is recorded on the **sublayer entry that
+declares the dep**, shared by all hosts registered to the
+declaring layer. It is a single value in the marker file,
+**decoupled from any individual host's actual git access
+level**. A mode repo can declare `repo_mode: ro` against a
+rules repo for advisory purposes even if some hosts happen to
+have git push access through their backend ACLs.
 
-**When child and parent live in the same repo** (e.g., `work`
-and `acme-client` both in `maury-work`), one mode applies — the
-host's deploy-key access on `maury-work` determines whether the
-child can modify the parent's canonical content directly.
+#### Convention vs precept
 
-**When child and parent live in different repos** (the trust-
-boundary-spanning case from [§2](#2-trust-boundary)), multiple
-modes are involved — one per repo. The
-[cross-boundary promotion flow (ADR-0009)](adr/0009-promotion-only-cross-boundary.md)
-is the *default* contribution mechanism for cross-trust-boundary
-content even when one of the involved hosts has `rw` somewhere
-in the chain — promotion-and-review prevents accidental cross-
-boundary writes regardless of access. When access is `ro`-only
-on both sides, cross-boundary promotion is the **only**
-mechanism available.
+The terms **convention** and **precept** describe the
+**relationship between a layer and a `rules` sublayer**, not
+the rules repo's type:
 
-This three-mode framing is **orthogonal to content composition**
+- `repo_mode: rw` → **convention** semantics. The declaring
+  layer owns this sublayer; no advisory fires when the
+  declaring layer's content overrides the sublayer
+  (overriding yourself is meaningless).
+- `repo_mode: pr` → **precept** semantics. The declaring layer
+  follows this sublayer; can propose changes via PR. Advisory
+  fires when a child layer overrides content from this
+  sublayer.
+- `repo_mode: ro` → **precept** semantics. The declaring layer
+  follows this sublayer with no contribution path. Advisory
+  fires when a child layer overrides content from this
+  sublayer.
+
+The same `rules` repo can be a convention for its owner's
+agency and a precept for every other consumer. Per
+[ADR-0038](adr/0038-precept-acquisition-model.md), the
+override advisory is informational and acknowledgeable — maury
+**advises**, it does not warn or block.
+
+This `repo_mode` framing is **orthogonal to content
+composition**
 ([ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)
 covers refinement-vs-replacement at render time):
 
-- *Content composition* = how parent and child layers merge into
-  the final rendered output.
-- *Access mode* = what the child can do to the parent's canonical
-  source if it wants to contribute changes back upward.
+- *Content composition* = how parent and child layers merge
+  into the final rendered output.
+- *`repo_mode`* = what the declaring layer can do to a
+  sublayer's canonical source if it wants to contribute
+  changes back upward, AND whether overrides of the sublayer
+  fire an advisory.
 
-Both axes are always in play. The render walks the inheritance
-chain regardless of mode (because rendering only reads); the
-contribution flow depends entirely on mode.
+Both axes are always in play. The render walks the layer graph
+regardless of `repo_mode` (because rendering only reads); the
+contribution flow and advisory firing depend entirely on
+`repo_mode`.
 
 ---
 
@@ -415,9 +683,9 @@ level, not at the implementation level:
 |---|---|
 | **Commit log as immutable history** | The proposal queue, the audit trail, the rule-changelog (per [ADR-0022](adr/0022-branch-per-mining-run.md)). `git log --grep` is the dedup index. `maury why <rule>` is `git log --follow`. |
 | **Branches as in-flight work** | Mining runs land as `maury/run/<run-id>` branches; review produces `maury/review/<run-id>` cherry-picks; promotion produces `maury/promoted/<id>`. The whole proposal lifecycle is git-branch lifecycle (per [ADR-0022](adr/0022-branch-per-mining-run.md), [ADR-0033](adr/0033-pr-repo-mode.md)). |
-| **Commit-message trailers (RFC 822)** | Structured rationale on each finding (`Kind:`, `Scope-Hint:`, `Confidence:`, `Crossref-State:`, `Content-Hash:`, `Source-Profile:`, …). Queryable via `git log --grep` (per [ADR-0022](adr/0022-branch-per-mining-run.md), [ADR-0026](adr/0026-profile-aware-mining.md)). |
+| **Commit-message trailers (RFC 822)** | Structured rationale on each finding (`Kind:`, `Scope-Hint:`, `Confidence:`, `Crossref-State:`, `Content-Hash:`, `Source-Mode:`, …). Queryable via `git log --grep` (per [ADR-0022](adr/0022-branch-per-mining-run.md), [ADR-0026](adr/0026-profile-aware-mining.md)). |
 | **Content-addressing via SHA** | `last-render.json` records SHA per file (per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md)); `Content-Hash:` trailer is the dedup primitive (per [ADR-0022](adr/0022-branch-per-mining-run.md)); commit SHAs are themselves promotion-lineage references (`Promoted-From: <repo>@<sha>`). |
-| **Three-way merge** | Manifest concurrency resolution (per [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md)) leans on git's stock 3-way merge as the substrate that the structured-merge tool composes with. |
+| **Three-way merge** | Marker concurrency resolution (per [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md)) leans on git's stock 3-way merge as the substrate that the structured-merge tool composes with. |
 | **Distributed model with deploy-key access** | Per-host trust boundaries (per [ADR-0002](adr/0002-repo-per-trust-boundary.md), [ADR-0003](adr/0003-per-host-deploy-keys.md)) — independent push/pull cycles, no central coordinator, server-side enforcement of "this host can read/write these repos." |
 | **Cherry-pick across repos** | Cross-trust-boundary promotion (per [ADR-0009](adr/0009-promotion-only-cross-boundary.md)) is `git cherry-pick` from source repo onto destination repo's branch. |
 | **PR mechanism (via the host's git provider)** | `pr` repo mode (per [ADR-0033](adr/0033-pr-repo-mode.md)) routes contributions through the provider's PR/MR review flow. |
@@ -425,9 +693,9 @@ level, not at the implementation level:
 **What "git-compatible" means:** any system that implements the
 git wire protocol AND supports branches, commits, content-
 addressing, RFC 822 trailers, and three-way merge. In practice:
-GitHub (initial implementation), GitLab, Gitea, Codeberg,
-self-hosted git (per [ADR-0016](adr/0016-pluggable-repo-backends.md)'s
-2026-05-06 addendum). NOT: object stores (S3, B2), filesystems
+GitHub, GitLab, Gitea, Codeberg, self-hosted git (per
+[ADR-0016](adr/0016-pluggable-repo-backends.md)'s 2026-05-06
+addendum). NOT: object stores (S3, B2), filesystems
 (NFS/CIFS/Dropbox), other VCS (p4, hg, svn).
 
 **Why this matters for the conceptual model:** when you read
@@ -450,80 +718,100 @@ follows.
 
 Claude Code uses "context" to mean **the working memory of one
 session** — the prompt + conversation history + tool-use chain
-that the assistant has loaded. Maury's "context" (defined in
-[§5 Active profile](#5-active-profile)) is unrelated.
+that the assistant has loaded. Maury's notion of "mode chain"
+(active mode + ancestors) is unrelated.
 
 To keep them apart, maury docs say **"session context"** or
 **"conversation context"** when referring to Claude Code's
-session memory; **"context"** alone always means
-*active profile + inheritance chain* per §5.
+session memory; **"mode chain"** is the term for *active mode +
+its ancestors back to base*.
 
 Per [`cc-contract:fresh-session-context`](claude-code-contract.md#cc-contractfresh-session-context),
 Claude Code's session context is fresh on every new invocation
-(unless `--resume` is used). Maury's profile context is set at
-`maury init` and changed only by `maury profile use`.
+(unless `--resume` is used). Maury's active mode is set at
+`maury init` and changed only by an explicit
+deregister-then-bootstrap sequence (per
+[ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)).
 
 ### "Inheritance" (object-oriented usage)
 
-Maury's profile inheritance is a *content composition* mechanism
-(layers compose at render time). It is NOT object-oriented
-inheritance — there are no methods, no polymorphism, no virtual
-dispatch. The only thing that "happens" with inheritance is that
-the render engine walks the chain and composes layered content.
+Maury's mode-tree composition is a *content composition*
+mechanism (layers compose at render time). It is NOT
+object-oriented inheritance — there are no methods, no
+polymorphism, no virtual dispatch. The only thing that
+"happens" with the mode tree is that the render engine walks
+the chain and composes layered content.
 
-If you've used dotfile managers like chezmoi, maury's inheritance
-is closer to that mental model than to Java's `class A extends B`.
+If you've used dotfile managers like chezmoi, maury's mode
+tree is closer to that mental model than to Java's
+`class A extends B`.
 
 ---
 
 ## How the concepts compose: a worked example
 
-Suppose the project owner (a freelancer) has:
+Suppose the freelancer (the agency owner) has:
 
-- Two hosts: `workstation` (their personal Mac) and `work-laptop`
-  (a client-issued machine for ACME).
-- Three profiles: `personal`, `work`, `acme-client`. Inheritance:
-  `personal` extends `base`; `work` extends `base`; `acme-client`
-  extends `work`.
-- **Three trust boundaries (per [ADR-0002](adr/0002-repo-per-trust-boundary.md)):**
-  - `maury-base` — holds base content only. Both hosts have read
-    access; only the curator host has write.
-  - `maury-personal` — holds the `personal` profile. Only
-    `workstation` has access.
-  - `maury-work` — holds `work` and `acme-client`. Only
-    `work-laptop` has rw access; `workstation` has rw too if it
-    serves as curator.
+- An **agency** with `agency_id` `550e8400-e29b-41d4-a716-446655440000`.
+- Two hosts: `workstation` (their personal Mac) and
+  `work-laptop` (a client-issued machine for ACME).
+- Three modes: `personal`, `work`, `work:client-acme`. Mode
+  tree: `personal` and `work` are children of `base`;
+  `work:client-acme` is a child of `work`.
+- **Three trust boundaries (per
+  [ADR-0002](adr/0002-repo-per-trust-boundary.md)):**
+  - `git@codeberg.org:freelancer/maury-base.git` — holds base
+    content only. Both hosts have read access; only the
+    curator host has write.
+  - `git@codeberg.org:freelancer/mode-personal.git` — holds
+    the `personal` mode. Only `workstation` has access.
+  - `git@github.com:acme-corp/mode-work.git` — holds `work`
+    and `work:client-acme`. Only `work-laptop` has `rw`
+    access; `workstation` has `rw` too if it serves as
+    curator.
 
 Base lives in its own repo so `work-laptop` can consume it
 without ever fetching the bytes of any `personal` content.
 
-Active profile per host:
+Active mode per host:
 
-- `workstation`: active profile is `personal`. Renders by
-  composing layers from `maury-base` (base) and `maury-personal`
-  (personal + workstation overlay).
-- `work-laptop`: active profile is `acme-client`. Renders by
-  composing layers from `maury-base` (base) and `maury-work`
-  (work + acme-client + work-laptop overlay).
+- `workstation`: active mode is `personal`. Renders by
+  composing layers from `maury-base` (base) and `mode-personal`
+  (personal + workstation's host-tagged sections, matched
+  against its declared `environment_tags`).
+- `work-laptop`: active mode is `work:client-acme`. Renders by
+  composing layers from `maury-base` (base) and `mode-work`
+  (work + work:client-acme + work-laptop's host-tagged
+  sections, matched against its declared `environment_tags`).
+
+Each host's `host_<hex>` ID is **mode-scoped** (per
+[ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)). If
+`work-laptop` were ever to change modes (e.g., the client
+engagement ends), it would deregister from `work:client-acme`,
+have its `host_<hex>` retired, and bootstrap fresh into
+whatever new mode the user chooses — receiving a brand new
+`host_<hex>` for that mode.
 
 If the freelancer learns a useful pattern while working as
-`acme-client` and wants it to apply to all client work:
+`work:client-acme` and wants it to apply to all client work:
 
-- They mark it for promotion to `work` (parent of `acme-client`).
-- After review, the rule lands in `maury-work`'s `work` profile.
-- Next sync, both `acme-client` and any future sibling client
-  profile (e.g., `globex-client`) inherit it.
+- They mark it for promotion to `work` (parent of
+  `work:client-acme`).
+- After review, the rule lands in `mode-work`'s `work` mode.
+- Next sync, both `work:client-acme` and any future sibling
+  client mode (e.g., `work:client-globex`) inherit it.
 
 If the same pattern should apply to personal projects too:
 
 - They'd need to promote it to `base` (the shared root, which
   lives in `maury-base`).
-- But the `work-laptop` doesn't have write access to `maury-base`.
-  So the promotion happens in two steps:
-  - Step 1: a finding-shaped commit lands in `maury-work`'s
+- But the `work-laptop` doesn't have write access to
+  `maury-base`. So the promotion happens in two steps:
+  - Step 1: a finding-shaped commit lands in `mode-work`'s
     review queue, tagged for promotion to `base`.
-  - Step 2: a curator host with write access to both `maury-work`
-    (read) and `maury-base` (write) cross-promotes it. Per
+  - Step 2: a curator host with write access to both
+    `mode-work` (read) and `maury-base` (write) cross-promotes
+    it. Per
     [ADR-0009](adr/0009-promotion-only-cross-boundary.md).
 
 ---
@@ -539,9 +827,10 @@ properties in literature instead of one-off arguments.
 
 [Bell-LaPadula][bell-lapadula] established the formal model of
 **security labels** on data and **clearances** on subjects. The
-governing rules are *no read up* (a subject cannot read data above
-its clearance) and *no write down* (a subject cannot write data
-below its level). Labels form a partial-order **lattice**.
+governing rules are *no read up* (a subject cannot read data
+above its clearance) and *no write down* (a subject cannot
+write data below its level). Labels form a partial-order
+**lattice**.
 
 **Maury maps to this:**
 
@@ -550,7 +839,7 @@ below its level). Labels form a partial-order **lattice**.
 | Security label | Trust boundary (one repo) |
 | Subject clearance | Per-host deploy keys ([ADR-0003](adr/0003-per-host-deploy-keys.md)) |
 | Lattice | The repo-access graph across hosts |
-| No read up | A work-laptop cannot fetch personal-context bytes |
+| No read up | A work-laptop cannot fetch personal-mode bytes |
 | Controlled write up | Cross-trust-boundary promotion via curator review |
 
 We are essentially implementing a simplified MAC system
@@ -560,35 +849,36 @@ literature instead of inventing arguments.
 
 ### Lexical scoping (Strachey, 1967)
 
-[Lexical scoping][lexical-scoping] is the rule that inner scopes
-see outer scopes' bindings; outer scopes don't see inner. Lookups
-walk the chain outward. Maury's render-time inheritance is exactly
-this:
+[Lexical scoping][lexical-scoping] is the rule that inner
+scopes see outer scopes' bindings; outer scopes don't see
+inner. Lookups walk the chain outward. Maury's render-time
+mode tree is exactly this:
 
-- Inner scope (`acme-client`) sees outer (`work`) which sees
-  outermost (`base`).
+- Inner scope (`work:client-acme`) sees outer (`work`) which
+  sees outermost (`base`).
 - `base` cannot see `work`'s additions; `work` cannot see
-  `acme-client`'s.
+  `work:client-acme`'s.
 - "Render walks the chain root-to-leaf, later wins" = lexical-
   scope shadowing.
 
-This is a more precise mental model than "inheritance" for what
-maury does. There are no methods, no polymorphism, no virtual
-dispatch — just *content composition by walking a chain of scopes*.
+This is a more precise mental model than "inheritance" for
+what maury does. There are no methods, no polymorphism, no
+virtual dispatch — just *content composition by walking a
+chain of scopes*.
 
 ### Non-interference (Goguen & Meseguer, 1982)
 
 [Goguen-Meseguer non-interference][goguen-meseguer] is the
-formal property that high-security inputs do not affect low-
-security outputs. Inputs at level H must be unobservable at
+formal property that high-security inputs do not affect
+low-security outputs. Inputs at level H must be unobservable at
 level L.
 
 **Maury's promotion-only flow IS a non-interference property.**
-Personal-context content has zero effect on `work-laptop`'s render
+Personal-mode content has zero effect on `work-laptop`'s render
 output, because `work-laptop` literally cannot fetch the bytes
 (different trust boundary, no key per ADR-0003). The only path
 personal → work is: personal mining → curator review → explicit
-promotion to base → base flows to work via inheritance. Each
+promotion to base → base flows to work via the mode tree. Each
 step is observable and gated by a curator.
 
 When someone asks "but can personal content leak to the work
@@ -604,9 +894,14 @@ Specificity rules adjudicate conflicts.
 [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md)'s
 "refinement by default, replacement explicitly" is essentially
 CSS's cascade with one specificity-ish twist (per-content-type
-defaults). For users who've authored CSS, **"think of profiles as
-nested CSS scopes"** is the closest single-sentence explanation
-that doesn't import OO baggage.
+defaults). For users who've authored CSS, **"think of modes as
+nested CSS scopes"** is the closest single-sentence
+explanation that doesn't import OO baggage.
+
+The CSS analogy also covers env-tagged section selection (per
+[ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md)):
+section specificity = the count of required tag conditions on
+the section, exactly mirroring CSS selector specificity.
 
 ### Two frameworks maury deliberately avoids citing
 
@@ -614,10 +909,11 @@ that doesn't import OO baggage.
   polymorphism, virtual dispatch — none of which maury has.
   Using "inheritance" loosely is fine; using it as in
   `class A extends B` causes more confusion than clarity.
-- **Prototype-based inheritance (JavaScript, Self).** Closer to
-  maury mechanically (single-parent chain, lookup walks chain),
-  but the vocabulary (delegation, prototype) imports a different
-  mental model than the security/composition story we want.
+- **Prototype-based inheritance (JavaScript, Self).** Closer
+  to maury mechanically (single-parent chain, lookup walks
+  chain), but the vocabulary (delegation, prototype) imports a
+  different mental model than the security/composition story
+  we want.
 
 [bell-lapadula]: https://en.wikipedia.org/wiki/Bell%E2%80%93LaPadula_model
 [lexical-scoping]: https://en.wikipedia.org/wiki/Scope_(computer_science)#Lexical_scope
@@ -630,24 +926,37 @@ that doesn't import OO baggage.
 
 | Term | Means | See |
 |---|---|---|
-| **Profile** | Named namespace of configuration content | [§1](#1-profile), [ADR-0001](adr/0001-n-profiles.md) |
-| **Trust boundary** | One git repo = one access scope | [§2](#2-trust-boundary), [ADR-0002](adr/0002-repo-per-trust-boundary.md) |
-| **Inheritance** | Extends relationship between profiles | [§3](#3-inheritance), [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
-| **Inheritance chain** | The root-to-leaf path through extends | [§3](#3-inheritance) |
-| **Layer** | One source of content composed at render | [§4](#4-layer) |
-| **Host overlay** | Per-host slice of a profile's content | [§4](#4-layer) |
-| **Active profile** | The one profile a host is currently in | [§5](#5-active-profile) |
-| **Inheritance access mode** | What a child can do to a forebearer's canonical state: `ro` / `pr` / `rw` | [§6](#6-inheritance-access-mode), [ADR-0033](adr/0033-pr-repo-mode.md) (pr mode mechanics) |
-| **`maury-status` skill** | Claude-invokable mid-session affordance that surfaces maury's view of host state (active profile, drift, pending captures/proposals, active sessions) | [ADR-0017 §"The `maury-status` skill"](adr/0017-drift-detection-and-reconciliation.md#the-maury-status-skill) |
-| **Context** | Active profile + its inheritance chain | [§5](#5-active-profile) (NOT Claude Code's "session context") |
-| **Render** | Compose all layers → write to `~/.claude/` | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
+| **Agency** | The bounded set of repos and hosts maury manages together; identified by `agency_id` UUID | [§1](#1-agency), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md) |
+| **`agency_id`** | UUID generated once at `maury agency init`; membership claim on `base`/`mode`, provenance claim on `rules` | [§1](#1-agency), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Layer type** | One of `base`, `mode`, `rules`. The marker file's `layer` field | [§2](#2-layer-types), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Base** | The agency-wide foundation; exactly one per agency | [§2](#2-layer-types), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Mode** | A named configuration mode in the WHAT dimension; modes form an arbitrary-depth tree below base | [§2](#2-layer-types), [§5](#5-mode-tree-and-inheritance), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **`mode_<hex>`** | Surrogate key for a mode (renamed from `profile_<hex>`; breaking schema change) | [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Rules** | A shareable layer of conventions/precepts; floats anywhere in the tree | [§2](#2-layer-types), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), [ADR-0038](adr/0038-precept-acquisition-model.md) |
+| **Sublayer** | A direct dependency of a layer, declared in that layer's marker file | [§3](#3-sublayers), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Marker file** | `.meta/maury-marker.json` — committed file declaring layer type, agency, sublayers, and (for modes) hosts | [§3](#3-sublayers), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Trust boundary** | One git repo = one access scope | [§4](#4-trust-boundary), [ADR-0002](adr/0002-repo-per-trust-boundary.md) |
+| **Mode tree** | The parent-child relationship between modes, rooted at `base` | [§5](#5-mode-tree-and-inheritance), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Mode chain** | The root-to-leaf path through the mode tree (e.g., `base → work → work:client-acme`) | [§5](#5-mode-tree-and-inheritance) |
+| **Layer** | One source of content composed at render | [§6](#6-layer-at-render-time), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Attachment point** | Where in the render stack a `rules` repo slots in (immediately after the layer that declared it as a sublayer) | [§6](#6-layer-at-render-time), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Environment tags** | Free-form tags a host declares at bootstrap; the render engine matches them against env-tagged sections | [§2](#2-layer-types), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md) |
+| **Host-tagged section** | A section inside a `mode` repo gated on a specific `host_<hex>`; carries machine-specific config | [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **Active mode** | The one mode (the leaf) a host is currently in | [§7](#7-active-mode), [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md) |
+| **Mode-scoped host identity** | `host_<hex>` IDs are not device-stable; a new ID is generated on each mode bootstrap | [§8](#8-mode-scoped-host-identity), [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md) |
+| **`repo_mode`** | Access subtype declared on a sublayer entry: `rw` / `pr` / `ro`. For `rules` sublayers, drives convention vs precept semantics | [§9](#9-repo_mode-access-subtype), [ADR-0033](adr/0033-pr-repo-mode.md) |
+| **Convention** | A `rules` sublayer the declaring layer owns (`repo_mode: rw`); no advisory on override | [§9](#9-repo_mode-access-subtype), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), [ADR-0038](adr/0038-precept-acquisition-model.md) |
+| **Precept** | A `rules` sublayer the declaring layer follows (`repo_mode: pr`/`ro`); advisory fires on override | [§9](#9-repo_mode-access-subtype), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), [ADR-0038](adr/0038-precept-acquisition-model.md) |
+| **Override advisory** | Informational notification fired when a child layer overrides content from a precept; acknowledgeable, non-blocking | [ADR-0038](adr/0038-precept-acquisition-model.md) |
+| **`maury-status` skill** | Claude-invokable mid-session affordance that surfaces maury's view of host state (active mode, drift, pending captures/proposals, active sessions) | [ADR-0017 §"The `maury-status` skill"](adr/0017-drift-detection-and-reconciliation.md#the-maury-status-skill) |
+| **Render** | Compose all layers → write to `~/.claude/` | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
 | **Refinement** | Default merge semantics: child adds to parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
 | **Replacement** | Explicit override semantics: child replaces parent | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md) |
-| **Promotion** | Move content up the inheritance graph (toward base) | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (mechanics), [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md) (graph constraint) |
+| **Promotion** | Move content up the mode tree (toward base) | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (mechanics), [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md) (graph constraint) |
 | **Cross-trust-boundary promotion** | Promotion that crosses repos (e.g., work → base when base lives in a separate repo) — requires a curator host with write access to both repos | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
 | **Curator** | A user (and the host they operate on) with write access to a higher-trust repo. Acts as the gate for cross-trust-boundary promotion review | [ADR-0009](adr/0009-promotion-only-cross-boundary.md) |
 | **Provenance** | The record of where rendered content came from (which layer contributed which lines) — surfaced as a comment block at the top of every rendered file | [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md), Tenet 7 |
-| **Manifest** | `.meta/manifest.json` — the source of truth for hosts/profiles/repos. Schema spine in [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md); specific fields extended by [ADR-0001](adr/0001-n-profiles.md) (profiles, lock), [ADR-0002](adr/0002-repo-per-trust-boundary.md) (repos), [ADR-0003](adr/0003-per-host-deploy-keys.md) (deploy-key paths), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md) (secrets metadata, v1.1), [ADR-0016](adr/0016-pluggable-repo-backends.md) (backend field), [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md) (concurrency mechanics) | [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md) |
+| **Marker** | `.meta/maury-marker.json` — the per-layer manifest. There is no central manifest; each layer's marker declares its own direct sublayers. Schema in [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md); fields extended by [ADR-0033](adr/0033-pr-repo-mode.md) (`repo_mode` values), [ADR-0038](adr/0038-precept-acquisition-model.md) (governance side-file), [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md) (concurrency mechanics) | [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
 
 If a term shows up in an ADR and isn't here, that's a doc bug —
 file it as a finding for the next ADR landscape audit.

@@ -19,28 +19,26 @@ behaviors. This file tracks *absent* behaviors.
 
 ## Lifecycle hooks
 
-### GAP-1: No `ContextCompression` hook
+### GAP-1: No `ContextCompression` hook — **CLOSED**
 
-**The gap.** Claude Code has no hook that fires when the context window is
-summarized mid-session. Compression silently discards raw conversation history
-and replaces it with a summary. Maury has no way to detect this happened.
+**Status.** Closed. Claude Code ships a `PostCompact` hook that fires after
+the context window is summarized. Empirical verification against the current
+release is needed before relying on it in production; label any maury code
+using this as "empirical (verified vX.Y.Z)."
 
-**Maury's workaround.** None. If compression occurs, session-state written by
-earlier hooks may reference context that is no longer in the window. Users are
-expected to manually export state before long sessions (no `maury` command
-exists for this yet; it is a planned capability dependent on this gap closing
-or a suitable workaround being found).
+**Original gap.** Claude Code had no hook that fired when the context window
+was summarized mid-session. Compression silently discarded raw conversation
+history and replaced it with a summary. Maury had no way to detect this happened.
 
-**What we'd gain.**
-- Automatic `session-state.md` checkpoint at compression time — the highest-
-  value moment for a state write, since the session is about to lose raw history.
-- Re-validation that precept layer content (injected via CLAUDE.md) is still
-  represented in the compressed summary. If it was compressed away, maury could
-  nudge the user or re-inject.
-- Accurate `active-sessions.jsonl` records noting compression events, useful
-  for mining (ADR-0026) to understand what a session "saw."
+**Resolution.** The `PostCompact` hook fires after compression completes. Maury
+can now:
+- Write an automatic `session-state.md` checkpoint at compression time — the
+  highest-value moment for a state write, since the session just lost raw history.
+- Re-validate that precept layer content is still represented in the compressed
+  summary; if compressed away, nudge the user or re-inject.
+- Record compression events in `active-sessions.jsonl` for mining (ADR-0026).
 
-**Upstream status.** Not filed.
+**Upstream status.** Closed upstream — `PostCompact` hook ships in Claude Code.
 
 ---
 
@@ -112,22 +110,35 @@ There is no way to auto-sync at session open.
 
 ## Session and config
 
-### GAP-5: CLAUDE.md is not hot-reloaded
+### GAP-5: CLAUDE.md is not hot-reloaded — **PARTIALLY ADDRESSED**
 
-**The gap.** CLAUDE.md is read at session start and not re-read if the file
-changes on disk. Running `maury sync` mid-session updates the file but the
+**Status.** Partially addressed. `.claude/rules/` files and `.claude/skills/`
+live-reload within a session without restart. `CLAUDE.md` itself still does not
+hot-reload. Maury's render architecture should route content that benefits from
+live-reload into rules/skills files rather than CLAUDE.md.
+
+**Original gap.** CLAUDE.md is read at session start and not re-read if the
+file changes on disk. Running `maury sync` mid-session updates the file but the
 current session never sees the new content.
 
-**Maury's workaround.** After `maury sync` completes, maury tells the user to
-start a new session to pick up the changes.
+**Partial resolution.** Claude Code live-reloads:
+- `.claude/rules/*.md` — rules files reload on change within a session
+- `.claude/skills/` — skill definitions reload on change within a session
+- `~/.claude/keybindings.json` — keybindings reload on change
 
-**What we'd gain.**
-- A `/reload` command (or equivalent) inside Claude Code to re-read CLAUDE.md
-  on demand would let a mid-session `maury sync` take effect immediately.
-- Alternatively, a hook payload from CC confirming "CLAUDE.md was re-read at
-  timestamp T" would let maury validate the file was picked up.
+This means maury can route frequently-updated content (mode rules, domain
+rules) into rules files, where a mid-session `maury sync` will take effect
+immediately without restarting. Universal base preferences in `CLAUDE.md`
+still require a new session to pick up changes.
 
-**Upstream status.** Not filed.
+**Remaining gap.** CLAUDE.md itself still does not hot-reload. Content maury
+writes there is session-static. No upstream fix known.
+
+**Maury's revised workaround.** Route mutable content to `.claude/rules/`
+(live-reload). Reserve `CLAUDE.md` for stable universal preferences that
+rarely change and don't require mid-session updates.
+
+**Upstream status.** Not filed (for the remaining CLAUDE.md gap).
 
 ---
 
