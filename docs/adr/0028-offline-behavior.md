@@ -30,7 +30,7 @@ Several maury commands depend on external resources:
 - `maury init --from-dir` — needs the source repo locally clonable.
 
 Other commands are pure-local (`render`, `doctor`,
-`manifest validate`, the `status`-display path).
+`agency validate`, the `status`-display path).
 
 What's never been pinned down: **how does maury behave when a
 network operation isn't available?** Three reasonable defaults:
@@ -47,7 +47,7 @@ unavailable.
 |---|---|---|
 | `maury render` | none | Works as-is. Rendering is pure-local once repos are cloned. |
 | `maury doctor` | none | Works as-is. Pure-local rule evaluation. |
-| `maury manifest validate` / `manifest show` | none | Works as-is. |
+| `maury agency validate` / `manifest show` | none | Works as-is. |
 | `maury status` | none | Works as-is. Reads local state files. |
 | `maury rules trace` | none | Works as-is. |
 | `maury sync` | git pull on remotes | **Default: hard refuse on first remote-unreachable error.** Opt-in via `--offline` to skip pull and render from local clones (with loud warning). |
@@ -181,7 +181,7 @@ toggle. Rejected because:
 ## Consequences
 
 - **Read-only commands always work.** `render`, `doctor`,
-  `status`, `manifest validate`, `rules trace` — never refuse on
+  `status`, `agency validate`, `rules trace` — never refuse on
   network.
 - **Network-dependent commands fail loud by default.** No
   silent degradation. The user opts in to degraded mode with
@@ -266,3 +266,7 @@ This ADR introduces no new Claude Code dependencies. The LLM
 backend abstraction (per [ADR-0012](0012-llm-backend.md)) is
 what surfaces the LLM-unreachable error to mining; everything
 else is git-level or pure-local.
+
+## Amendment history
+
+- 2026-05-11 — `maury manifest validate` → `maury agency validate` per ADR-0037. No behavioral changes.

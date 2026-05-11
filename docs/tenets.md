@@ -26,17 +26,17 @@ them.
 (drift-detect-before-clobber, three-way merge with user arbitration,
 Claude-writes logged with revert path).*
 
-## 2. Consistency within a profile; controlled difference across profiles
+## 2. Consistency within a mode; controlled difference across modes
 
-The reason maury exists. Within a profile, Claude's behavior,
+The reason maury exists. Within a mode, Claude's behavior,
 configuration, capabilities, and skills should be **identical** across
 every host you use — workstation and linux-server and the laptop should give you the
-same Claude. Across profiles, differences must be **explicit,
+same Claude. Across modes, differences must be **explicit,
 intentional, and traceable** — not accidents of which machine you
 happened to be sitting in front of.
 
-Drift between hosts within a profile is a bug. Differences between
-profiles are a feature.
+Drift between hosts within a mode is a bug. Differences between
+modes are a feature.
 
 *Embodied by: the entire project.*
 
@@ -60,7 +60,7 @@ happens via sanitized, classified fragments only. The transport never
 carries content the user hasn't seen and approved.
 
 *Embodied by: [ADR-0005](adr/0005-local-only-mining.md) (local-only mining), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md) (secret values
-host-local; metadata syncs), anomaly-quarantine for cross-profile
+host-local; metadata syncs), anomaly-quarantine for cross-mode
 content emerging on the wrong host.*
 
 ## 5. The user arbitrates ambiguity
@@ -79,11 +79,11 @@ investigation rather than auto-fix), the proposal review queue.*
 
 Entities have stable opaque IDs; names are mutable display labels.
 Renames must not break references. Surrogate keys for entities that
-maury creates (hosts, profiles, services, credentials, fragments,
+maury creates (hosts, modes, services, credentials, fragments,
 captures, audit entries); natural keys only for things whose identity
 is genuinely external (URLs, file paths, OS tool names).
 
-*Embodied by: [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md) (surrogate keys for hosts and profiles); to be
+*Embodied by: [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md) (surrogate keys for hosts and modes); to be
 applied to [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md) services/credentials and to the not-yet-built
 mining/audit modules.*
 
@@ -123,13 +123,13 @@ manager), [ADR-0011](adr/0011-anthropic-rubric-integration.md) (consume Anthropi
 
 ## 10. Modularity over hardcoding
 
-N profiles, not two. Pluggable transports, not just GitHub. Pluggable
+N modes, not two. Pluggable transports, not just GitHub. Pluggable
 secret stores, not just age-files. Capability-aware hooks, not
 OS-specific shell. Don't bake in assumptions you'll later regret —
 especially not in schemas or directory structures, which are the
 hardest to retrofit.
 
-*Embodied by: [ADR-0001](adr/0001-n-profiles.md) (N profiles), [ADR-0006](adr/0006-capability-probe-hook-abstraction.md) (capability probe with
+*Embodied by: [ADR-0001](adr/0001-n-profiles.md) (N modes), [ADR-0006](adr/0006-capability-probe-hook-abstraction.md) (capability probe with
 action-form hooks), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md) (pluggable secret backends), [ADR-0016](adr/0016-pluggable-repo-backends.md)
 (pluggable repo backends).*
 

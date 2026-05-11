@@ -188,3 +188,7 @@ have somewhere to land before promotion exists.
 - **Inheritance-graph constraint** — [ADR-0027](0027-cross-context-promotion-via-shared-root.md)
   layers the *where in the graph* constraint on top of this
   ADR's *how cross-boundary promotion happens* mechanics.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

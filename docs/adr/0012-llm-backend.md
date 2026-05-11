@@ -208,3 +208,7 @@ Code documentation:
 [cc-headless]: https://code.claude.com/docs/en/headless
 [cc-headless-output]: https://code.claude.com/docs/en/headless#output-formats
 [anthropic-sdk]: https://docs.anthropic.com/en/api/client-sdks#python
+
+## Amendment history
+
+None.

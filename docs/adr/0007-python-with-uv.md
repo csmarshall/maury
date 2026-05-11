@@ -177,3 +177,7 @@ phases assume them.
 - **PEP 723 single-file scripts** for tiny ancillary tools
   (e.g., one-shot helpers) remain available where the
   multi-module project layout would be overkill.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

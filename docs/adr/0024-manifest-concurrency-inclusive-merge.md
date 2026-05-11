@@ -263,3 +263,7 @@ friendly path.
 - **Multi-user mode** is explicitly out of scope here but would
   build on this design: rule 2 (last-wins on overwrites) becomes
   much more dangerous when two different humans are racing.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

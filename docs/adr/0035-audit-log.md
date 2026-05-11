@@ -24,11 +24,11 @@ Six ADRs reference a "Phase 10 audit log" without specifying it:
   trail.
 - [ADR-0025](0025-profile-switching-session-safeguards.md) —
   profile-switch events are explicitly written to a stub
-  `profile-switches.jsonl` "until Phase 10 audit log lands."
+  `mode-switches.jsonl` "until Phase 10 audit log lands."
 - [ADR-0029](0029-maury-state-layout-contract.md) — reserves an
   `audit.jsonl` slot in the maury-state inventory with a TODO
   ("Phase 10 ADR — not yet written") and notes it subsumes
-  `profile-switches.jsonl`.
+  `mode-switches.jsonl`.
 - [ADR-0032](0032-backup-and-disaster-recovery.md) — includes
   `audit.jsonl` (alongside the stub profile-switches log) in
   the default backup set.
@@ -117,13 +117,13 @@ require an `**Amended:**` entry on this ADR.
 | `claude_revert` | [ADR-0017](0017-drift-detection-and-reconciliation.md) | When user runs `maury revert <id>` | `{reverted_change_id: "...", path: "..."}` |
 | `manifest_mutated` | [ADR-0024](0024-manifest-concurrency-inclusive-merge.md) | When maury writes a new manifest version | `{changes: [...], git_commit: "..."}` |
 | `manifest_merge_resolved` | [ADR-0024](0024-manifest-concurrency-inclusive-merge.md) | When `maury manifest resolve` completes | `{conflicts_resolved: [...], commit: "..."}` |
-| `profile_switched` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury profile use` succeeds (subsumes the stub `profile-switches.jsonl`) | `{from_profile: "...", to_profile: "...", sessions_state: {...}, forced: bool}` — preserves all fields from ADR-0025's stub schema (`force_flag_used` renamed to `forced` for the new schema; `sessions_state` carried verbatim; `ts`/`host_id` are top-level event fields) |
+| `profile_switched` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury profile use` succeeds (subsumes the stub `mode-switches.jsonl`) | `{from_profile: "...", to_profile: "...", sessions_state: {...}, forced: bool}` — preserves all fields from ADR-0025's stub schema (`force_flag_used` renamed to `forced` for the new schema; `sessions_state` carried verbatim; `ts`/`host_id` are top-level event fields) |
 | `profile_switch_refused` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury profile use` refuses (any precondition fails) | `{reason: "...", precondition: "..."}` |
 | `init_completed` | [ADR-0018](0018-minimum-bootstrap-ux.md) | When `maury init` finishes (first-host-setup or update) | `{from: "dir|tarball", source: "...", host_registered: bool}` |
 | `manifest_upgraded` | [ADR-0030](0030-manifest-schema-migrations.md) | When a `maury manifest upgrade-vN-to-vN+1` completes | `{from_version: int, to_version: int, backup_path: "...", changes: [...]}` |
 | `sessions_pruned` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury sessions prune` removes ghost-session entries | `{pruned_count: int, threshold_age: "..."}` |
 | `uninstall_completed` | [ADR-0023](0023-hook-installation-and-tool-resolution.md) | When `maury uninstall` finishes — written **before** maury-state itself is deleted, so the final forensic trail "who removed maury" is captured. The audit.jsonl is preserved alongside the user content per ADR-0023 §8's "leaves user content alone" guarantee. | `{user_hooks_kept: int, scripts_removed: int, repos_left_alone: [...]}` |
-| `migration_completed` | This ADR | One-shot marker when the `profile-switches.jsonl` → `audit.jsonl` migration completes (see §"Migration: subsuming `profile-switches.jsonl`" below) | `{migrated_event_count: int, source_file: "...", archive_renamed_to: "..."}` |
+| `migration_completed` | This ADR | One-shot marker when the `mode-switches.jsonl` → `audit.jsonl` migration completes (see §"Migration: subsuming `mode-switches.jsonl`" below) | `{migrated_event_count: int, source_file: "...", archive_renamed_to: "..."}` |
 | `mining_run_created` | [ADR-0022](0022-branch-per-mining-run.md), [ADR-0026](0026-profile-aware-mining.md) | When `maury mine` produces a run branch | `{run_id: "...", branch: "...", commit_count: int}` |
 | `review_completed` | [ADR-0022](0022-branch-per-mining-run.md) | When `maury review` finishes | `{run_id: "...", accepted: int, rejected: int, merged_to: "..."}` |
 | `promotion_started` | [ADR-0009](0009-promotion-only-cross-boundary.md) | When `maury promote` begins | `{from_repo: "...", to_repo: "..."}` |
@@ -156,18 +156,18 @@ state-changing *events*.
 | `active-context.json` | Current binding | Audit log records `profile_switched`; active-context is the *current state*, audit is the *transition event*. |
 | `active-sessions.jsonl` | Live session lifecycle | Not mirrored — too high-frequency and short-lived. The session-end event is implicitly captured by `session-history.jsonl`. |
 | `session-history.jsonl` | Durable per-session record | Not mirrored — that file IS the per-session audit, audit log records cross-session events. |
-| `profile-switches.jsonl` | Stub for this ADR | **Subsumed.** Once this ADR ships, `profile_switched` events go into `audit.jsonl`; the stub is retired (kept as historical archive but no new writes). |
+| `mode-switches.jsonl` | Stub for this ADR | **Subsumed.** Once this ADR ships, `profile_switched` events go into `audit.jsonl`; the stub is retired (kept as historical archive but no new writes). |
 
-### Migration: subsuming `profile-switches.jsonl`
+### Migration: subsuming `mode-switches.jsonl`
 
 When this ADR's implementation lands (Phase 10):
 
 1. The first `maury sync` after upgrade migrates existing
-   `profile-switches.jsonl` entries into `audit.jsonl` as
+   `mode-switches.jsonl` entries into `audit.jsonl` as
    `profile_switched` events with `schema_version: 1`.
 2. The migration writes a single `migration_completed` event
    marking the cutover.
-3. `profile-switches.jsonl` is renamed to
+3. `mode-switches.jsonl` is renamed to
    `profile-switches.jsonl.migrated-<ts>` and left in place
    as historical archive.
 4. From this point forward, only `audit.jsonl` is written.
@@ -226,7 +226,7 @@ part of maury-state.
 - **Six ADRs' "Phase 10 audit log" promises are now backed
   by a concrete contract.** Implementers have a single source
   of truth for event schema, kinds, and lifecycle.
-- **`profile-switches.jsonl` retires cleanly.** Migration
+- **`mode-switches.jsonl` retires cleanly.** Migration
   preserves history; the per-domain stub from ADR-0025
   collapses into the cross-cutting log.
 - **One new state file** added to ADR-0029's inventory:
@@ -245,7 +245,7 @@ part of maury-state.
 
 ## Alternatives considered
 
-- **Per-event-kind separate files** (`profile-switches.jsonl`,
+- **Per-event-kind separate files** (`mode-switches.jsonl`,
   `reconcile-actions.jsonl`, `promotions.jsonl`, etc.).
   Rejected: ADR-0025's stub already showed this pattern
   doesn't compose — the cross-cutting "what happened on this
@@ -292,7 +292,7 @@ existing modules (sync, render, reconcile, profile-switch,
 mining, review, promote, backup, restore) and lands as part
 of each module's normal completion.
 
-The migration from `profile-switches.jsonl` is a one-shot
+The migration from `mode-switches.jsonl` is a one-shot
 function in Phase 10's slice; idempotent (skip if
 `audit.jsonl` already exists).
 
@@ -324,3 +324,7 @@ References used:
 
 - [`cc-contract:concurrent-sessions`](../claude-code-contract.md#cc-contractconcurrent-sessions)
   — for the JSONL `O_APPEND` ≤4 KB atomic-append story.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

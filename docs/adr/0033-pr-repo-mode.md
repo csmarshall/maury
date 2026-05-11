@@ -275,3 +275,7 @@ real changes.
 
 This ADR introduces no new Claude Code dependencies. The
 `gh` CLI dependency is GitHub's, not Claude Code's.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

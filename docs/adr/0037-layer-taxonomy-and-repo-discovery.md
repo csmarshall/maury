@@ -6,7 +6,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile; controlled difference across profiles](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
+- [Tenet 2 — Consistency within a profile; controlled difference across profiles](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 6 — Identity is not name](../tenets.md#6-identity-is-not-name)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
@@ -785,3 +785,7 @@ until migrated.
   that CLAUDE.md content is guidance, not enforced configuration; the
   basis for the "advise, do not block" principle in the override
   advisory model.
+
+## Amendment history
+
+None.

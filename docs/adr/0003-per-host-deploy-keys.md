@@ -192,3 +192,7 @@ mechanics ship with Phase 4.
 - **SSH-agent-less hosts:** if a host can't run an SSH agent,
   fine-grained PAT (Option B) is the documented escape hatch.
   Not yet implemented; lands when first such host is encountered.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

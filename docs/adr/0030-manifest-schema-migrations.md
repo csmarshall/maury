@@ -317,3 +317,7 @@ gets its own upgrade pipeline.
 
 This ADR introduces no new Claude Code dependencies. Manifest
 schema is maury-internal; Claude Code is unaware of it.
+
+## Amendment history
+
+None.

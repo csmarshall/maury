@@ -256,3 +256,7 @@ This ADR introduces no new Claude Code dependencies. The
 PyPI fetch is HTTP-only, via the standard library or a small
 bounded dependency. Claude Code is unaware of maury's binary
 version.
+
+## Amendment history
+
+None.

@@ -7,7 +7,7 @@
 
 ## Related tenets
 
-- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
+- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
 ## TL;DR

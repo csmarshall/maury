@@ -6,7 +6,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
+- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
 ## TL;DR
@@ -535,3 +535,7 @@ Code documentation:
 
 [cc-hooks]: https://code.claude.com/docs/en/hooks
 [cc-sessions]: https://code.claude.com/docs/en/sessions
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

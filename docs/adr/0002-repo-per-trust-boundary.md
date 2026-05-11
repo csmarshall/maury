@@ -192,3 +192,7 @@ multi-root walking.
   sub-permissions inside a single repo) is intentionally not
   pursued — see ADR text. Revisit only if a host needs to be
   inside a boundary but excluded from one profile's content.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

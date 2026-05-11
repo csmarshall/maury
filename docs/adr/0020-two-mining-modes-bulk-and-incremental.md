@@ -405,3 +405,7 @@ addressed by the temporal section above.
 - **Watermark schema**: define the `watermarks.json` shape. Per-
   transcript-file timestamps with sha of last-processed event seem
   right; could use just file mtime if simpler.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

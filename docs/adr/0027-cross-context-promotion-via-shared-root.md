@@ -288,7 +288,7 @@ scope_hint validation at staging-write time. Implementation order:
   source and intended-target as a suggestion: *"You wanted
   acme-client → globex-client; their shared ancestor is `work`.
   Did you mean to promote to `work`?"*
-- **Manifest validation.** The `maury manifest validate`
+- **Manifest validation.** The `maury agency validate`
   command should also walk all rules with explicit profile
   scopes and verify each scope is valid for the rule's source
   profile. Catches malformed YAML rules statically rather than

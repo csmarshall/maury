@@ -112,3 +112,7 @@ documentation:
 - [`cc-XXX`][cc-XXX] — what this ADR cites it for.
 
 [cc-XXX]: https://code.claude.com/docs/en/...
+
+## Amendment history
+
+None.

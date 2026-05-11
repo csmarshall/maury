@@ -238,3 +238,7 @@ Code documentation:
 
 [cc-best-practices]: https://code.claude.com/docs/en/best-practices
 [cc-memory]: https://code.claude.com/docs/en/memory
+
+## Amendment history
+
+None.

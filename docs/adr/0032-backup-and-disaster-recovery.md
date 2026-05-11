@@ -324,3 +324,7 @@ This ADR introduces no new Claude Code dependencies. The
 Code owns per
 [`cc-contract:past-transcripts-not-auto-loaded`](../claude-code-contract.md#cc-contractpast-transcripts-not-auto-loaded);
 maury reads but doesn't write into that tree.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

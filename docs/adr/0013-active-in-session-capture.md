@@ -7,7 +7,7 @@
   (UserPromptSubmit hook + `/maury-pin` slash command alongside
   the original Claude-initiated `maury-stage` skill); added
   active-context.json mechanism for telling Claude the host's
-  active profile + inheritance chain; codified cross-boundary
+  active mode + inheritance chain; codified cross-boundary
   safety as a multi-layer guarantee (skill prompt + forbid rules
   + review step); mapped capture flow to inheritance access
   modes (concepts.md §6).
@@ -15,7 +15,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
+- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
@@ -121,7 +121,7 @@ it via the skill's instructions, and stages it.
    The skill's prompt content tells Claude what to capture and
    what not to capture (mirrors the Anthropic CLAUDE.md ✅/❌
    rubric — see ADR-0011), and the format to use. The skill also
-   tells Claude **the host's active profile and inheritance
+   tells Claude **the host's active mode and inheritance
    chain** (read at session start from `active-context.json`, see
    below) so suggestions never cross-boundary.
 2. **A `base/CLAUDE.md` fragment** instructing Claude to invoke
@@ -151,7 +151,7 @@ Two sub-paths:
    ```
    /maury-pin <scope> <text>
    ```
-   where `<scope>` is `base | <profile-name> | current` and
+   where `<scope>` is `base | <mode-name> | current` and
    `<text>` is the rule to pin. Writes to the staging file with
    `source: user-pin-explicit`. Higher confidence than the
    prompt-cue path because the user typed an explicit command.
@@ -180,7 +180,7 @@ It is **per-host**, **never synced to git**. Each line:
   "ts": "2026-05-06T15:23:00Z",
   "source": "claude-skill|user-prompt-cue|user-pin-explicit",
   "kind": "voice|preference|workflow|anti-pattern|host-fact",
-  "scope_hint": "base|<profile>|<host>|current",
+  "scope_hint": "base|<mode>|<host>|current",
   "text": "self-contained one-paragraph capture",
   "rationale": "why this is durable / how Claude derived it",
   "session_id": "abc..."
@@ -190,7 +190,7 @@ It is **per-host**, **never synced to git**. Each line:
 `scope_hint` is the source's best guess (Claude's, or the user's
 when explicitly typed); the rule engine has final authority and
 the user re-confirms during review. The value `current` is
-shorthand for "use the active profile from `active-context.json`
+shorthand for "use the active mode from `active-context.json`
 on this host" — so a `/maury-pin current "..."` resolves to
 whichever profile the host is currently in, without the user
 having to type the profile name. The staging file is consumed
@@ -202,15 +202,15 @@ paragraph).
 #### Active-context file — what Claude needs to know
 
 For Claude-initiated capture (entry path 1) to respect trust
-boundaries, Claude needs to know **the host's active profile and
+boundaries, Claude needs to know **the host's active mode and
 its inheritance chain.** Maury maintains
 `~/.claude/maury-state/active-context.json`, rewritten on every
-`maury init` and `maury profile use`:
+`maury init` and `maury mode use`:
 
 ```json
 {
-  "active_profile": "acme-client",
-  "active_profile_id": "profile_a3f9...",
+  "active_mode": "acme-client",
+  "active_mode_id": "mode_a3f9...",
   "inheritance_chain": ["base", "work", "acme-client"],
   "host_id": "host_e3844a43...",
   "updated_at": "2026-05-07T..."
@@ -221,7 +221,7 @@ The `maury-stage` skill's prompt instructs Claude to read this
 file at the start of every capture decision. The skill's prompt
 text says (in spirit):
 
-> *"The active profile on this host is `<active_profile>`. Its
+> *"The active mode on this host is `<active_mode>`. Its
 > inheritance chain is `<chain>`. Suggest pinning content that
 > fits this profile or its inheritance ancestors. Never suggest
 > pinning content that belongs to a sibling profile — those have
@@ -294,7 +294,7 @@ quietly failing or producing a confusing error.
 - ✅ **Good:** The pipeline is recursive in a satisfying way —
   maury distributes the skill + fragment + hook to every host
   through normal sync, so the capture mechanism arrives on
-  every machine the moment it joins the fleet.
+  every machine the moment it joins the agency.
 - ✅ **Good:** The user gets a clear feedback loop. At session
   end, "here's what Claude thought you might want to
   persist." No mystery batch processing.
@@ -420,3 +420,7 @@ Code documentation:
 [cc-hooks]: https://code.claude.com/docs/en/hooks
 [cc-skills]: https://code.claude.com/docs/en/skills
 [cc-slash]: https://code.claude.com/docs/en/slash-commands
+
+## Amendment history
+
+- 2026-05-11 — "fleet" renamed to "agency"; "profile" renamed to "mode" per ADR-0037. JSON schema fields updated (`active_mode`, `active_mode_id`). No semantic changes.

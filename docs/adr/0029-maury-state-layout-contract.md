@@ -74,11 +74,11 @@ specifies its schema, its lifecycle, and its purpose.
 |---|---|---|---|
 | `last-render.json` | [ADR-0017](0017-drift-detection-and-reconciliation.md) | JSON (single doc) | Path + sha256 of every file maury most recently rendered. Drift detection compares on-disk SHAs against this baseline. |
 | `claude-writes.jsonl` | [ADR-0017](0017-drift-detection-and-reconciliation.md) §"Drift sources and treatment", schema locked in [ADR-0023 §6](0023-hook-installation-and-tool-resolution.md#6-log_tool_use-payload-schema-locked) | JSONL (append-only, ≤4 KB lines) | Every Claude Code Edit/Write/MultiEdit tool use, written by the `PostToolUse log_tool_use` hook. Drift attribution distinguishes Claude-writes from human hand-edits. |
-| `active-context.json` | [ADR-0013 amendment](0013-active-in-session-capture.md) §"Active-context file" | JSON (single doc) | Current active profile + inheritance chain. Read by Claude via the `maury-stage` skill so it knows what's in scope for capture suggestions. Rewritten on every `maury init` and `maury profile use`. |
-| `active-sessions.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) | JSONL (append-only, event log) | Live session lifecycle events (`session_start`, `tool_use`, `session_end`). Reduced on read into per-session-id state. Used for the active-session safety check on profile switch. |
-| `session-history.jsonl` | [ADR-0026](0026-profile-aware-mining.md) | JSONL (append-only, one record per completed session) | Durable session-to-profile linkage. Written by `SessionEnd` hook (consumer 2 of the same hook ADR-0025 installs). Mining uses this for profile-aware filtering. |
-| `profile-switches.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) §"On a clean switch" point 1 | JSONL (append-only) | Stub audit log for profile-switch events until Phase 10 audit log lands; gets folded into the audit log later. |
-| `audit.jsonl` | [ADR-0035](0035-audit-log.md) | JSONL (append-only) | Comprehensive audit of every state-changing maury operation. Subsumes `profile-switches.jsonl` via one-shot migration. |
+| `active-context.json` | [ADR-0013 amendment](0013-active-in-session-capture.md) §"Active-context file" | JSON (single doc) | Current active mode + inheritance chain. Read by Claude via the `maury-stage` skill so it knows what's in scope for capture suggestions. Rewritten on every `maury init` and `maury mode use`. |
+| `active-sessions.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) | JSONL (append-only, event log) | Live session lifecycle events (`session_start`, `tool_use`, `session_end`). Reduced on read into per-session-id state. Used for the active-session safety check on mode switch. |
+| `session-history.jsonl` | [ADR-0026](0026-profile-aware-mining.md) | JSONL (append-only, one record per completed session) | Durable session-to-mode linkage. Written by `SessionEnd` hook (consumer 2 of the same hook ADR-0025 installs). Mining uses this for profile-aware filtering. |
+| `mode-switches.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) §"On a clean switch" point 1 | JSONL (append-only) | Stub audit log for profile-switch events until Phase 10 audit log lands; gets folded into the audit log later. |
+| `audit.jsonl` | [ADR-0035](0035-audit-log.md) | JSONL (append-only) | Comprehensive audit of every state-changing maury operation. Subsumes `mode-switches.jsonl` via one-shot migration. |
 | `last-version-check.json` | [ADR-0031](0031-self-update-path.md) | JSON (single doc) | Cached result of the once-per-day PyPI version check (installed_version, latest_version, channel, checked_at). Used to gate the stale-version warning without re-probing PyPI on every command. |
 
 ### Cross-cutting invariants
@@ -109,11 +109,11 @@ These properties apply to every file in the directory:
    reconstructs what it can:
    - `last-render.json` is rebuilt from the next render.
    - `active-context.json` is rewritten on next `maury init`
-     or `maury profile use` per
+     or `maury mode use` per
      [ADR-0013 amendment](0013-active-in-session-capture.md).
    - The append-only logs (`claude-writes.jsonl`,
      `active-sessions.jsonl`, `session-history.jsonl`,
-     `profile-switches.jsonl`) are **lost permanently** —
+     `mode-switches.jsonl`) are **lost permanently** —
      there's no way to reconstruct historical events. Drift
      attribution and active-session detection will be
      functional going forward but blind to anything before
@@ -275,3 +275,7 @@ references existing contract entries:
 - [`cc-contract:startup-files-loaded`](../claude-code-contract.md#cc-contractstartup-files-loaded)
   — for the "auto-memory belongs to Claude Code, not maury-
   state" boundary.
+
+## Amendment history
+
+- 2026-05-11 — "profile" renamed to "mode" per ADR-0037 doctoral examination. `profile-switches.jsonl` → `mode-switches.jsonl`; `maury profile use` → `maury mode use`; table descriptions updated. No structural changes.

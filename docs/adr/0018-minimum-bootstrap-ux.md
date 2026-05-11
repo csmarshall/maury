@@ -21,7 +21,7 @@ A new host adopting maury should need the absolute minimum: one URL
 `pipx install maury` as the only prereq. `maury init` pulls the base
 repo, reads its manifest, self-identifies (or proposes a new host
 entry), and bootstraps additional deploy keys. `maury bootstrap` is a
-separate verb for curator-side fleet ops. Trade-off: the user must
+separate verb for curator-side agency ops. Trade-off: the user must
 remember the base URL + auth credential out-of-band (password
 manager) — maury can't solve that without a chicken-and-egg.
 
@@ -145,7 +145,7 @@ generated line includes:
 - OS-specific install of `pipx` (if not already installed) — see
   install table below.
 - `pipx install maury`
-- `maury init <base-repo-url>` filled in with this fleet's actual
+- `maury init <base-repo-url>` filled in with this agency's actual
   base URL.
 
 #### Pre-maury install paths
@@ -269,8 +269,8 @@ write and the baseline persist.
   user must bring, plus pipx-installable maury.
 - ✅ **Good:** Clean separation of new-user vs curator
   commands — `maury init` always means "I'm a new host
-  wanting to join an existing fleet"; `maury bootstrap`
-  always means "I'm setting up new fleet infrastructure."
+  wanting to join an existing agency"; `maury bootstrap`
+  always means "I'm setting up new agency infrastructure."
 - ✅ **Good:** Air-gapped path is first-class, via
   `--from-tarball` and `--from-dir`. Critical for work
   environments where the new host can't directly reach
@@ -295,7 +295,7 @@ write and the baseline persist.
 
 - `maury init <url>`, `maury init --from-tarball <path>`, and
   `maury init --from-dir <path>` ship in Phase 4.
-- `bootstrap-snippet` emits a one-liner with the fleet's
+- `bootstrap-snippet` emits a one-liner with the agency's
   base URL filled in.
 - README install table covers the documented pipx-install
   paths per OS.
@@ -367,3 +367,7 @@ render engine (Phase 3 — already shipped) are prerequisites.
   on workstation emits a signed token containing URL + temporary access
   key; `maury init <token>` on the new host needs nothing else.
   Requires a token-signing key kept by the curator.
+
+## Amendment history
+
+- 2026-05-11 — "fleet" renamed to "agency" per ADR-0037 doctoral examination. No semantic changes to bootstrap flow.

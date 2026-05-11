@@ -676,3 +676,7 @@ the second decision deserves the same surfacing as the first.
   not enforced configuration; the basis for the precepts-are-
   prescriptive-not-enforceable property and for the entire advisory
   (rather than blocking) model.
+
+## Amendment history
+
+None.

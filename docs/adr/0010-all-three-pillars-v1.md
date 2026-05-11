@@ -186,3 +186,7 @@ for what ships in v1 vs v1.1.
 
 **Cut from earlier scope:** none. The v1.1 deferrals reduce scope but
 nothing originally promised has been removed entirely.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

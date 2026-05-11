@@ -6,7 +6,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile; controlled difference across profiles](../tenets.md#2-consistency-within-a-profile-controlled-difference-across-profiles)
+- [Tenet 2 — Consistency within a profile; controlled difference across profiles](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 3 — Trust boundaries are physical, not policy](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 6 — Identity is not name](../tenets.md#6-identity-is-not-name)
@@ -780,3 +780,7 @@ CLAUDE.md per the contract documented in
 [`cc-contract:startup-files-loaded`](../claude-code-contract.md#cc-contractstartup-files-loaded);
 Claude Code is unaware of the bootstrap, sync, or mode-change
 machinery that produced the rendered file.
+
+## Amendment history
+
+None.

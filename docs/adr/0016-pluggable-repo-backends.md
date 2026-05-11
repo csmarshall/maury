@@ -339,3 +339,7 @@ If a user has a Perforce work shop and cannot use git for the work
 boundary, the answer is no longer "we'll add a Perforce backend";
 the answer is "you can't have a maury-managed work boundary on
 that shop." Acceptable given target-user reality.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.

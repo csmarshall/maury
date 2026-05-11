@@ -368,3 +368,7 @@ will not silently rebase mid-review.
 - **Phase 7 task description update.** The task currently says
   "proposal queue + review UI." Reword to "branch-walk review UI" to
   match this ADR.
+
+## Amendment history
+
+- 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
