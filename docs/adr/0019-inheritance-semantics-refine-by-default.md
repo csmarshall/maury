@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+  - 2026-05-11 — "profile" renamed to "mode" per ADR-0037. Inheritance semantics (refine-by-default, replace-explicit) are unchanged; only vocabulary updated.
 
 ## Related tenets
 
@@ -371,3 +373,7 @@ This ADR's open questions are forward-tracked here:
   TBD — line-LCS is the obvious starting point, AST-aware refactoring
   is overkill for v1 but interesting for skill content that's mostly
   prose. New task to track once v1 ships.
+
+## Amendment history
+
+- 2026-05-11 — "profile" renamed to "mode" per ADR-0037. Inheritance semantics (refine-by-default, replace-explicit) are unchanged; only vocabulary updated.

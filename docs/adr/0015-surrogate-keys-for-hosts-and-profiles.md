@@ -16,6 +16,11 @@
   `~/.maury-host-id` on the host being registered. The "never
   modified" invariant still holds — once init creates the file,
   it's immutable.
+- 2026-05-11 — **breaking schema change:** `profile_<32 hex>` surrogate
+  ID prefix renamed to `mode_<32 hex>` per ADR-0037 doctoral examination
+  (profile → mode vocabulary rename). The `host_<32 hex>` prefix is
+  unchanged. All existing `profile_<hex>` values in manifests require
+  migration per ADR-0030. See ADR-0037 §mode for the full context.
 
 ## Related tenets
 
@@ -348,3 +353,9 @@ ID for rules is needed.
 
 The original "What does NOT change" bullet stands as written: rules
 keep their existing `id:` slug field. No migration.
+
+## Amendment history
+
+- 2026-05-06 — rule-IDs addendum proposed then retracted same day (see top-of-file note).
+- 2026-05-07 — corrected §"Host self-identification" claim (see top-of-file note).
+- 2026-05-11 — `profile_<32 hex>` renamed to `mode_<32 hex>` throughout. Breaking schema change; migration required per ADR-0030. `host_<32 hex>` unchanged.

@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-05-07
+**Amended:**
+  - 2026-05-11 — "profile" and "context" (in the layer-type sense) renamed to "mode" per ADR-0037. Cross-mode promotion mechanics are unchanged.
 
 ## Related tenets
 
@@ -312,3 +314,7 @@ scope_hint validation at staging-write time. Implementation order:
 This ADR introduces no new Claude Code dependencies beyond what
 ADR-0009 and ADR-0026 already cite. No new contract entries
 needed.
+
+## Amendment history
+
+- 2026-05-11 — "profile" and "context" (in the layer-type sense) renamed to "mode" per ADR-0037. Cross-mode promotion mechanics are unchanged.

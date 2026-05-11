@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-05-06
+**Amended:**
+  - 2026-05-11 — "profile" renamed to "mode" throughout maury's vocabulary per ADR-0037 doctoral examination. The concept this ADR establishes (N user-defined modes, not hardcoded pairs; single-parent tree) is unchanged.
 
 ## Related tenets
 
@@ -134,3 +136,7 @@ ADR. Phase 4 (Bootstrap commands) ships the
   active profile remains a singleton, but profiles can carry
   optional tags consumed by rules). Not v1 scope; revisit if a
   real use case appears.
+
+## Amendment history
+
+- 2026-05-11 — "profile" renamed to "mode" per ADR-0037. The N-modes concept (arbitrary count, single-parent tree, one active mode per host) is unchanged; only the vocabulary was updated. `profile_<hex>` surrogate IDs renamed to `mode_<hex>` per ADR-0015 amendment of the same date.

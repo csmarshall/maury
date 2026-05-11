@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-05-07
+**Amended:**
+  - 2026-05-11 — "profile" renamed to "mode" per ADR-0037. The published/subscribed model is refined by ADR-0038 (rules layer + governance metadata); ADR-0038 is now the canonical reference for shared-rules acquisition.
 
 ## Related tenets
 
@@ -328,3 +330,7 @@ any other profile per
 [`cc-contract:startup-files-loaded`](../claude-code-contract.md#cc-contractstartup-files-loaded);
 Claude Code is unaware that some content originated from a
 team-shared upstream.
+
+## Amendment history
+
+- 2026-05-11 — "profile" renamed to "mode" per ADR-0037. The published/subscribed model is refined by ADR-0038 (rules layer + governance metadata); ADR-0038 is now the canonical reference for shared-rules acquisition.
