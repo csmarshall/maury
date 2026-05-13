@@ -267,7 +267,7 @@ in succession — three-layer defense per Tenet 1.
 
 #### Inheritance access modes interaction
 
-Per [concepts.md §6 (inheritance access modes)](../concepts.md#6-inheritance-access-mode):
+Per [concepts.md §9 (`repo_mode`)](../concepts.md#9-repo_mode-access-subtype):
 the `scope_hint` chosen for a capture determines which repo's
 review queue the proposal lands in. The user's effective access
 mode (`ro` / `pr` / `rw`) on that target repo determines the

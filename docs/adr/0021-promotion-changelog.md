@@ -61,7 +61,7 @@ promotion event writes a structured entry capturing:
 
 - `ts` — ISO-8601 timestamp.
 - `rule_id` — `rule_<32 hex>` surrogate per
-  [ADR-0015 addendum](0015-surrogate-keys-for-hosts-and-profiles.md#addendum-rule-ids-2026-05-06).
+  [ADR-0015 addendum (retracted)](0015-surrogate-keys-for-hosts-and-profiles.md#addendum-rule-ids--retracted-2026-05-06).
   Rules adopt the prefixed format; legacy slug IDs in v1 seed rules
   are migrated automatically.
 - `action` — `added` | `modified` | `removed`. Intentionally narrower

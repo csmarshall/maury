@@ -124,7 +124,7 @@ the local quarantine, never to git.
 - `maury promote-review` (Phase 9, per `docs/status.md`)
   inspects the proposal queue and applies the curator's
   decisions with audit-log entries (per
-  [ADR-0035](0035-phase-10-audit-log.md)).
+  [ADR-0035](0035-audit-log.md)).
 - [ADR-0027](0027-cross-context-promotion-via-shared-root.md)
   adds the inheritance-graph constraint on top of this ADR's
   mechanics.

@@ -19,17 +19,17 @@ project is "best" — different shapes work for different setups.
 | [claude-diary](https://github.com/rlancemartin/claude-diary) | ✗ single-host | n/a | ✓ session reflection + transcript parse | active |
 | [ccms](https://github.com/miwidot/ccms) | ✓ (rsync over SSH; the full `~/.claude/`) | ✗ syncs everything | ✗ | active |
 | [chezmoi](https://github.com/twpayne/chezmoi) + [age](https://github.com/FiloSottile/age) | ✓ (generic dotfile manager + per-file encryption) | ⚠ encryption-based, not trust-boundary | ✗ | very active |
-| [Anthropic auto-memory](https://code.claude.com/docs/en/memory) (CC v2.1.59+) | ✗ per-project, machine-local | ✗ | ✓ Claude writes its own `MEMORY.md` | shipped, default on |
+| [Anthropic auto-memory](https://code.claude.com/docs/en/memory) (CC v2.1.59+) | ✗ per-project, machine-local | ✗ | ✓ Claude writes its own memory dir (`MEMORY.md` index + topic files) | shipped, default on |
 
 ## What each one does, in one paragraph
 
 ### jean-claude
 
-A companion CLI for managing N Claude Code profiles and optionally syncing them across machines via git. Profile-aware: you can create per-context configurations (work / personal / per-client) and switch between them. Bidirectional sync supports three-machine convergence over a shared git repo. Recent work adds plugin and Claude Desktop MCP support. **What maury borrowed:** the sync UX — confirmation that profile-aware + git-backed is a real workflow worth pursuing. Maury's structural difference is one git repo *per* trust boundary rather than one repo with N profiles inside; the per-trust-boundary architecture is what makes work-content-can't-reach-personal-laptop a server-side enforced property rather than a client-side discipline.
+A companion CLI for managing N Claude Code profiles and optionally syncing them across machines via git. Profile-aware: you can create per-context configurations (work / personal / per-client) and switch between them. Bidirectional sync via a shared git repo. Recent work adds plugin and Claude Desktop MCP support. **What maury borrowed:** the sync UX — confirmation that profile-aware + git-backed is a real workflow worth pursuing. Maury's structural difference is one git repo *per* trust boundary rather than one repo with N profiles inside; the per-trust-boundary architecture is what makes work-content-can't-reach-personal-laptop a server-side enforced property rather than a client-side discipline.
 
 ### claude-diary
 
-A slash-command plugin (`/diary`, `/reflect`) that gives Claude Code memory across sessions. `/diary` reflects on the current session's context (user messages, tool invocations, files modified, decisions made) and writes a markdown entry to `~/.claude/memory/diary/`. `/reflect` analyzes accumulated entries and proposes updates to `CLAUDE.md`. Started November 2025. **What maury borrowed:** the mining loop's design philosophy — the 2+/3+ pattern threshold (a candidate becomes a proposal after recurring 2-3 times) and the observe-reflect-retrieve cadence. Maury reimplements rather than depends because the multi-host and trust-boundary stories are out of scope for claude-diary.
+A slash-command plugin (`/diary`, `/reflect`) that gives Claude Code memory across sessions. `/diary` reflects on the current session's context (user messages, tool invocations, files modified, decisions made) and writes a markdown entry to `~/.claude/memory/diary/`. `/reflect` analyzes accumulated entries and proposes updates to `CLAUDE.md`. The maintainer's [Dec 2025 writeup](https://rlancemartin.github.io/2025/12/01/claude_diary/) is the canonical introduction. **What maury borrowed:** the mining loop's design philosophy — the 2+/3+ pattern threshold (a candidate becomes a proposal after recurring 2-3 times) and the observe-reflect-retrieve cadence. Maury reimplements rather than depends because the multi-host and trust-boundary stories are out of scope for claude-diary.
 
 ### ccms
 
@@ -41,7 +41,7 @@ A generic dotfile manager that templates `~/.foorc` / `~/.bashrc` / etc. across 
 
 ### Anthropic auto-memory (Claude Code v2.1.59+)
 
-Default-on feature where Claude Code itself decides what to remember from each session and writes notes to `~/.claude/projects/<project>/memory/MEMORY.md`. Toggleable via `/memory` or the `autoMemoryEnabled` setting. **Design space note:** auto-memory is per-project and machine-local — Anthropic is not (yet) in the business of syncing your Claude Code state across boxes. The maury<->auto-memory relationship is complementary: auto-memory captures per-project learnings; maury would sync the learnings that promote across projects (universal preferences, mode-wide conventions) without overriding Anthropic's per-project store.
+Default-on feature where Claude Code itself decides what to remember from each session and writes notes to `~/.claude/projects/<project>/memory/` — a `MEMORY.md` index plus topic files (`debugging.md`, `api-conventions.md`, etc.) Claude creates as the project's knowledge grows. Toggleable via the toggle inside `/memory`, the `autoMemoryEnabled` setting, or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. **Design space note:** auto-memory is per-project and machine-local — Anthropic is not (yet) in the business of syncing your Claude Code state across boxes. The maury<->auto-memory relationship is complementary: auto-memory captures per-project learnings; maury would sync the learnings that promote across projects (universal preferences, mode-wide conventions) without overriding Anthropic's per-project store.
 
 ## Where maury fits
 
@@ -58,7 +58,7 @@ If your problem is **"I have work and personal modes, I cannot let work content 
 
 If a project addresses an adjacent problem and isn't listed here, file an issue or open a PR. The set above is current as of the date at the top; the design space is moving fast. Other projects worth knowing about that didn't make this comparison table for space:
 
-- [`porkchop/claude-code-sync`](https://github.com/porkchop/claude-code-sync), [`perfectra1n/claude-code-sync`](https://github.com/perfectra1n/claude-code-sync), [`toroleapinc/claude-brain`](https://github.com/toroleapinc/claude-brain) — sync-focused tools each with their own angle (conversation sync, Rust-based, semantic merge).
+- [`porkchop/claude-code-sync`](https://github.com/porkchop/claude-code-sync) and [`perfectra1n/claude-code-sync`](https://github.com/perfectra1n/claude-code-sync) — both sync conversation-history JSONL across machines (bash + Rust respectively). [`toroleapinc/claude-brain`](https://github.com/toroleapinc/claude-brain) takes a different angle: LLM-based semantic merge of memory / skills / agents.
 - [`centminmod/my-claude-code-setup`](https://github.com/centminmod/my-claude-code-setup) — opinionated starter template for a personal Claude Code setup; not a sync tool but useful as seed content.
 - Anthropic's [Workspaces](https://platform.claude.com/docs/en/manage-claude/workspaces) — server-side organizational isolation; the natural complement to maury's client-side mode boundaries (see [ADR-0041](adr/0041-per-mode-anthropic-credentials.md)).
 

@@ -258,6 +258,10 @@ Maury stands on shoulders. Credit:
   used as a dependency; the multi-repo trust-boundary architecture is
   outside chezmoi's design center.
 
+For a longer-form comparison (six projects × four dimensions, with
+per-project paragraphs naming what each does and where maury sits in
+the design space), see [`docs/parallel-efforts.md`](docs/parallel-efforts.md).
+
 ## License
 
 MIT. See `LICENSE`.

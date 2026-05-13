@@ -188,7 +188,7 @@ context window is.
 
 ## Action item
 
-See GitHub issue [#4](../../issues/4) — "Research upstream feature request
+See GitHub issue [#4](https://github.com/csmarshall/maury/issues/4) — "Research upstream feature request
 process for Claude Code gaps." Before filing any of the above with Anthropic,
 we need to determine the right channel (GitHub discussions, feedback form,
 developer forum) and the right format (reproducer steps? use-case framing?

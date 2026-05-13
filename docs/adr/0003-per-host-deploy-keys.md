@@ -187,7 +187,7 @@ mechanics ship with Phase 4.
 - **`pr` mode mechanics:** [ADR-0033](0033-pr-repo-mode.md) adds
   the `pr` (read + write via pull request) repo mode alongside
   the `ro` and `rw` defined here. See
-  [concepts.md §6 — Inheritance access mode](../concepts.md#6-inheritance-access-mode)
+  [concepts.md §9 — `repo_mode` (access subtype)](../concepts.md#9-repo_mode-access-subtype)
   for the universal three-mode framing.
 - **SSH-agent-less hosts:** if a host can't run an SSH agent,
   fine-grained PAT (Option B) is the documented escape hatch.

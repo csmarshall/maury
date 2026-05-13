@@ -50,7 +50,7 @@ binary doesn't encode it. Today an engineer would either:
 - Have `ro` access (engineer can only read; contributing back
   requires manual workflow outside maury).
 
-Per [concepts.md §6](../concepts.md#6-inheritance-access-mode),
+Per [concepts.md §9](../concepts.md#9-repo_mode-access-subtype),
 this gap was named: a third `pr` mode that means "read like
 ro, write through pull request" was introduced as a planned
 construct. This ADR specifies it.
@@ -86,7 +86,7 @@ including `push_policy` and any other mandatory fields.)*
 
 ### Mechanically: `pr` is `ro` + a contribution side-channel
 
-Per [concepts.md §6](../concepts.md#6-inheritance-access-mode):
+Per [concepts.md §9](../concepts.md#9-repo_mode-access-subtype):
 "`pr` is a workflow layered on top of `ro` deploy-key access
 plus a side channel (e.g., GitHub PR via `gh`); the mode value
 just makes the contract explicit in the manifest."

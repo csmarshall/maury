@@ -208,7 +208,7 @@ short-circuit to a warning and refuse to push.
   `"work"`); these are display labels for URLs, never referenced
   cross-host. URL IS the surrogate key.
 - **Rules** already have stable IDs (the `id:` field). No change in
-  v1; see [addendum](#addendum-rule-ids-2026-05-06) below.
+  v1; see [addendum (retracted)](#addendum-rule-ids--retracted-2026-05-06) below.
 - **Capability tool names** (`sed`, `gsed`) are real-world identifiers
   from PATH; not maury entities.
 - **Action vocabulary** (`notify`, `log_jsonl`) — vocabulary terms,

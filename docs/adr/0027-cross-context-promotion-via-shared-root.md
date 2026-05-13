@@ -152,8 +152,8 @@ shows valid targets only.
 
 [ADR-0009](0009-promotion-only-cross-boundary.md) handles the
 *mechanics* of cross-trust-boundary writes (curator host, deploy
-keys, audit). [concepts.md §6](../concepts.md#6-inheritance-access-mode)
-defines the access mode (`ro` / `pr` / `rw`) on each repo.
+keys, audit). [concepts.md §9](../concepts.md#9-repo_mode-access-subtype)
+defines the access subtype (`ro` / `pr` / `rw`) on each sublayer entry.
 
 Both compose with this ADR's graph constraint:
 
