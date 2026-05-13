@@ -134,6 +134,7 @@ The mining → proposal → review pipeline.
 | [`0022`](0022-branch-per-mining-run.md) | Mining run = branch; finding = commit; rationale in trailers; **supersedes 0021** |
 | [`0026`](0026-profile-aware-mining.md) | Session-to-profile linkage; bucketize findings by source profile |
 | [`0027`](0027-cross-context-promotion-via-shared-root.md) | Promotion graph IS the inheritance graph; only ancestor-direction promotion |
+| [`0041`](0041-per-mode-anthropic-credentials.md) | Mining crosses a network boundary; mode trust contract gains a third (operational) piece: per-mode Anthropic credentials |
 
 Superseded breadcrumb: [`0021`](0021-promotion-changelog.md)
 (do not implement).
@@ -250,6 +251,7 @@ status).
 - [`0038`](0038-precept-acquisition-model.md) — Rules/precept acquisition, advisory lifecycle, semver versioning, `maury repo init`
 - [`0039`](0039-bootstrap-and-host-lifecycle.md) — Bootstrap flow, mode-scoped host identity, agency init, mode change process
 - [`0040`](0040-render-pipeline.md) — Render pipeline: source file naming, full target surface, LLM condensation, agent routing guidance, `maury agency validate`
+- [`0041`](0041-per-mode-anthropic-credentials.md) — Per-mode Anthropic credentials and the LLM trust boundary (operational discipline for mode isolation across mining + LLM calls)
 
 ---
 
