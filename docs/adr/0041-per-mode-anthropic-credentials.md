@@ -97,13 +97,18 @@ fails if any of the three breaks.
 
 ### Maury does not structurally enforce per-mode credentials today
 
-[Claude Code][cc-overview]'s auth model is single-account-per-install
-on a given machine. There is no documented mechanism for maury to
-gate a `claude -p` invocation on "this account matches the mode I'm
-mining in." Detecting an account mismatch is theoretically possible
-(the Claude Code session probably exposes the active account in
-metadata somewhere) but no current ADR specifies how, and Anthropic
-has not published a stable contract for reading it.
+[Claude Code][cc-overview]'s auth model is **empirically**
+single-account-per-install on a given machine — there is no
+documented multi-account-switching contract in the current Claude
+Code docs, and the same-email confusion bugs ([#377][cc-issue-377],
+[#7210][cc-issue-7210]) reinforce that the current model is one
+active account at a time, switched via `claude` sign-in /
+sign-out flows. There is no documented mechanism for maury to
+gate a `claude -p` invocation on "this account matches the mode
+I'm mining in." Detecting an account mismatch is theoretically
+possible (the Claude Code session probably exposes the active
+account in metadata somewhere) but no current ADR specifies how,
+and Anthropic has not published a stable contract for reading it.
 
 So maury's current posture is:
 
@@ -121,13 +126,16 @@ So maury's current posture is:
 ### Anthropic's Workspaces are the canonical server-side equivalent
 
 Per Anthropic's [Workspaces documentation][cc-workspaces], a Claude
-Console organization can host multiple workspaces, each with its
-own API keys, rate limits, spend limits, and data-residency
-settings. Workspaces are explicitly framed as "an isolated boundary"
-for separating development, staging, production, customer projects,
-etc. The maury mode trust boundary maps directly onto an Anthropic
-workspace boundary: one mode == one workspace at the credential
-level.
+Console organization can host multiple workspaces, each scoping its
+own API keys, members, rate limits, and spend limits, plus the
+resources (Files, Message Batches, Skills, prompt caches) created
+via those API keys. Workspaces provide a way to "separate different
+projects, environments, or teams while maintaining centralized
+billing and administration," with documented use cases including
+environment separation (development/staging/production) and team
+or department isolation. The maury mode trust boundary maps directly
+onto an Anthropic workspace boundary: one mode == one workspace at
+the credential level.
 
 For a user running maury with both work and personal modes, the
 recommended setup is:
@@ -141,12 +149,14 @@ recommended setup is:
   Claude Code account.
 
 For commercial / enterprise users, Anthropic's Commercial Terms of
-Service plus the Data Processing Addendum (see
-[Anthropic's Privacy Center][cc-privacy]) explicitly prohibit
-training on inputs and offer reduced retention (7-day default,
-optionally extended for audit) and Zero Data Retention (ZDR) as
-negotiable options. These are the data-handling guarantees that
-make a properly-credentialed work-mode mining run safe-by-default.
+Service plus the Data Processing Addendum (see [Anthropic's Privacy
+Center][cc-privacy]) explicitly prohibit training on inputs. Per the
+[Claude Code data-usage documentation][cc-data-usage], commercial
+users (Team, Enterprise, API) get a **30-day standard retention
+period** for Claude Code data, with [Zero Data Retention][cc-zdr]
+available per-organization for Claude Code on Claude for Enterprise.
+These are the data-handling guarantees that make a properly-
+credentialed work-mode mining run safe-by-default.
 
 ### What this ADR does NOT specify
 
@@ -250,20 +260,46 @@ land any time.
   a properly-credentialed work-mode mining run safe-by-default.
 - [Claude Code data-usage docs][cc-data-usage] — the canonical
   CC-level data-handling reference.
-- [anthropics/claude-code #377][cc-issue-377] — same-email
-  personal-vs-organizational account confusion. Open. Surfaces
-  the practical friction of the per-mode-account discipline.
-- [anthropics/claude-code #7210][cc-issue-7210] — same bug,
-  more recent reference.
+- [anthropics/claude-code #377][cc-issue-377] — *closed*.
+  Same-email personal-vs-organizational account confusion. The
+  underlying confusion-mode is documented in the thread; #7210
+  was filed against the same behavior on a later CLI version.
+- [anthropics/claude-code #7210][cc-issue-7210] — *closed*. Same
+  bug, more recent reference. Together these surface the practical
+  friction of the per-mode-account discipline as Anthropic-
+  acknowledged but not currently being actively reworked.
 
 [cc-overview]: https://code.claude.com/docs/en/overview
-[cc-workspaces]: https://platform.claude.com/docs/en/build-with-claude/workspaces
+[cc-workspaces]: https://platform.claude.com/docs/en/manage-claude/workspaces
 [cc-privacy]: https://privacy.claude.com/en/
-[cc-data-usage]: https://docs.anthropic.com/en/docs/claude-code/data-usage
+[cc-data-usage]: https://code.claude.com/docs/en/data-usage
+[cc-zdr]: https://code.claude.com/docs/en/zero-data-retention
 [cc-issue-377]: https://github.com/anthropics/claude-code/issues/377
 [cc-issue-7210]: https://github.com/anthropics/claude-code/issues/7210
 [maury-status]: 0017-drift-detection-and-reconciliation.md#the-maury-status-skill
 
 ## Amendment history
 
-None.
+- 2026-05-13 — factual-accuracy fixes against the cited Anthropic
+  sources, per the doc-review on commit `1d05499`:
+  - Retention window corrected from "7-day default" (which was
+    sourced from a stale websearch summary) to "30-day standard
+    retention for commercial users" per the current
+    [Claude Code data-usage docs][cc-data-usage]; ZDR added with
+    a direct reference.
+  - Workspaces description tightened to enumerate only the
+    per-workspace settings the [Workspaces docs][cc-workspaces]
+    actually list (API keys, members, rate limits, spend limits,
+    scoped resources). The earlier "data-residency settings"
+    claim was wrong; removed. Direct quote tightened to text
+    that actually appears on the page.
+  - Workspaces URL retargeted to the canonical
+    `platform.claude.com/docs/en/manage-claude/workspaces`
+    (was redirecting from the earlier `build-with-claude`
+    path).
+  - CC issues #377 / #7210 marked CLOSED (verified via
+    `gh issue view`); reframed as Anthropic-acknowledged
+    friction rather than open work.
+  - Single-account-per-install claim labeled "empirically"
+    with reasoning, since the cc-overview page doesn't
+    explicitly establish it.

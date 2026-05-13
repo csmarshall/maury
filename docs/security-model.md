@@ -90,9 +90,10 @@ host's deploy keys remain valid.
 
 **Blast radius:** whatever the deploy key was scoped to. A key
 issued to a single repo on a single host gives the attacker that
-repo's read or write access (depending on the key's `repo_mode` per
-[ADR-0033](adr/0033-pr-repo-mode.md)). They cannot use it to reach
-*other* repos.
+repo's read or write access (the level matching the consuming
+layer's declared `repo_mode` per
+[ADR-0033](adr/0033-pr-repo-mode.md) — `ro` / `pr` / `rw`). They
+cannot use it to reach *other* repos.
 
 **Not reachable from this leak:** any repo without a matching
 deploy key. Bell-LaPadula non-interference applies — see
@@ -125,10 +126,12 @@ are untouched.
 **What to do:** sign out of Claude Code, sign in with the correct
 work account, and (if your org cares about the leak) coordinate
 with Anthropic per the data-retention terms in your account's
-Commercial Terms of Service. Per Anthropic's documented retention
-window (default 7 days for API logs, per the
-[Privacy Center][cc-privacy]) the data leaves their systems on a
-short clock.
+Commercial Terms of Service. Per the
+[Claude Code data-usage docs][cc-data-usage], commercial users
+(Team / Enterprise / API) get a 30-day standard retention period,
+and Claude for Enterprise organizations can additionally opt into
+[Zero Data Retention][cc-zdr] — so the data is on a bounded
+retention contract rather than an open-ended one.
 
 **This is the failure mode [ADR-0041](adr/0041-per-mode-anthropic-credentials.md)
 documents.** Maury doesn't structurally prevent it today — that's
@@ -241,7 +244,7 @@ from "documented discipline" to "structurally enforced."
 - **`scripts/check-doc-links.py` / `maury doctor --docs`.** Not
   security per se, but the same hygiene impulse — internal-link
   rot is a class of trust-boundary erosion in the doc set itself.
-  Sketched in CLAUDE.local.md.
+  Tracked as a maintainer followup.
 
 ---
 
@@ -265,7 +268,8 @@ from "documented discipline" to "structurally enforced."
   Vague hand-waves about safety properties are the failure mode
   this doc is here to prevent.
 
-[cc-workspaces]: https://platform.claude.com/docs/en/build-with-claude/workspaces
+[cc-workspaces]: https://platform.claude.com/docs/en/manage-claude/workspaces
 [cc-privacy]: https://privacy.claude.com/en/
 [cc-commercial]: https://privacy.claude.com/en/collections/10663361-commercial-customers
-[cc-data-usage]: https://docs.anthropic.com/en/docs/claude-code/data-usage
+[cc-data-usage]: https://code.claude.com/docs/en/data-usage
+[cc-zdr]: https://code.claude.com/docs/en/zero-data-retention
