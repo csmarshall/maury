@@ -17,15 +17,15 @@ Schema (v2 — see ADR-0015):
   },
   "hosts": {
     "host_<32hex>": {
-      "name": "toad",
+      "name": "workstation",
       "profile": "profile_<32hex>",
       "lock":    false,
       "push_policy": "permissive",
       "repos": {
-        "base":     { "url": "git@github-base:csmarshall/maury-base.git", "mode": "rw" },
-        "personal": { "url": "git@github-personal:csmarshall/maury-personal.git", "mode": "rw" }
+        "base":     { "url": "git@codeberg.org:<your-username>/maury-base.git", "mode": "rw" },
+        "personal": { "url": "git@codeberg.org:<your-username>/maury-personal.git", "mode": "rw" }
       },
-      "owner": "charles@wozi.com",
+      "owner": "you@example.com",
       "added": "2026-05-06"
     }
   }

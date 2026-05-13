@@ -103,7 +103,7 @@ def test_merge_layers_three_layers() -> None:
     layers = [
         ("base", '{"theme": "dark", "permissions": ["a"]}'),
         ("profile:home", '{"theme": "dark-daltonized", "permissions": ["b"]}'),
-        ("host:toad", '{"permissions": ["c"]}'),
+        ("host:workstation", '{"permissions": ["c"]}'),
     ]
     out = merge_layers(layers)
     assert out == {"theme": "dark-daltonized", "permissions": ["a", "b", "c"]}
@@ -181,7 +181,7 @@ def test_render_engine_emits_merged_settings(tmp_path: Path) -> None:
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
-        hosts={hid: HostSpec(name="toad", profile=pid)},
+        hosts={hid: HostSpec(name="workstation", profile=pid)},
     )
 
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -208,7 +208,7 @@ def test_render_engine_skips_settings_when_no_layers_provide(tmp_path: Path) -> 
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
-        hosts={hid: HostSpec(name="toad", profile=pid)},
+        hosts={hid: HostSpec(name="workstation", profile=pid)},
     )
 
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)
@@ -230,7 +230,7 @@ def test_render_engine_records_settings_error_on_bad_json(tmp_path: Path) -> Non
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
-        hosts={hid: HostSpec(name="toad", profile=pid)},
+        hosts={hid: HostSpec(name="workstation", profile=pid)},
     )
 
     result = render(repo_paths={"base": repo}, manifest=m, profile_id=pid, host_id=hid)

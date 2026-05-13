@@ -58,13 +58,13 @@ def test_rule_kind_forbid() -> None:
 
 
 def test_rule_kind_scope() -> None:
-    r = _make_rule("s", pattern=".", host_overlay="rosa")
+    r = _make_rule("s", pattern=".", host_overlay="server")
     assert r.kind == RuleKind.SCOPE
 
 
 def test_rule_kind_classify_with_overlay_is_classify() -> None:
     """If both profile and overlay are set, it's still classify."""
-    r = _make_rule("c", pattern=".", profile="home", host_overlay="rosa")
+    r = _make_rule("c", pattern=".", profile="home", host_overlay="server")
     assert r.kind == RuleKind.CLASSIFY
 
 
@@ -72,14 +72,14 @@ def test_rule_kind_classify_with_overlay_is_classify() -> None:
 
 
 def test_classify_pattern_match_returns_profile() -> None:
-    rules = [_make_rule("hostname-rosa", pattern=r"\brosa\b", profile="home")]
-    result = classify_fragment("we deployed to rosa today", rules, {"home"})
+    rules = [_make_rule("hostname-server", pattern=r"\bserver\b", profile="home")]
+    result = classify_fragment("we deployed to server today", rules, {"home"})
     assert result.profile == "home"
     assert result.host_overlay is None
 
 
 def test_classify_pattern_no_match_returns_manual() -> None:
-    rules = [_make_rule("hostname-rosa", pattern=r"\brosa\b", profile="home")]
+    rules = [_make_rule("hostname-server", pattern=r"\bserver\b", profile="home")]
     result = classify_fragment("nothing relevant here", rules, {"home"})
     assert result.profile is None
     assert result.confidence == Confidence.LOW
@@ -108,10 +108,10 @@ def test_classify_any_keyword_case_insensitive() -> None:
 def test_classify_all_keywords_requires_all() -> None:
     rules = [
         _make_rule(
-            "kamek-pf",
+            "firewall-pf",
             all_keywords=("pf", "freebsd"),
             profile="home",
-            host_overlay="kamek",
+            host_overlay="firewall",
         ),
     ]
     # only one keyword present
@@ -120,16 +120,16 @@ def test_classify_all_keywords_requires_all() -> None:
     # both present
     r2 = classify_fragment("freebsd pf rules", rules, {"home"})
     assert r2.profile == "home"
-    assert r2.host_overlay == "kamek"
+    assert r2.host_overlay == "firewall"
 
 
 def test_classify_with_host_overlay() -> None:
     rules = [
-        _make_rule("hostname-rosa", pattern=r"\brosa\b", profile="home", host_overlay="rosa"),
+        _make_rule("hostname-server", pattern=r"\bserver\b", profile="home", host_overlay="server"),
     ]
-    result = classify_fragment("rosa deployed", rules, {"home"})
+    result = classify_fragment("server deployed", rules, {"home"})
     assert result.profile == "home"
-    assert result.host_overlay == "rosa"
+    assert result.host_overlay == "server"
 
 
 # ---- priority -------------------------------------------------------------
@@ -205,21 +205,21 @@ def test_scope_applies_overlay_when_classify_doesnt_specify() -> None:
     """A classify rule without host_overlay; a separate scope rule supplies one."""
     rules = [
         _make_rule("classify-home", pattern="x", profile="home"),
-        _make_rule("scope-rosa", pattern="x", host_overlay="rosa"),
+        _make_rule("scope-server", pattern="x", host_overlay="server"),
     ]
     result = classify_fragment("x", rules, {"home"})
     assert result.profile == "home"
-    assert result.host_overlay == "rosa"
+    assert result.host_overlay == "server"
 
 
 def test_scope_does_not_apply_when_classify_specifies_its_own() -> None:
     """If the classify rule already provides host_overlay, scope rules don't override."""
     rules = [
-        _make_rule("classify-kamek", pattern="x", profile="home", host_overlay="kamek"),
-        _make_rule("scope-rosa", pattern="x", host_overlay="rosa"),
+        _make_rule("classify-firewall", pattern="x", profile="home", host_overlay="firewall"),
+        _make_rule("scope-server", pattern="x", host_overlay="server"),
     ]
     result = classify_fragment("x", rules, {"home"})
-    assert result.host_overlay == "kamek"
+    assert result.host_overlay == "firewall"
 
 
 # ---- empty / edge cases ---------------------------------------------------
@@ -318,12 +318,12 @@ def test_validate_allows_symbolic_forbid_targets() -> None:
 SEED_YAML = """
 version: 1
 rules:
-  - id: hostname-rosa
+  - id: hostname-server
     when:
-      pattern: '\\brosa\\b'
+      pattern: '\\bserver\\b'
     then:
       profile: home
-      host_overlay: rosa
+      host_overlay: server
     confidence: high
     priority: 10
 
@@ -341,14 +341,14 @@ def test_seed_yaml_round_trip() -> None:
     rules = parse_rules(SEED_YAML)
     assert len(rules) == 2
     ids = {r.id for r in rules}
-    assert ids == {"hostname-rosa", "redact-home-net"}
+    assert ids == {"hostname-server", "redact-home-net"}
 
 
 def test_seed_classify_via_parsed_rules() -> None:
     rules = parse_rules(SEED_YAML)
-    r = classify_fragment("ssh charles@rosa", rules, {"home"})
+    r = classify_fragment("ssh user@server", rules, {"home"})
     assert r.profile == "home"
-    assert r.host_overlay == "rosa"
+    assert r.host_overlay == "server"
 
 
 def test_seed_redact_blocks_non_home() -> None:

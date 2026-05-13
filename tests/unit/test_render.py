@@ -32,13 +32,13 @@ def _make_repo(tmp_path: Path, layout: dict[str, str]) -> Path:
 
 
 def _basic_manifest() -> tuple[Manifest, str, str]:
-    """A minimal manifest: one profile (home) with one host (toad)."""
+    """A minimal manifest: one profile (home) with one host (workstation)."""
     pid = new_profile_id()
     hid = new_host_id()
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
-        hosts={hid: HostSpec(name="toad", profile=pid)},
+        hosts={hid: HostSpec(name="workstation", profile=pid)},
     )
     return m, pid, hid
 
@@ -86,7 +86,7 @@ def test_render_concatenates_host_overlay(tmp_path: Path) -> None:
         {
             "CLAUDE.md": "base rule\n",
             "profiles/home/CLAUDE.md.fragment": "home rule\n",
-            "profiles/home/hosts/toad/CLAUDE.md.fragment": "toad rule\n",
+            "profiles/home/hosts/workstation/CLAUDE.md.fragment": "workstation rule\n",
         },
     )
     m, pid, hid = _basic_manifest()
@@ -94,9 +94,9 @@ def test_render_concatenates_host_overlay(tmp_path: Path) -> None:
     content = result.by_path()["CLAUDE.md"].content.decode()
     assert "base rule" in content
     assert "home rule" in content
-    assert "toad rule" in content
+    assert "workstation rule" in content
     # Provenance header lists all three layers
-    assert "host-overlay:toad" in content
+    assert "host-overlay:workstation" in content
 
 
 def test_render_provenance_header_includes_sha(tmp_path: Path) -> None:
@@ -319,7 +319,7 @@ def test_render_against_seed_template(tmp_path: Path) -> None:
     from maury.manifest import load_manifest
 
     m = load_manifest(seed_root / ".meta" / "manifest.json")
-    # Pick the genericized `workstation` example host (renamed from `toad`
+    # Pick the genericized `workstation` example host (renamed from `workstation`
     # 2026-05-13 when base-template was made public-safe).
     hid = m.host_id_by_name("workstation")
     assert hid is not None

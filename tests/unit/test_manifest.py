@@ -27,7 +27,7 @@ from maury.manifest import (
 P_BASE = "profile_00000000000000000000000000000001"
 P_HOME = "profile_00000000000000000000000000000002"
 P_WORK = "profile_00000000000000000000000000000003"
-H_TOAD = "host_00000000000000000000000000000010"
+H_WORKSTATION = "host_00000000000000000000000000000010"
 H_WORK = "host_00000000000000000000000000000011"
 
 
@@ -40,8 +40,8 @@ VALID_JSON = f"""
     "{P_WORK}": {{"name": "work", "extends": null}}
   }},
   "hosts": {{
-    "{H_TOAD}": {{
-      "name": "toad",
+    "{H_WORKSTATION}": {{
+      "name": "workstation",
       "profile": "{P_HOME}",
       "lock": false,
       "push_policy": "permissive",
@@ -49,7 +49,7 @@ VALID_JSON = f"""
         "base":     {{"url": "git@x:o/maury-base.git",     "mode": "rw"}},
         "personal": {{"url": "git@x:o/maury-personal.git", "mode": "rw"}}
       }},
-      "owner": "charles@wozi.com",
+      "owner": "you@example.com",
       "added": "2026-05-06"
     }},
     "{H_WORK}": {{
@@ -92,7 +92,7 @@ def test_parse_valid_v2_manifest() -> None:
     m = parse_manifest(VALID_JSON)
     assert m.version == 2
     assert set(m.profiles) == {P_BASE, P_HOME, P_WORK}
-    assert set(m.hosts) == {H_TOAD, H_WORK}
+    assert set(m.hosts) == {H_WORKSTATION, H_WORK}
 
 
 def test_parse_extracts_profile_metadata() -> None:
@@ -104,11 +104,11 @@ def test_parse_extracts_profile_metadata() -> None:
 
 def test_parse_extracts_host_with_profile_id() -> None:
     m = parse_manifest(VALID_JSON)
-    toad = m.hosts[H_TOAD]
-    assert toad.name == "toad"
-    assert toad.profile == P_HOME  # ID, not "home"
-    assert toad.push_policy == PushPolicy.PERMISSIVE
-    assert toad.lock is False
+    workstation = m.hosts[H_WORKSTATION]
+    assert workstation.name == "workstation"
+    assert workstation.profile == P_HOME  # ID, not "home"
+    assert workstation.push_policy == PushPolicy.PERMISSIVE
+    assert workstation.lock is False
 
 
 def test_parse_locked_host() -> None:
@@ -121,8 +121,8 @@ def test_parse_locked_host() -> None:
 
 def test_parse_default_repo_backend_is_git() -> None:
     m = parse_manifest(VALID_JSON)
-    assert m.hosts[H_TOAD].repos["base"].backend == "git"
-    assert m.hosts[H_TOAD].repos["base"].backend_config is None
+    assert m.hosts[H_WORKSTATION].repos["base"].backend == "git"
+    assert m.hosts[H_WORKSTATION].repos["base"].backend_config is None
 
 
 def test_parse_repo_with_backend() -> None:
@@ -132,15 +132,15 @@ def test_parse_repo_with_backend() -> None:
         "version": 2,
         "profiles": {P_HOME: {"name": "home", "extends": None}},
         "hosts": {
-            H_TOAD: {
-                "name": "toad",
+            H_WORKSTATION: {
+                "name": "workstation",
                 "profile": P_HOME,
                 "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw", "backend": "github"}},
             }
         },
     }
     m = parse_manifest(_json.dumps(payload))
-    assert m.hosts[H_TOAD].repos["base"].backend == "github"
+    assert m.hosts[H_WORKSTATION].repos["base"].backend == "github"
 
 
 def test_parse_repo_with_backend_config() -> None:
@@ -176,8 +176,8 @@ def test_parse_invalid_backend_config_type_raises() -> None:
         "version": 2,
         "profiles": {P_HOME: {"name": "home", "extends": None}},
         "hosts": {
-            H_TOAD: {
-                "name": "toad",
+            H_WORKSTATION: {
+                "name": "workstation",
                 "profile": P_HOME,
                 "repos": {
                     "base": {
@@ -198,7 +198,7 @@ def test_load_from_file(tmp_path: Path) -> None:
     p = tmp_path / "manifest.json"
     p.write_text(VALID_JSON)
     m = load_manifest(p)
-    assert H_TOAD in m.hosts
+    assert H_WORKSTATION in m.hosts
 
 
 # ---- v1 rejection ------------------------------------------------------
@@ -233,7 +233,7 @@ def test_invalid_host_id_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
-        f' "hosts": {{"toad": {{"name": "toad", "profile": "{P_HOME}", "repos": {{}}}}}}}}'
+        f' "hosts": {{"workstation": {{"name": "workstation", "profile": "{P_HOME}", "repos": {{}}}}}}}}'
     )
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
@@ -251,7 +251,7 @@ def test_missing_host_profile_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
-        f' "hosts": {{"{H_TOAD}": {{"name": "toad", "repos": {{}}}}}}}}'
+        f' "hosts": {{"{H_WORKSTATION}": {{"name": "workstation", "repos": {{}}}}}}}}'
     )
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
@@ -262,7 +262,7 @@ def test_invalid_push_policy_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
-        f' "hosts": {{"{H_TOAD}": {{"name": "t", "profile": "{P_HOME}",'
+        f' "hosts": {{"{H_WORKSTATION}": {{"name": "t", "profile": "{P_HOME}",'
         f' "push_policy": "yolo", "repos": {{}}}}}}}}'
     )
     with pytest.raises(ManifestError) as ei:
@@ -274,7 +274,7 @@ def test_invalid_repo_mode_raises() -> None:
     bad = (
         f'{{"version": 2,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
-        f' "hosts": {{"{H_TOAD}": {{"name": "t", "profile": "{P_HOME}",'
+        f' "hosts": {{"{H_WORKSTATION}": {{"name": "t", "profile": "{P_HOME}",'
         f' "repos": {{"r": {{"url": "git@x:o/r.git", "mode": "wat"}}}}}}}}}}'
     )
     with pytest.raises(ManifestError) as ei:
@@ -305,7 +305,7 @@ def test_validate_catches_host_referencing_unknown_profile() -> None:
     m = Manifest(
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
-        hosts={H_TOAD: HostSpec(name="toad", profile="profile_ghostghostghostghostghostghost00")},
+        hosts={H_WORKSTATION: HostSpec(name="workstation", profile="profile_ghostghostghostghostghostghost00")},
     )
     errors = validate_manifest(m)
     assert any("profile_ghost" in e for e in errors)
@@ -337,7 +337,7 @@ def test_validate_catches_duplicate_host_names() -> None:
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
         hosts={
-            H_TOAD: HostSpec(name="dup", profile=P_HOME),
+            H_WORKSTATION: HostSpec(name="dup", profile=P_HOME),
             H_WORK: HostSpec(name="dup", profile=P_HOME),
         },
     )
@@ -388,12 +388,12 @@ def test_profile_id_by_name() -> None:
 
 def test_host_id_by_name_exact() -> None:
     m = parse_manifest(VALID_JSON)
-    assert m.host_id_by_name("toad") == H_TOAD
+    assert m.host_id_by_name("workstation") == H_WORKSTATION
 
 
 def test_host_id_by_name_strips_dotted_suffix() -> None:
     m = parse_manifest(VALID_JSON)
-    assert m.host_id_by_name("toad.local") == H_TOAD
+    assert m.host_id_by_name("workstation.local") == H_WORKSTATION
 
 
 def test_resolve_profile_accepts_name_or_id() -> None:
@@ -406,8 +406,8 @@ def test_resolve_profile_accepts_name_or_id() -> None:
 
 def test_resolve_host_accepts_name_or_id() -> None:
     m = parse_manifest(VALID_JSON)
-    assert m.resolve_host("toad") == H_TOAD
-    assert m.resolve_host(H_TOAD) == H_TOAD
+    assert m.resolve_host("workstation") == H_WORKSTATION
+    assert m.resolve_host(H_WORKSTATION) == H_WORKSTATION
     assert m.resolve_host("nonexistent") is None
 
 
@@ -427,8 +427,8 @@ def test_dump_includes_backend_when_non_default() -> None:
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
         hosts={
-            H_TOAD: HostSpec(
-                name="toad",
+            H_WORKSTATION: HostSpec(
+                name="workstation",
                 profile=P_HOME,
                 repos={
                     "base": RepoSpec(url="git@x:o/r.git", mode=RepoMode.RW, backend="github"),
@@ -445,8 +445,8 @@ def test_dump_omits_backend_for_default_git() -> None:
         version=2,
         profiles={P_HOME: ProfileSpec(name="home")},
         hosts={
-            H_TOAD: HostSpec(
-                name="toad",
+            H_WORKSTATION: HostSpec(
+                name="workstation",
                 profile=P_HOME,
                 repos={
                     "base": RepoSpec(url="git@x:o/r.git", mode=RepoMode.RW, backend="git"),
