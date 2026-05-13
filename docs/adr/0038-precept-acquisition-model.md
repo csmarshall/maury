@@ -24,6 +24,21 @@
 
 ---
 
+## TL;DR
+
+A `rules` sublayer consumed as a **precept** (`repo_mode: pr`/`ro`)
+is prescriptive but unenforceable — Claude Code has no mechanism to
+block configuration overrides. Maury **advises**: when a child layer
+overrides precept content, it fires an informational, acknowledgeable
+override advisory. Acquisition is per-layer (each layer's marker
+declares its own rules sublayers, with `repo_mode`); governance
+metadata travels in `.meta/maury-governance.json` so PR contributions
+have a target without depending on backend-specific ACLs. Advisory
+dismissals are version-aware, stored in the consuming mode's repo,
+and reset on mode change (per ADR-0039). Trade-off: more advisory
+noise on first sync than a "silent override" model, but every
+override decision is provenance-bearing.
+
 ## Context
 
 [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) establishes that

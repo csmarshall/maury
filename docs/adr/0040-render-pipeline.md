@@ -28,6 +28,22 @@
 
 ---
 
+## TL;DR
+
+The render pipeline walks the marker graph in attachment-point order
+(per ADR-0037), reads source content from a documented layer-repo
+file layout, and writes to Claude Code's multiple configuration
+surfaces (CLAUDE.md, `.claude/rules/`, `.claude/skills/`,
+`.claude/agents/`, `settings.json`, `.mcp.json`) — each with
+different loading semantics. An **LLM condensation pass** recovers
+always-on context budget for non-precept content; precepts (per
+ADR-0038) are passed through verbatim. The pipeline actively steers
+authors away from misusing surfaces (e.g., task-specific procedural
+content in always-on memory) via `maury agency validate`. Trade-off:
+condensation adds an LLM dependency to render but is the only way to
+keep large agencies inside Claude Code's context budget without
+discarding content.
+
 ## Context and Problem Statement
 
 [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) defines **what

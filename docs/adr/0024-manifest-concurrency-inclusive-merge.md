@@ -9,6 +9,18 @@
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
+## TL;DR
+
+Two hosts pushing concurrent marker-file edits produce git conflicts
+that look textually identical to two different intents (both adding
+different keys vs. both editing the same key) — but only one
+resolution is safe in each case. Maury ships a structured merge tool
+with **inclusive defaults**: auto-resolve only the additive case
+(both sides added different keys → keep all of them), surface every
+other ambiguity to an interactive resolver. Trade-off: more
+prompting than a "latest wins" naive merge, but no silent host loss
+from the marker.
+
 ## Context
 
 Two hosts can mutate `.meta/maury-marker.json` concurrently. Bootstrap

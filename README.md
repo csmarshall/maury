@@ -168,8 +168,10 @@ For everything else:
   two-minute flyby. **Start here if you're deciding whether
   maury is for you.**
 - [`docs/concepts.md`](docs/concepts.md) — canonical definitions
-  (nine core concepts + theoretical foundations + glossary).
+  (nine core concepts + theoretical foundations).
   **Start here if you're new to maury.**
+- [`docs/glossary.md`](docs/glossary.md) — quick-lookup glossary
+  of every term maury uses, each linked to its longer explanation.
 - [`docs/tenets.md`](docs/tenets.md) — the principles maury is
   built on.
 - [`docs/workflow.md`](docs/workflow.md) — user-journey flowcharts

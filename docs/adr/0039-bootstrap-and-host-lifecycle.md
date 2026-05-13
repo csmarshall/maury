@@ -24,6 +24,21 @@
 
 ---
 
+## TL;DR
+
+The host lifecycle has four operations: **agency init** (creates the
+first base repo + UUID `agency_id`), **new-host bootstrap**
+(probes accessible repos, lets the user pick a mode, registers the
+host against that mode), **mode change** (two operations:
+deregister-then-bootstrap, never a single atomic switch), and
+**sync** (mode-scoped subgraph traversal). Host identity is
+**mode-scoped**: a given physical machine accumulates one `host_<hex>`
+per mode-registration over its lifetime; the IDs never transfer
+across mode changes. Advisory dismissals reset on mode change per
+ADR-0038. Trade-off: replacement-hardware recovery is a content-copy
+rather than an identity-transfer (consistent with Tenet 6: identity
+is not name).
+
 ## Context
 
 [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) establishes the

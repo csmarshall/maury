@@ -72,7 +72,9 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 |---|---|
 | README.md | ✅ shipped |
 | docs/tenets.md | ✅ shipped |
-| docs/concepts.md | ✅ shipped (nine core concepts + theoretical foundations + glossary) |
+| docs/concepts.md | ✅ shipped (nine core concepts + theoretical foundations) |
+| docs/glossary.md | ✅ shipped (alphabetical quick-lookup, lifted out of concepts.md 2026-05-13) |
+| docs/elevator-pitch.md | ✅ shipped (two-minute flyby) |
 | docs/workflow.md | ✅ shipped (4 user-journey diagrams, mermaid) |
 | docs/operations.md | ✅ shipped (8 per-command flowcharts, mermaid) |
 | docs/claude-code-contract.md | ✅ shipped (9 documented + 3 assumed-but-unverified entries) |

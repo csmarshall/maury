@@ -25,6 +25,21 @@
 
 ---
 
+## TL;DR
+
+Maury's layer taxonomy is exactly three types: **`base`** (the
+agency-wide root, ×1), **`mode`** (what the user is doing — a nested
+tree below base), and **`rules`** (shareable conventions/precepts —
+floats anywhere). Each repo declares its type, its agency, and its
+**direct sublayers** in `.meta/maury-marker.json` — there is no flat
+agency-wide registry. The agency is bounded by **`agency_id`**
+(UUID) and discovered by walking the marker graph from base outward.
+Environment and machine-specific content is content inside a layer
+(env-tagged and host-tagged sections), not a separate layer type.
+Trade-off: a stranger looking at a single repo cannot infer the full
+agency topology without walking the graph; this is the price of
+locality-of-change and distributed authorship.
+
 ## Context
 
 Maury manages a collection of git repositories that together render a
