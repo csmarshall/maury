@@ -179,6 +179,10 @@ For everything else:
   of every term maury uses, each linked to its longer explanation.
 - [`docs/tenets.md`](docs/tenets.md) — the principles maury is
   built on.
+- [`docs/security-model.md`](docs/security-model.md) — what maury
+  structurally protects against, what it doesn't, and the
+  discipline the user maintains. **Read this if you're evaluating
+  maury for work-use.**
 - [`docs/workflow.md`](docs/workflow.md) — user-journey flowcharts
   (mermaid).
 - [`docs/operations.md`](docs/operations.md) — per-command

@@ -50,7 +50,9 @@ the offending host literally does not possess.
 
 *Embodied by: [ADR-0002](adr/0002-repo-per-trust-boundary.md) (repo per trust boundary), [ADR-0003](adr/0003-per-host-deploy-keys.md) (per-host
 deploy keys), [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (promotion-only cross-boundary), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md)
-(defense-in-depth secrets).*
+(defense-in-depth secrets), [ADR-0041](adr/0041-per-mode-anthropic-credentials.md) (per-mode Anthropic credentials operationalizes the LLM trust boundary).
+Operational doc: [`security-model.md`](security-model.md) — what
+attackers can reach, what the user must maintain, what's out of scope.*
 
 ## 4. Sensitive data stays local
 

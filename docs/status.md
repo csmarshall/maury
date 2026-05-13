@@ -77,6 +77,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | docs/glossary.md | ✅ shipped (alphabetical quick-lookup, lifted out of concepts.md 2026-05-13) |
 | docs/elevator-pitch.md | ✅ shipped (two-minute flyby) |
 | docs/quickstart.md | ✅ shipped (≈5-minute try-without-committing walkthrough against `base-template/`) |
+| docs/security-model.md | ✅ shipped (three-piece contract operationalizing Tenet 3 + ADR-0041; threat walkthroughs; planned-hardening list) |
 | docs/workflow.md | ✅ shipped (4 user-journey diagrams, mermaid) |
 | docs/operations.md | ✅ shipped (8 per-command flowcharts, mermaid) |
 | docs/claude-code-contract.md | ✅ shipped (9 documented + 4 empirically verified + 2 assumed-but-unverified entries) |

@@ -856,6 +856,11 @@ well-established frameworks. Naming them gives ADR authors
 precise vocabulary to reach for and grounds maury's safety
 properties in literature instead of one-off arguments.
 
+For the operational application of these properties to evaluating
+maury for real-world use — what attackers can reach, what discipline
+the user must maintain, what's deliberately out of scope — see
+[`security-model.md`](security-model.md).
+
 ### Mandatory access control (Bell-LaPadula, 1973)
 
 [Bell-LaPadula][bell-lapadula] established the formal model of
