@@ -353,6 +353,8 @@ Re-run after any Claude Code minor-version bump.
 - [anthropics/claude-code #54865](https://github.com/anthropics/claude-code/issues/54865)
   — *open*. Quotes `fh()` from cli.js source; documents the
   same non-injectivity from a Windows path-form angle.
+  Maury added macOS reproduction + UTF-16 / symlink findings on
+  2026-05-13 ([comment](https://github.com/anthropics/claude-code/issues/54865#issuecomment-4445670878)).
 - [anthropics/claude-code #46522](https://github.com/anthropics/claude-code/issues/46522)
   — *open*. `/resume` hides sessions after project dir rename/move.
 - [anthropics/claude-code #57920](https://github.com/anthropics/claude-code/issues/57920)
@@ -411,6 +413,9 @@ events, drift attribution failing.
   drift-attribution chain, which depends on deterministic
   ordering. Resolution of the contradiction (either way)
   would tell us whether the current design works as written.
+  Maury added a downstream-voice comment on 2026-05-13
+  ([comment](https://github.com/anthropics/claude-code/issues/57800#issuecomment-4445691094))
+  explaining the drift-attribution dependency.
 - [anthropics/claude-code #23747](https://github.com/anthropics/claude-code/issues/23747)
   — *closed (duplicate)*. SessionStart hooks hang indefinitely
   on Windows even with `timeout: 5` configured. Confirms
@@ -460,6 +465,9 @@ error or worse (silently mis-parsed transcripts).
   filed by the `aims.dashboard` VS Code extension team (whose
   use case overlaps maury's: file-watch transcripts they
   didn't spawn). Resolution would promote this entry to ✅.
+  Maury added a downstream-voice comment on 2026-05-13
+  ([comment](https://github.com/anthropics/claude-code/issues/53516#issuecomment-4445681110))
+  enumerating the fields the maury mining reader consumes.
 - [anthropics/claude-code #49400](https://github.com/anthropics/claude-code/issues/49400)
   — *open docs request*. Publish the JSONL session schema —
   the same ask from a different angle.
