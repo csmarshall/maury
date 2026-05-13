@@ -121,10 +121,11 @@ siblings, not in an ancestor relationship. Promote to 'work'
 > Per [ADR-0013](0013-active-in-session-capture.md) §"Active-
 > context file", `scope_hint` may also take a host name (e.g.,
 > `<host>` for content that should land only in this specific
-> host's overlay). Hosts aren't in the inheritance graph — they
-> attach to a single profile per ADR-0001. So host-scope hints
-> bypass this ADR's check entirely; the host overlay is always
-> a valid destination for the host that owns it.
+> host's host-tagged section). Hosts aren't in the mode tree —
+> they register against a single mode per ADR-0039. So host-scope
+> hints bypass this ADR's check entirely; a host's host-tagged
+> section inside its registered mode is always a valid destination
+> for that host's content.
 
 **At review time** — when the curator runs `maury review` per
 ADR-0022, accepted findings cherry-pick onto a review branch in

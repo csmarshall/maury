@@ -73,8 +73,8 @@ Three pillars:
    FreeBSD).
 2. **Mode isolation** — repo-per-trust-boundary architecture with
    per-host SSH deploy keys. A work host literally cannot read or push to
-   personal-mode bytes; isolation is enforced server-side by GitHub
-   access control, not by client-side filtering.
+   personal-mode bytes; isolation is enforced server-side by the git
+   provider's access control, not by client-side filtering.
 3. **Learning** — local-only mining of `~/.claude/projects/*.jsonl`
    produces sanitized fragments classified by a deterministic, learnable
    rule engine. Proposals queue for review; reclassifications synthesize
@@ -164,6 +164,9 @@ not yet implemented, see [`docs/status.md`](docs/status.md).**
 
 For everything else:
 
+- [`docs/elevator-pitch.md`](docs/elevator-pitch.md) — the
+  two-minute flyby. **Start here if you're deciding whether
+  maury is for you.**
 - [`docs/concepts.md`](docs/concepts.md) — canonical definitions
   (nine core concepts + theoretical foundations + glossary).
   **Start here if you're new to maury.**

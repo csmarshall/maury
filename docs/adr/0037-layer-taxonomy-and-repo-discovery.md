@@ -788,4 +788,4 @@ until migrated.
 
 ## Amendment history
 
-None.
+- 2026-05-13 — this ADR's `rules` layer + `repo_mode` model formally supersedes the publish/subscribe **mechanics** of [ADR-0034](0034-published-subscribed-profiles.md) (the `extends`-based inheritance + `subscribe` mental model). ADR-0034's use-case framing (curator publishes shared content; engineers consume + contribute back via PR) is preserved as the product story; the mechanics live here and in [ADR-0038](0038-precept-acquisition-model.md).

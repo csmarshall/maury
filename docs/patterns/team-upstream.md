@@ -78,7 +78,7 @@ Curators who want to expose a `pr` contribution path should
 also publish governance metadata as
 `.meta/maury-governance.json` per
 [ADR-0038](../adr/0038-precept-acquisition-model.md) —
-declaring owners and the PR target so subscribers' tooling
+declaring owners and the PR target so consumers' tooling
 can route contributions correctly.
 
 ### Step 2 — Declare the rules repo as a sublayer of the curator's mode

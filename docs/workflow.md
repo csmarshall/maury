@@ -36,8 +36,8 @@ flowchart TD
     HostID --> Read[maury reads .meta/maury-marker.json<br/>identifies host: id-file or hostname fallback<br/>walks base + mode chain + sublayers<br/>renders to ~/.claude/]
     Read --> Populated[~/.claude/ populated]
     Populated --> Reg{host<br/>registered?}
-    Reg -->|yes| Assigned[render with host's assigned profile]
-    Reg -->|no| ProposeReg[write register-this-host proposal<br/>render proceeds with default-profile]
+    Reg -->|yes| Assigned[render with host's assigned mode]
+    Reg -->|no| ProposeReg[write register-this-host proposal<br/>render proceeds with default mode]
     Assigned --> Keys[deploy keys for additional repos<br/>per ADR-0018 step 5]
     ProposeReg --> Keys
     Keys --> KeysLoop[for each repo in this host's mode chain:<br/>generate ssh keypair<br/>print public key for deploy-key add<br/>gh CLI used when backend=github]

@@ -31,7 +31,7 @@ manager) — maury can't solve that without a chicken-and-egg.
 > there is no single authoritative manifest — each repo carries its
 > own `.meta/maury-marker.json` declaring only its direct sublayers.
 > The step-by-step flow below is preserved as historical record; ADR-0039
-> is the source of truth for the current bootstrap UX.
+> is the source of truth for the current bootstrap flow.
 
 ## Context and Problem Statement
 

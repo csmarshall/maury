@@ -26,11 +26,12 @@ content types are added.
 
 ## Context and Problem Statement
 
-[ADR-0001](0001-n-profiles.md) introduced N profiles with optional
-`extends` inheritance. [ADR-0002](0002-repo-per-trust-boundary.md)
-introduced the layering `base + profile chain + host overlay →
-~/.claude/`. The render engine resolves these layers into a single
-output tree.
+[ADR-0001](0001-n-profiles.md) introduced N modes with optional
+inheritance. [ADR-0002](0002-repo-per-trust-boundary.md) introduced
+trust-boundary layering. Per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md),
+the layering is now `base + mode chain + rules sublayers + host-tagged
+sections → ~/.claude/`. The render engine resolves these layers into a
+single output tree.
 
 What's never been pinned down: **when a child layer touches a thing
 the parent already defined, does it *refine* the parent or *replace*
@@ -112,7 +113,7 @@ Two consequences:
 
 | Content | Default merge | Why |
 |---|---|---|
-| `CLAUDE.md` (and fragments) | **Concatenate** with provenance markers | Each layer adds rules; nothing is silently lost. Order: base → profile chain (root → leaf) → host overlay. |
+| `CLAUDE.md` (and fragments) | **Concatenate** with provenance markers | Each layer adds rules; nothing is silently lost. Order: base → mode chain (root → leaf) → host-tagged sections (per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)). |
 | `settings.json` | **Deep-merge** by key (child overrides specific keys, parent persists for others) | Standard JSON-config semantics. Arrays use add-and-dedupe by element identity (e.g., permissions strings). |
 | `keybindings.json` | **Deep-merge** by binding key | Child can rebind specific shortcuts without dropping parent's other bindings. |
 | `hooks.yaml` | **Concatenate by hook id** (additive); duplicate id = explicit override | Hooks are independently-firing event handlers; default is "all of them fire." Same id in two layers = child overrides parent's definition for that id. |
@@ -193,10 +194,10 @@ Every rendered file carries a provenance comment block at the top:
 ```markdown
 <!-- maury rendered file. hand-edits flow through `maury reconcile` so they're captured with provenance (per Tenet 8 — hand-edits are first-class input).
      layers (root → leaf):
-       base                    base/CLAUDE.md (sha 8a7f3c1d)
-       profile:home            profiles/home/CLAUDE.md.fragment (sha 4e9b4a2c)
-       host-overlay:workstation       profiles/home/hosts/workstation/CLAUDE.md.fragment (sha 8f1e7d5b)
-     suppressions: 1 line removed by host overlay (see audit)
+       base                          base/CLAUDE.md (sha 8a7f3c1d)
+       mode:home                     modes/home/CLAUDE.md.fragment (sha 4e9b4a2c)
+       mode:home (host-tagged)       modes/home/hosts/workstation.fragment (sha 8f1e7d5b)
+     suppressions: 1 line removed by host-tagged section (see audit)
 -->
 ```
 

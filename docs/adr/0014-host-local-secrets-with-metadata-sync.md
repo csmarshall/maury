@@ -20,7 +20,7 @@ running where) is genuinely useful for restore and migration. Maury
 splits these into two stores: a **host-local value store**
 (capability-driven backend: macOS Keychain / Linux Secret Service /
 age-encrypted file fallback) and a **synced metadata manifest**
-(`secrets.json` in the host overlay) carrying presence + endpoints +
+(`secrets.json` in the host-tagged section of the mode repo per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)) carrying presence + endpoints +
 timestamps but never values. Trade-off: three backends to maintain and
 two stores for the user to reason about.
 
@@ -111,10 +111,11 @@ backends are convenience layers on top. The probe writes
 `secret_backend: keychain | secret-service | age-file` into
 `capabilities.json`.
 
-#### 2. Synced metadata manifest (per-host overlay)
+#### 2. Synced metadata manifest (host-tagged content)
 
-Lives at `<repo>/profiles/<profile>/hosts/<host>/secrets.json` —
-inside the host overlay, so it travels with the host's other config.
+Lives in the relevant mode repo's host-tagged section for this host
+(per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)), so it
+travels with the host's other machine-specific config.
 Schema:
 
 ```json
@@ -213,7 +214,7 @@ credential for service Y" can leak information. Three knobs:
   do not push the metadata manifest, only consume.
 - **Per-credential `private: true`** — flagged credentials are stored
   locally in the manifest but **excluded from git**. The `secrets.json`
-  file in the host overlay contains only non-private entries. A
+  file in the host-tagged section contains only non-private entries. A
   separate `secrets.local.json` (gitignored) holds private entries.
 - **Service endpoint redaction** — endpoints can be tagged
   `endpoint_visibility: local-only`; in that case, the synced manifest
@@ -340,3 +341,4 @@ Code documentation:
 ## Amendment history
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
+- 2026-05-13 — "host overlay" retired per ADR-0037: machine-specific content is "host-tagged content" inside the relevant mode repo's host-tagged sections. The `secrets.json` storage location is reframed accordingly; no semantic change to the two-store split.

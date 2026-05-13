@@ -266,7 +266,8 @@ in the command strings.
 > for the verification record + two adjacent findings (`CLAUDE_HOOK_EVENT`
 > is NOT set in env; `CLAUDE_PROJECT_DIR` IS set + symlink-resolved).
 
-Since `settings.json` is already host-specific (host overlay layer)
+Since `settings.json` is already host-specific (rendered from
+host-tagged sections per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)),
 this is not a portability regression — the file is regenerated on
 every sync.
 

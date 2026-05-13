@@ -264,7 +264,7 @@ v1 (in scope):
 - Drift detection in `maury status` and `maury sync`
 - Three sync flows + the `--force` / `--non-interactive` flags
 - Reconcile menu (5 actions for hand-edits, 3 for Claude-writes)
-- `hand-managed.json` per-host overlay
+- `hand-managed.json` per-host (kept in host-local maury-state, not synced)
 - `PostToolUse log_tool_use` hook (single hook, single log file —
   load-bearing for drift attribution)
 - **`maury-status` skill** — see §"The `maury-status` skill"

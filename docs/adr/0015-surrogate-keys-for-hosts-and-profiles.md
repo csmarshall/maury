@@ -54,8 +54,8 @@ distinction (Codd) and the DDD **Entity Identity** principle: an
 entity's identity should persist across attribute changes, including
 its name. Real consequences of getting this wrong:
 
-- Renaming `"workstation"` → `"froggie"` breaks: every manifest reference,
-  the host overlay path `profiles/home/hosts/workstation/`, every audit log
+- Renaming `"workstation"` → `"froggie"` breaks: every marker reference,
+  every host-tagged section keyed by the old name, every audit log
   entry, any future cross-host reference in fragments
   ("running on workstation").
 - Renaming `"work"` → `"old-amazon"` breaks: every rule whose target

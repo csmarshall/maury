@@ -679,4 +679,4 @@ the second decision deserves the same surfacing as the first.
 
 ## Amendment history
 
-None.
+- 2026-05-13 — this ADR's rules-acquisition model + governance metadata + override-advisory lifecycle formally supersedes the publish/subscribe **mechanics** of [ADR-0034](0034-published-subscribed-profiles.md) (the `extends`-based inheritance + `subscribe` mental model). ADR-0034's use-case framing is preserved as the product story; the mechanics live here and in [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md).

@@ -1,10 +1,7 @@
 # ADR-0034: Published/subscribed profiles
 
-**Status:** Accepted (mechanics superseded by [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) + [ADR-0038](0038-precept-acquisition-model.md); the use-case framing is preserved)
+**Status:** Accepted (mechanics superseded by [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) + [ADR-0038](0038-precept-acquisition-model.md); the use-case framing is preserved — see Amendment history at bottom)
 **Date:** 2026-05-07
-**Amended:**
-  - 2026-05-11 — "profile" renamed to "mode" per ADR-0037. The published/subscribed model is refined by ADR-0038 (rules layer + governance metadata); ADR-0038 is now the canonical reference for shared-rules acquisition.
-  - 2026-05-13 — schema examples updated to the per-repo marker file (`.meta/maury-marker.json` with `layer`/`agency_id`/`sublayers`/`hosts` fields per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)). The old flat-manifest `profiles` map / `profile_<hex>` keys no longer exist as a schema; the modern model expresses "subscribe to a team profile" as **declaring a `rules` sublayer with `repo_mode: pr` or `ro`** in the consuming mode's marker.
 
 > **Reading this ADR:** the use-case framing (curator publishes team
 > conventions; engineers subscribe + contribute back via PR) is still
@@ -350,3 +347,4 @@ team-shared upstream.
 ## Amendment history
 
 - 2026-05-11 — "profile" renamed to "mode" per ADR-0037. The published/subscribed model is refined by ADR-0038 (rules layer + governance metadata); ADR-0038 is now the canonical reference for shared-rules acquisition.
+- 2026-05-13 — schema examples updated to the per-repo marker file (`.meta/maury-marker.json` with `layer`/`agency_id`/`sublayers`/`hosts` fields per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)). The old flat-manifest `profiles` map / `profile_<hex>` keys no longer exist as a schema; the modern model expresses "subscribe to a team profile" as **declaring a `rules` sublayer with `repo_mode: pr` or `ro`** in the consuming mode's marker. The use-case framing in the body is preserved; the mechanics are now expressed via [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) (`rules` layer + marker schema) and [ADR-0038](0038-precept-acquisition-model.md) (acquisition + governance metadata + override-advisory lifecycle). Reciprocal supersession-acknowledgement notes added to both ADRs the same day.

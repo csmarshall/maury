@@ -96,7 +96,7 @@ Three rule shapes:
 - **forbid** — block a profile assignment regardless of classify rules
   (the redaction guards). Symbolic targets supported: `*` (all),
   `!<name>` (all except), literal names.
-- **scope** — narrow further to a host overlay (`linux-server` → `home/hosts/linux-server/`).
+- **scope** — narrow further to host-tagged content for a specific host (per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md), machine-specific content lives in host-tagged sections inside the relevant mode repo).
 
 Every classification carries a trace listing which rules fired and why.
 `maury rules trace "<text>"` lets you dry-run any text against
