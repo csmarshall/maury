@@ -1,8 +1,12 @@
 # Universal CLAUDE.md (managed by maury)
 
-> Rendered from `<base>/CLAUDE.md` + profile fragments + host overlay.
+> Rendered from `<base>/CLAUDE.md` + mode fragments + host-tagged sections.
 > Do not hand-edit through `~/.claude/CLAUDE.md`; use `maury reconcile`
 > to capture changes via the proposal pipeline.
+
+> This file is a **seed** — copy it into your `maury-base.git` repo and
+> edit to match your conventions. The content below is illustrative;
+> nothing here is mandatory.
 
 ## Code style
 

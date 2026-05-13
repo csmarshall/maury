@@ -1,5 +1,13 @@
 ## Home context
 
-- Homelab hosts: rosa (Ubuntu), kamek (FreeBSD), toad (macOS workstation).
-- Personal email: charles@wozi.com.
-- Default DNS: AWS Route53 for wozi.com.
+> Example fragment — edit to match your personal setup. The home
+> profile is where machine-specific identifiers, personal email,
+> homelab service names, etc. live. Maury's redaction rules
+> (`.meta/rules.yaml`) prevent these from leaking into other
+> profiles' rendered output.
+
+- Personal email: `<your-personal-email>`.
+- Default DNS / personal domain: `<your-personal-domain>`.
+- Add the kind of home/personal context you'd want Claude to know
+  about: homelab service names, hobby project paths, personal
+  hardware quirks, etc.

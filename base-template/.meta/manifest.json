@@ -1,94 +1,59 @@
 {
+  "_comment": "Example seed manifest. Edit hosts, repo URLs, and profile IDs to match your setup. Per ADR-0015 the *_<hex> IDs are surrogate keys; regenerate them when forking this template so audit history stays distinct from upstream.",
   "version": 2,
   "profiles": {
-    "profile_4887192b44c9446ba0802a8bc0dfa7d3": {
+    "profile_54d9aab2ad0e4b0098e5b4c44ebe434e": {
       "name": "base",
       "extends": null,
       "description": "Universal preferences applied to every host"
     },
-    "profile_e606b30521a340119af573f44a233f69": {
+    "profile_a55be4817cf94504a7a1932724a309f8": {
       "name": "home",
       "extends": null,
-      "description": "Personal context: homelab, side projects, family hosts"
+      "description": "Personal context: hobby projects, personal hosts, home email"
     },
-    "profile_1635bf82b3924d4b9d6b8babea9d185a": {
+    "profile_cad5d6bffe73432f924cf0ca86997d96": {
       "name": "work",
       "extends": null,
       "description": "Work / employer context"
     }
   },
   "hosts": {
-    "host_b305ad3077b5406ba3bf39e13c2e6205": {
-      "name": "toad",
-      "profile": "profile_e606b30521a340119af573f44a233f69",
-      "lock": false,
-      "push_policy": "permissive",
-      "repos": {
-        "base": {
-          "url": "git@github-base:csmarshall/maury-base.git",
-          "mode": "rw"
-        },
-        "personal": {
-          "url": "git@github-personal:csmarshall/maury-personal.git",
-          "mode": "rw"
-        }
-      },
-      "owner": "charles@wozi.com",
-      "added": "2026-05-06"
-    },
-    "host_bd9097534d1e45199fca84f7d76cd40e": {
-      "name": "rosa",
-      "profile": "profile_e606b30521a340119af573f44a233f69",
+    "host_0be82a2a67204f4397deb8a40add0360": {
+      "name": "workstation",
+      "profile": "profile_a55be4817cf94504a7a1932724a309f8",
       "lock": false,
       "push_policy": "own_profile_only",
       "repos": {
         "base": {
-          "url": "git@github-base:csmarshall/maury-base.git",
-          "mode": "ro"
+          "url": "git@codeberg.org:<your-username>/maury-base.git",
+          "mode": "rw"
         },
         "personal": {
-          "url": "git@github-personal:csmarshall/maury-personal.git",
+          "url": "git@codeberg.org:<your-username>/maury-personal.git",
           "mode": "rw"
         }
       },
-      "owner": "charles@wozi.com",
-      "added": "2026-05-06"
+      "owner": "<your-personal-email>",
+      "added": "2026-05-13"
     },
-    "host_49fa7f7b63f6465495e82e1f1ffe7032": {
-      "name": "kamek",
-      "profile": "profile_e606b30521a340119af573f44a233f69",
-      "lock": false,
-      "push_policy": "own_profile_only",
-      "repos": {
-        "base": {
-          "url": "git@github-base:csmarshall/maury-base.git",
-          "mode": "ro"
-        },
-        "personal": {
-          "url": "git@github-personal:csmarshall/maury-personal.git",
-          "mode": "rw"
-        }
-      },
-      "owner": "charles@wozi.com",
-      "added": "2026-05-06"
-    },
-    "host_48e55c6cf57d48899a231d799c6d18ea": {
+    "host_ca7a4b75fdc144aaae8d015730cf0eca": {
       "name": "work-laptop",
-      "profile": "profile_1635bf82b3924d4b9d6b8babea9d185a",
+      "profile": "profile_cad5d6bffe73432f924cf0ca86997d96",
       "lock": true,
       "push_policy": "disabled",
       "repos": {
         "base": {
-          "url": "git@github-base:csmarshall/maury-base.git",
+          "url": "git@codeberg.org:<your-username>/maury-base.git",
           "mode": "ro"
         },
         "work": {
-          "url": "git@github-work:csmarshall-work/maury-work.git",
+          "url": "git@github.com:<your-employer-org>/maury-work.git",
           "mode": "rw"
         }
       },
-      "owner": "charles@wozi.com",
-      "added": "2026-05-06"
+      "owner": "<your-work-email>",
+      "added": "2026-05-13"
     }
   }
 }

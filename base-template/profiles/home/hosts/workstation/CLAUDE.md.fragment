@@ -1,0 +1,5 @@
+## Host: workstation (example macOS host)
+
+- GNU tools prefixed with `g` (gsed, greadlink, gfind, etc.).
+- Personal projects under `~/projects/`.
+- Edit this fragment to match the actual host you use as your workstation.

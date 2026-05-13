@@ -1,5 +1,9 @@
 # maury rules.yaml — classification ruleset (the learned artifact)
 #
+# This is an EXAMPLE seed. Edit hostnames, patterns, and reasons to
+# match your own setup. Maury treats rules.yaml as source code — every
+# rule should carry `added` (ISO date) and a `reason`.
+#
 # Three rule shapes, distinguished by which fields of `then` are populated:
 #   classify  : `then.profile` set
 #   forbid    : `then.forbid_profile` set (list with optional symbolic targets:
@@ -8,50 +12,28 @@
 #
 # Conditions are combined with implicit AND. At least one of `pattern`,
 # `any_keyword`, `all_keywords` must be specified.
-#
-# Provenance: every rule should carry `added` (ISO date) and a `reason`.
-# When the synthesizer adds a new rule from a reclassification, it
-# records the originating fragment ID in `reason`.
 
 version: 1
 
 rules:
   # ---- host & identity ---------------------------------------------------
+  # These rules say "if this hostname appears in a transcript, classify
+  # the surrounding context as belonging to that host." Add one entry
+  # per real host you use, replacing the example below.
 
-  - id: hostname-rosa
+  - id: hostname-workstation
     when:
-      pattern: '\brosa\b'
+      pattern: '\bworkstation\b'
     then:
       profile: home
-      host_overlay: rosa
+      host_overlay: workstation
     confidence: high
     priority: 10
-    added: 2026-05-06
-    reason: "Charles's Ubuntu homelab server"
-
-  - id: hostname-kamek
-    when:
-      pattern: '\bkamek\b'
-    then:
-      profile: home
-      host_overlay: kamek
-    confidence: high
-    priority: 10
-    added: 2026-05-06
-    reason: "Charles's FreeBSD firewall/router"
-
-  - id: hostname-toad
-    when:
-      pattern: '\btoad\b'
-    then:
-      profile: home
-      host_overlay: toad
-    confidence: high
-    priority: 10
-    added: 2026-05-06
-    reason: "Charles's macOS workstation"
+    added: 2026-05-13
+    reason: "Example: classify references to this hostname as home/workstation context"
 
   # ---- universal (base) preferences -------------------------------------
+  # Content that should apply on every host regardless of mode lands here.
 
   - id: code-style-python
     when:
@@ -65,7 +47,7 @@ rules:
       profile: base
     confidence: high
     priority: 5
-    added: 2026-05-06
+    added: 2026-05-13
     reason: "Universal Python tooling preferences apply across all profiles"
 
   - id: shell-conventions
@@ -78,7 +60,7 @@ rules:
       profile: base
     confidence: high
     priority: 5
-    added: 2026-05-06
+    added: 2026-05-13
     reason: "Shell scripting conventions universal"
 
   - id: commit-style
@@ -92,10 +74,13 @@ rules:
       profile: base
     confidence: medium
     priority: 5
-    added: 2026-05-06
+    added: 2026-05-13
     reason: "Git/PR style preferences are universal"
 
   # ---- redaction guards -------------------------------------------------
+  # `forbid_profile` rules block sensitive patterns from leaking into
+  # the wrong profile. Replace the placeholders below with your actual
+  # home subnet, personal domain, etc.
 
   - id: redact-home-network
     when:
@@ -104,49 +89,15 @@ rules:
       forbid_profile: ["!home"]
     confidence: high
     priority: 100
-    added: 2026-05-06
-    reason: "Home subnet must never appear in base or any non-home profile"
+    added: 2026-05-13
+    reason: "Example: home subnet IPs must never appear in non-home profiles"
 
-  - id: redact-home-domain
+  - id: redact-personal-domain
     when:
-      pattern: '\b\w+\.wozi\.com\b'
+      pattern: '\b\w+\.example\.com\b'
     then:
       forbid_profile: ["!home"]
     confidence: high
     priority: 100
-    added: 2026-05-06
-    reason: "Personal domain hostnames are home-only"
-
-  # ---- home-context content (homelab indicators) ------------------------
-
-  - id: homelab-services
-    when:
-      any_keyword:
-        - frigate
-        - "home assistant"
-        - homeassistant
-        - esphome
-        - scrypted
-        - traefik
-        - "/opt/sw"
-    then:
-      profile: home
-    confidence: high
-    priority: 8
-    added: 2026-05-06
-    reason: "Homelab service names indicate home context"
-
-  - id: freebsd-context
-    when:
-      any_keyword:
-        - "pf.conf"
-        - dpinger
-        - iocage
-        - "freebsd"
-    then:
-      profile: home
-      host_overlay: kamek
-    confidence: medium
-    priority: 8
-    added: 2026-05-06
-    reason: "FreeBSD-specific terminology points to kamek"
+    added: 2026-05-13
+    reason: "Example: personal-domain hostnames are home-only — replace example.com with your domain"

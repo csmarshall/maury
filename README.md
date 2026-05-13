@@ -167,6 +167,10 @@ For everything else:
 - [`docs/elevator-pitch.md`](docs/elevator-pitch.md) — the
   two-minute flyby. **Start here if you're deciding whether
   maury is for you.**
+- [`docs/quickstart.md`](docs/quickstart.md) — five-minute
+  try-without-committing walkthrough against the bundled
+  `base-template/` seed. **Start here if you want to see maury
+  do something concrete before reading the design docs.**
 - [`docs/concepts.md`](docs/concepts.md) — canonical definitions
   (nine core concepts + theoretical foundations).
   **Start here if you're new to maury.**
