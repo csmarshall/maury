@@ -8,6 +8,21 @@
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+Maury runs in environments where the network may be missing
+(planes, tunnels, air-gapped hosts, API incidents). Rather than a
+global "offline mode," each command names its own offline behavior:
+pure-local commands (`render`, `doctor`, `agency validate`,
+`status`, `rules trace`, `reconcile`, `review`, etc.) work as-is;
+network-dependent commands (`sync`, `mine`, `promote`,
+`verify-cc-contract`) **hard-refuse on first remote-unreachable
+error** by default, with explicit `--offline` (sync/promote) or
+`--store-only` (mine) opt-in degrade paths. `init --from-tarball`
+is the sanctioned air-gap onboarding path. Trade-off: more friction
+on flaky networks than a silent-degrade default, but no surprise
+about whether your last sync actually pulled fresh state.
+
 ## Context
 
 Maury runs in environments where network access can be missing,

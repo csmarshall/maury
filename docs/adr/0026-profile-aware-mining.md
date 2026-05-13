@@ -10,6 +10,19 @@
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 - [Tenet 4 — Sensitive data stays local](../tenets.md#4-sensitive-data-stays-local)
 
+## TL;DR
+
+Mining without mode-awareness produces work-context proposals from
+personal-context transcripts (and vice versa) — exactly the cross-
+boundary leakage Tenet 1 forbids. This ADR adds three pieces: a
+durable **`session-history.jsonl`** companion to ADR-0025's transient
+active-sessions log, one entry per completed session keyed by the
+mode active when it *started*; mining filters that respect that
+attribution (default: mine the active mode only); and bucketized
+review so findings carry mode provenance into the curator's view.
+Trade-off: extra hook + extra state file, and review UI must handle
+N mode buckets instead of one flat list.
+
 ## Context
 
 [ADR-0005](0005-local-only-mining.md) established that each host

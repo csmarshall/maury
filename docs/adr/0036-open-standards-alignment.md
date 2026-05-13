@@ -8,6 +8,22 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding)
 
+## TL;DR
+
+Should maury commit to Claude Code conventions only, or to the
+emerging cross-vendor open standards (Agent Skills, AGENTS.md, MCP)
+that 170+ Linux Foundation members are co-stewarding? Choice:
+**tiered alignment**. Commit to Agent Skills now — it's already
+aligned at the file-layout level, only YAML frontmatter discipline
+is new, and it gives users portability if they later switch
+agent vendors. Track AGENTS.md (trigger: public profiles) and MCP
+(trigger: multi-vendor agent fleet) for future adoption. Deliberately
+out-of-scope: cross-vendor standards that don't exist yet (manifest
+formats, hook standards, state-dir standards). Trade-off: maury's
+own surface (markers, hooks, state dir) stays maury-shaped rather
+than chasing pre-existence; the cost is one more conformance gate
+on every SKILL.md ships.
+
 ## Context and Problem Statement
 
 Maury was designed primarily against [Claude Code's][cc-overview]

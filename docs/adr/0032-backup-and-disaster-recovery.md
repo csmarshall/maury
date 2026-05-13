@@ -8,6 +8,22 @@
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
+## TL;DR
+
+Synced repos and the rendered `~/.claude/` are recoverable from git
+remotes; what backup actually needs to address is the **host-local
+content** — `~/.maury-host-id`, the append-only logs
+(`claude-writes.jsonl`, `session-history.jsonl`, etc.), the staging
+files in `~/.claude/maury-staging/`, and (opt-in) the raw Claude
+Code transcripts under `~/.claude/projects/`. Two commands:
+**`maury backup`** writes a `.tar.zst` bundle; **`maury restore`**
+unpacks it back into place. Default scope is metadata-only;
+`--include-transcripts` opts into the (much larger) raw transcript
+set. Storage is the user's choice — restic to B2, rsync to a NAS,
+USB stick. Trade-off: explicit user discipline rather than
+maury-managed backup automation, but no opinionated dependency on
+a specific remote.
+
 ## Context
 
 [ADR-0029](0029-maury-state-layout-contract.md) §"Recoverable

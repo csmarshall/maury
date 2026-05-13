@@ -9,6 +9,21 @@
 - [Tenet 4 — Sensitive data stays local](../tenets.md#4-sensitive-data-stays-local)
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 
+## TL;DR
+
+Six prior ADRs reference a "Phase 10 audit log" without specifying
+it — every one of them is making promises against a contract that
+didn't exist. This ADR is that contract: **one file**,
+`~/.claude/maury-state/audit.jsonl`, append-only, host-local
+(never synced to git), JSONL with ≤4 KB records to maintain POSIX
+`O_APPEND` atomicity per the concurrent-sessions CC contract. Every
+state-changing maury operation writes one event with a fixed
+schema (`ts`, `host_id`, `kind`, payload). Subsumes the stub
+`mode-switches.jsonl` introduced in ADR-0025 (with a documented
+one-shot migration). Trade-off: a new logging concern in every
+state-changing code path, but a single cross-cutting record makes
+"what happened on this host?" a `jq` query.
+
 ## Context
 
 Six ADRs reference a "Phase 10 audit log" without specifying it:

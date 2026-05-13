@@ -8,6 +8,23 @@
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+No `maury self-update` command — maury defers self-upgrade to the
+package manager (`pipx upgrade maury`, `uv tool upgrade maury`,
+`git pull && uv sync` for source installs). Maury surfaces age
+two ways: an explicit `maury --version` and a low-noise PyPI
+version-check at most once per day, cached in
+`last-version-check.json` (per [ADR-0029](0029-maury-state-layout-contract.md)),
+showing a one-line stale-version warning when a newer release is
+available. Air-gapped hosts disable the version-check entirely.
+[ADR-0030](0030-manifest-schema-migrations.md) handles the
+specific case where a peer pushes a marker schema newer than this
+host's maury can read. Trade-off: maury doesn't self-update, so
+users running stale binaries miss bug/safety fixes unless they
+notice the warning or pull manually — but no surprise upgrades
+either.
+
 ## Context
 
 Maury will be installed via `pipx install maury` (per

@@ -11,6 +11,21 @@
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 
+## TL;DR
+
+[ADR-0009](0009-promotion-only-cross-boundary.md) specifies *how*
+cross-trust-boundary promotion works (proposal queue, curator review,
+audit) but not *where* in the graph it's allowed to land. This ADR
+adds the constraint: **promotion can only flow along edges of the
+mode tree** — a finding from mode `A` can land in `A` or any
+ancestor up to `base`, never in a sibling or unrelated mode.
+Lateral cross-mode promotion is forbidden by the graph itself, not
+just curator discretion; to get content from one sibling to another,
+promote to their shared ancestor and let inheritance flow it down.
+Trade-off: more promotion hops than direct sibling-to-sibling
+moves, but the graph constraint makes "where can this leak?"
+provably bounded.
+
 ## Context
 
 [ADR-0009](0009-promotion-only-cross-boundary.md) established

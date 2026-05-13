@@ -9,6 +9,20 @@
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 
+## TL;DR
+
+A live Claude Code session has the *old* mode's content loaded into
+working memory; switching modes mid-session creates a cross-boundary
+leak that maury cannot detect after the fact. `maury mode use <name>`
+refuses unless three preconditions hold: the host isn't `lock: true`,
+no active Claude Code sessions are running, and the target mode is
+known. Each precondition has a loud `--force` override for advanced
+users. Active-session detection uses `SessionStart`/`SessionEnd`
+hooks (per ADR-0023's marker scheme) writing to
+`active-sessions.jsonl`. Trade-off: refusing during an active session
+sometimes blocks the user from doing the obvious thing; the leak risk
+is severe enough that this is the right default.
+
 ## Context
 
 [ADR-0001](0001-n-profiles.md) established that a host has one

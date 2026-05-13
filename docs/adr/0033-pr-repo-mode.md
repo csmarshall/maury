@@ -9,6 +9,20 @@
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+The original `ro` / `rw` deploy-key binary missed a load-bearing
+team workflow: engineers consume the team rules repo freely, but
+writes must flow through PR review by the curator. This ADR adds a
+third value, **`pr`**, to the `repo_mode` enum: read like `ro`,
+write through pull request. When `maury review` sees a `pr`-mode
+target it pushes the review branch and opens a PR via the platform
+CLI (`gh` for GitHub; pluggable per
+[ADR-0016](0016-pluggable-repo-backends.md)) instead of merging
+locally. Trade-off: requires a platform CLI on hosts that
+contribute to `pr`-mode repos, which makes contribution path
+backend-aware (mitigated by the per-backend adapter pattern).
+
 ## Context
 
 The maury manifest's repo entries today have a `mode` field

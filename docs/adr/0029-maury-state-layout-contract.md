@@ -18,6 +18,21 @@
 - [Tenet 4 — Sensitive data stays local](../tenets.md#4-sensitive-data-stays-local)
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 
+## TL;DR
+
+ADRs 0017/0023/0025/0026 each introduced files under
+`~/.claude/maury-state/` without a single doc consolidating them.
+This ADR is that contract: enumerates every file, names ownership
+and lifecycle, and locks the cross-cutting invariants.
+`~/.claude/maury-state/` is the maury equivalent of `.git/` —
+per-host, host-local, **never synced to git** (defense-in-depth:
+structurally outside any synced repo path, plus per-file write
+contracts). All files are recreatable from their primary sources
+on next sync; losing the directory is recoverable, never
+catastrophic. Trade-off: a new state file needs to land in this
+ADR's File-inventory table as a hard requirement, or it isn't
+canonical.
+
 ## Context
 
 Multiple ADRs (0017, 0023, 0025, 0026) have introduced files

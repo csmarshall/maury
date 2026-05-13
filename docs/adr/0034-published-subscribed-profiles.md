@@ -19,6 +19,21 @@
 - [Tenet 3 — Trust boundaries are physical](../tenets.md#3-trust-boundaries-are-physical-not-policy)
 - [Tenet 9 — Defer to the platform](../tenets.md#9-defer-to-the-platform)
 
+## TL;DR
+
+A real workflow earlier ADRs didn't address: a team curator publishes
+shared maury content; engineers consume it, extend it, and contribute
+back through curator-reviewed PRs. This ADR establishes the
+**use-case layer** — curator-as-ongoing-role, multi-user properties,
+discoverability, versioning, the contribution-back-via-PR flow.
+Mechanics composed from ADR-0033 (`pr` repo mode) and a thin
+`maury subscribe` convenience command. **Update 2026-05-13:** the
+mechanical implementation has been superseded by
+[ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)'s `rules`
+layer + [ADR-0038](0038-precept-acquisition-model.md)'s acquisition
+model; this ADR's use-case framing is still the product story but
+the JSON schema examples now reflect the per-repo marker model.
+
 ## Context
 
 Earlier ADRs assumed maury's user is a single human with

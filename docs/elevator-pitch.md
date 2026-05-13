@@ -49,18 +49,19 @@ carries the lesson across.
   the mode tree (to `work`, or further to `base`) through curator
   review. Nothing flows sideways or down without a human.
 
-## What's new vs. the alternatives
+## How maury sits alongside parallel efforts
 
 The README's [Related work](../README.md#related-work) section
-covers this in detail. Short version: existing tools cover one
-piece each — `jean-claude` does two-profile sync, `claude-diary`
-does single-host mining, `chezmoi` is a generic dotfile manager
-that does not know what a mode is. **The combination** — N
-user-defined modes + repo-level isolation + local-only mining +
-deterministic rule engine + cross-OS hooks + active in-session
-capture — is the gap maury fills. Anthropic ships nothing in
-this space; `/doctor` is a plumbing check and v2.1.59+ auto-memory
-is per-project and machine-local.
+credits each project in detail. Short version: each tool in this
+space covers one piece — `jean-claude` does two-profile sync,
+`claude-diary` does single-host mining, `chezmoi` is a generic
+dotfile manager that does not know what a mode is. **The
+combination** — N user-defined modes + repo-level isolation +
+local-only mining + deterministic rule engine + cross-OS hooks +
+active in-session capture — is the slice maury composes on top.
+Anthropic-native tooling solves a different problem: `/doctor` is
+a plumbing check and v2.1.59+ auto-memory is per-project and
+machine-local.
 
 ## Who maury is for
 

@@ -8,6 +8,21 @@
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 11 — Explicit beats implicit, with conservative defaults](../tenets.md#11-explicit-beats-implicit-with-conservative-defaults)
 
+## TL;DR
+
+Manifest schema versions are git-tracked and pulled by every host.
+A silent auto-migration on one host would force the upgrade on all
+peers as a fait accompli, breaking peers that haven't yet upgraded
+their maury — exactly the cross-host coordination harm Tenet 1
+forbids. Three rules: (1) maury **never silently auto-migrates**;
+migration is always a user-invoked `maury manifest upgrade-vN-to-vN+1`
+command. (2) Maury **refuses to operate on a manifest version newer
+than it understands**, with a clear "upgrade maury or check out an
+older commit" message. (3) Maury operates fine on older versions ≤
+its max-supported, optionally suggesting the upgrade. Trade-off:
+the user has to coordinate the upgrade across hosts deliberately;
+nothing surprises a peer.
+
 ## Context
 
 The manifest format has a `version: <int>` field. The current
