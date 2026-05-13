@@ -39,8 +39,9 @@ nothing carries the lesson across.
 The community has partial solutions:
 
 - **[jean-claude](https://github.com/MikeVeerman/jean-claude)** does
-  multi-host config sync — but only two hardcoded profiles
-  (work/personal) and no learning loop.
+  multi-host config sync — N user-defined profiles git-synced, but
+  no transcript mining or learning loop, and isolation is
+  profile-aware rather than enforced at the trust-boundary.
 - **[claude-diary](https://github.com/rlancemartin/claude-diary)** mines
   transcripts to propose CLAUDE.md updates — but single-host, no
   profiles, auto-appends instead of queuing for review.
@@ -183,6 +184,10 @@ For everything else:
   structurally protects against, what it doesn't, and the
   discipline the user maintains. **Read this if you're evaluating
   maury for work-use.**
+- [`docs/parallel-efforts.md`](docs/parallel-efforts.md) — how
+  maury sits alongside the other tools in this space
+  (jean-claude, claude-diary, ccms, chezmoi, Anthropic native).
+  Useful if you're comparing.
 - [`docs/workflow.md`](docs/workflow.md) — user-journey flowcharts
   (mermaid).
 - [`docs/operations.md`](docs/operations.md) — per-command

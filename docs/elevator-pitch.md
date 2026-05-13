@@ -53,7 +53,7 @@ carries the lesson across.
 
 The README's [Related work](../README.md#related-work) section
 credits each project in detail. Short version: each tool in this
-space covers one piece — `jean-claude` does two-profile sync,
+space covers one piece — `jean-claude` does profile-aware sync,
 `claude-diary` does single-host mining, `chezmoi` is a generic
 dotfile manager that does not know what a mode is. **The
 combination** — N user-defined modes + repo-level isolation +
