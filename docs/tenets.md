@@ -95,7 +95,7 @@ Anything that lands in synced config can be traced back to its origin.
 
 *Embodied by: [ADR-0004](adr/0004-rule-engine-classification.md) (rules carry `added` and `reason`), [ADR-0008](adr/0008-claude-diary-reference.md)
 (synthesizer records originating fragment), [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (audit on both
-sides of promotion), Q8 (Claude-write provenance).*
+sides of promotion), [ADR-0017](adr/0017-drift-detection-and-reconciliation.md) (Claude-write provenance via `claude-writes.jsonl`), [ADR-0035](adr/0035-audit-log.md) (cross-cutting audit log).*
 
 ## 8. Hand-edits are first-class input
 
@@ -135,11 +135,12 @@ action-form hooks), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md
 
 ## 11. Explicit beats implicit, with conservative defaults
 
-The manifest is explicit; nothing important is inferred. Default
-behaviors are conservative — `push_policy: own_profile_only` not
-`permissive`, `mode: ro` not `rw`, `cli` LLM backend not `sdk`. Escape
-hatches exist (`--force`, `--non-interactive`) but the user must ask
-for them.
+The marker schema is explicit; nothing important is inferred. Default
+behaviors are conservative — `push_policy: own_profile_only`
+(the schema value name predates the profile→mode rename; semantically
+"this host can only push to its own mode") not `permissive`,
+`repo_mode: ro` not `rw`, `cli` LLM backend not `sdk`. Escape hatches
+exist (`--force`, `--non-interactive`) but the user must ask for them.
 
 *Embodied by: default push policy, default repo mode, default LLM
 backend, default sync flow, the entire flag-escape pattern;

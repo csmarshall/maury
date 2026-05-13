@@ -19,7 +19,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | Command | Status | Notes |
 |---|---|---|
 | `maury init` | ✅ shipped | Bootstrap a host; generates `~/.maury-host-id`, runs capability probe, renders to `~/.claude/`. Per [ADR-0018](adr/0018-minimum-bootstrap-ux.md). |
-| `maury render` | ✅ shipped | Compose base + profile chain + host overlay → target dir. Standalone of `init`/`sync`. |
+| `maury render` | ✅ shipped | Compose base + mode chain + rules sublayers + host-tagged sections → target dir. Standalone of `init`/`sync`. |
 | `maury sync` | 🟡 partially shipped | v0 slice: clones/pulls each repo in the host's manifest, renders, applies. **Drift detection not yet wired** ([ADR-0017](adr/0017-drift-detection-and-reconciliation.md) Phase 5.x); running on a real `~/.claude/` is hazardous until that lands. The `--check` flag is the safe way to inspect today. |
 | `maury rules trace` | ✅ shipped | Dry-run any text against the ruleset; shows which rule matched. |
 | `maury manifest validate` | ✅ shipped | Validate manifest schema. |
@@ -30,7 +30,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury mine` | 🟡 partially shipped | Transcript walker, LLM extractor, four-state crossref classification all shipped. **Run-branch generation per [ADR-0022](adr/0022-branch-per-mining-run.md) not yet wired** — current mining produces in-memory findings; the branch-with-commits flow is Phase 6 finalization. |
 | `maury review <run-id>` | ⏳ planned | Walk a mining run's commits with cherry-pick UI. Phase 7 per [ADR-0022](adr/0022-branch-per-mining-run.md). |
 | `maury promote --from --to` | ⏳ planned | Cross-repo promotion via curator. Phase 9 per [ADR-0009](adr/0009-promotion-only-cross-boundary.md). |
-| `maury profile use <name>` | ⏳ planned | Switch active profile with safeguards. Phase 5.x per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
+| `maury mode use <name>` | ⏳ planned | Switch active mode with safeguards. Phase 5.x per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | `maury reconcile` | ⏳ planned | Drift menu (5 reconcile actions). Phase 5.x per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md). |
 | `maury sessions prune` | ⏳ planned | Clean up stale `active-sessions.jsonl` entries. Per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | `maury verify-cc-contract` | ⏳ planned | Re-fetch cited Claude Code docs and diff against `docs/claude-code-snapshots/`. Drift detection for upstream documentation changes. |
@@ -47,7 +47,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | Rule engine + `rules.yaml` schema | ✅ shipped | Phase 1. |
 | Manifest schema + validator | ✅ shipped | Phase 2. v2 schema. |
 | Capability probe (per-host) | ✅ shipped | Phase 2. |
-| Render engine (base + profile chain + host overlay) | ✅ shipped | Phase 3. Refinement-by-default semantics per [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md). |
+| Render engine (base + mode chain + rules sublayers + host-tagged sections) | ✅ shipped | Phase 3. Refinement-by-default semantics per [ADR-0019](adr/0019-inheritance-semantics-refine-by-default.md). |
 | Bootstrap (`maury init`) | ✅ shipped | Phase 4 first slice. |
 | Sync workflow (clone/pull/render/apply) | ✅ shipped | Phase 5 v0. Drift detection is Phase 5.x and not yet wired. |
 | `maury doctor` evaluator | ✅ shipped | Phase 2.5. |
@@ -72,15 +72,15 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 |---|---|
 | README.md | ✅ shipped |
 | docs/tenets.md | ✅ shipped |
-| docs/concepts.md | ✅ shipped (six core concepts + theoretical foundations) |
+| docs/concepts.md | ✅ shipped (nine core concepts + theoretical foundations + glossary) |
 | docs/workflow.md | ✅ shipped (4 user-journey diagrams, mermaid) |
 | docs/operations.md | ✅ shipped (8 per-command flowcharts, mermaid) |
-| docs/claude-code-contract.md | ✅ shipped (9 documented + 5 assumed-but-unverified entries) |
+| docs/claude-code-contract.md | ✅ shipped (9 documented + 3 assumed-but-unverified entries) |
 | docs/claude-code-snapshots/ | ✅ shipped (8 HTML snapshots, MANIFEST with sha256) |
 | docs/adr/ (0001-0025) | ✅ shipped |
-| ADRs 0026 (profile-aware mining), 0027 (cross-context promotion via shared root), 0028 (offline behavior), 0029 (maury-state layout contract), 0030 (manifest schema migrations), 0031 (self-update), 0032 (backup + DR), 0033 (`pr` repo mode), 0034 (published/subscribed profiles) | ✅ shipped |
-| Planned: Phase 10 audit log ADR (gap-M, not yet drafted; multiple ADRs reference it) | ⏳ planned |
-| docs/patterns/team-upstream.md (gap K) | ⏳ planned |
+| ADRs 0026 (mode-aware mining), 0027 (cross-mode promotion via shared root), 0028 (offline behavior), 0029 (maury-state layout contract), 0030 (manifest schema migrations), 0031 (self-update), 0032 (backup + DR), 0033 (`pr` repo mode), 0034 (published/subscribed profiles — use-case framing; mechanics superseded by 0037/0038) | ✅ shipped |
+| ADRs 0035 (audit log), 0036 (open-standards alignment), 0037 (layer taxonomy + repo discovery), 0038 (precept acquisition model), 0039 (bootstrap + host lifecycle), 0040 (render pipeline) | ✅ shipped |
+| docs/patterns/team-upstream.md (gap K) | ✅ shipped |
 
 ## How to read this file alongside the ADRs
 

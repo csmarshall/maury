@@ -15,7 +15,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
+- [Tenet 2 — Consistency within a mode](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
@@ -64,8 +64,8 @@ pipeline; they're two entry points, not two systems.
 - **Tenet 1:** first, do no harm. Cross-boundary capture leaks
   are the chief risk; defense must be multi-layered (skill
   prompt + forbid rules + review step).
-- **Tenet 2:** consistency within a profile, controlled
-  difference across profiles. The capture mechanism must
+- **Tenet 2:** consistency within a mode, controlled
+  difference across modes. The capture mechanism must
   arrive on every host through normal sync — no per-host
   hand-installation.
 - **Tenet 5:** the user arbitrates ambiguity. Captures are

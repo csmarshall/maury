@@ -19,7 +19,7 @@ is still legible for diagnosis.
 - [`maury mine`](#maury-mine)
 - [`maury review <run-id>`](#maury-review-run-id)
 - [`maury promote --from --to`](#maury-promote---from---to)
-- [`maury profile use <name>`](#maury-profile-use-name)
+- [`maury mode use <name>`](#maury-mode-use-name)
 - [`maury uninstall`](#maury-uninstall)
 
 ---
@@ -32,21 +32,21 @@ See [ADR-0018](adr/0018-minimum-bootstrap-ux.md).
 ```mermaid
 flowchart TD
     Start([maury init --from-dir REPO]) --> Validate[validate inputs]
-    Validate --> Load[load source manifest<br/>.meta/manifest.json]
+    Validate --> Load[load source marker<br/>.meta/maury-marker.json]
     Load --> Schema{schema version<br/>known?}
     Schema -->|no| FailSchema([error: unknown version])
     Schema -->|yes| HostID{~/.maury-host-id<br/>present?}
-    HostID -->|yes| InMan{id in<br/>manifest?}
+    HostID -->|yes| InMan{id in<br/>marker hosts?}
     InMan -->|yes| Identify[reuse existing entry]
     InMan -->|no| FailStale([error: stale id])
-    HostID -->|no| Hostname{hostname<br/>in manifest?}
+    HostID -->|no| Hostname{hostname<br/>in marker hosts?}
     Hostname -->|yes| ReuseByName[reuse entry<br/>write ~/.maury-host-id]
-    Hostname -->|no| Propose[propose register-this-host commit<br/>continue with default profile]
+    Hostname -->|no| Propose[propose register-this-host commit<br/>continue with default mode]
     Identify --> Probe
     ReuseByName --> Probe
     Propose --> Probe
-    Probe[run capability probe] --> WriteCaps[write host overlay<br/>capabilities.json]
-    WriteCaps --> Render[render base + profile chain + host overlay<br/>→ ~/.claude/]
+    Probe[run capability probe] --> WriteCaps[write host capabilities.json<br/>to maury-state]
+    WriteCaps --> Render[render base + mode chain + rules sublayers<br/>+ host-tagged sections → ~/.claude/]
     Render --> WriteState[write last-render.json]
     WriteState --> SSH[for each repo beyond base:<br/>gen ssh keypair, print pub key]
     SSH --> Done([done — exit 0 if registered, 2 if pending])
@@ -62,7 +62,7 @@ the drift contract.
 
 ```mermaid
 flowchart TD
-    Start([maury sync]) --> Load[load manifest<br/>identify host]
+    Start([maury sync]) --> Load[load markers<br/>identify host]
     Load --> ForRepos[for each repo:<br/>git pull --ff-only or git clone]
     ForRepos --> RepoOK{all<br/>repos ok?}
     RepoOK -->|no| FailRepo([abort — record errors])
@@ -79,7 +79,7 @@ flowchart TD
     SoftAccept --> RenderStep
     WarnForce --> RenderStep
     Reconcile --> RenderStep
-    RenderStep[render base + profile + host overlay<br/>→ in-memory tree] --> Apply[apply: write iff content differs<br/>settings.json hooks per ADR-0023 marker]
+    RenderStep[render base + mode chain + sublayers<br/>→ in-memory tree] --> Apply[apply: write iff content differs<br/>settings.json hooks per ADR-0023 marker]
     Apply --> Tools[regenerate ~/.claude/bin/maury-tools.sh]
     Tools --> UpdateState[update last-render.json]
     UpdateState --> Summary([print summary])
@@ -204,22 +204,22 @@ flowchart TD
 
 ---
 
-## `maury profile use <name>`
+## `maury mode use <name>`
 
-Switch the host's active profile. Re-renders. Hook teardown is
+Switch the host's active mode. Re-renders. Hook teardown is
 implicit via the marker scheme.
 
 ```mermaid
 flowchart TD
-    Start([maury profile use NAME]) --> Validate{NAME is a<br/>known profile?}
-    Validate -->|no| Fail([error — unknown profile])
-    Validate -->|yes| UpdateOverlay[update host overlay<br/>old profile inactive, new profile active]
+    Start([maury mode use NAME]) --> Validate{NAME is a<br/>known mode?}
+    Validate -->|no| Fail([error — unknown mode])
+    Validate -->|yes| UpdateOverlay[update host's mode registration<br/>old mode inactive, new mode active]
     UpdateOverlay --> Render[invoke render pipeline]
-    Render --> RewriteSettings[settings.json hooks block:<br/>preserve non-marked hooks<br/>replace # maury-managed hooks with new profile's set]
-    RewriteSettings --> RegenTools[regenerate ~/.claude/bin/maury-tools.sh<br/>tool catalog may differ between profiles]
+    Render --> RewriteSettings[settings.json hooks block:<br/>preserve non-marked hooks<br/>replace # maury-managed hooks with new mode's set]
+    RewriteSettings --> RegenTools[regenerate ~/.claude/bin/maury-tools.sh<br/>tool catalog may differ between modes]
     RegenTools --> RewriteCLAUDE[~/.claude/CLAUDE.md replaced with new chain output]
     RewriteCLAUDE --> UpdateState[update last-render.json]
-    UpdateState --> Push[commit + push manifest change to profile repo<br/>so peer hosts see the switch]
+    UpdateState --> Push[commit + push marker change to mode repo<br/>so peer hosts see the switch]
     Push --> Done([restart Claude Code to pick up new hooks])
 ```
 

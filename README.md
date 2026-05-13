@@ -19,10 +19,10 @@
 
 ---
 
-Multi-host Claude Code configuration sync, profile isolation, and
+Multi-host Claude Code configuration sync, mode isolation, and
 learned-rule mining. Maury keeps `~/.claude/` consistent across machines,
-isolates "contexts" (home / work / per-client) at the GitHub-repo level
-so personal content cannot leak onto a work device, and periodically
+isolates modes (home / work / per-client) at the GitHub-repo level so
+personal content cannot leak onto a work device, and periodically
 mines local conversation transcripts to propose updates to your CLAUDE.md,
 settings, hooks, and skills.
 
@@ -50,16 +50,16 @@ The community has partial solutions:
   `/doctor` is a plumbing health-check; auto-memory (v2.1.59+) is
   per-project and machine-local.
 
-**The combination** — N user-defined profiles + repo-level isolation +
+**The combination** — N user-defined modes + repo-level isolation +
 local-only mining + rule-engine classification + cross-OS hook
 portability + active in-session capture — is what no single tool does.
 That's maury.
 
 The project's purpose, captured as tenet #2 in
-[`docs/tenets.md`](docs/tenets.md): *within a profile, Claude's
+[`docs/tenets.md`](docs/tenets.md): *within a mode, Claude's
 behavior should be identical across every host you use. Across
-profiles, differences must be explicit.* Drift within a profile is
-a bug; differences between profiles are a feature. (Tenet #1 is
+modes, differences must be explicit.* Drift within a mode is
+a bug; differences between modes are a feature. (Tenet #1 is
 "first, do no harm" — the operating principle for every state-
 changing operation.)
 
@@ -68,11 +68,12 @@ changing operation.)
 Three pillars:
 
 1. **Sync** — `~/.claude/CLAUDE.md`, `settings.json`, agents, skills,
-   keybindings, and hooks rendered from a versioned `base + profile + host`
-   overlay. Cross-OS portable (macOS, Linux, FreeBSD).
-2. **Profile isolation** — repo-per-trust-boundary architecture with
+   keybindings, and hooks rendered from a versioned `base + mode chain
+   + rules sublayers` composition. Cross-OS portable (macOS, Linux,
+   FreeBSD).
+2. **Mode isolation** — repo-per-trust-boundary architecture with
    per-host SSH deploy keys. A work host literally cannot read or push to
-   personal-context bytes; isolation is enforced server-side by GitHub
+   personal-mode bytes; isolation is enforced server-side by GitHub
    access control, not by client-side filtering.
 3. **Learning** — local-only mining of `~/.claude/projects/*.jsonl`
    produces sanitized fragments classified by a deterministic, learnable
@@ -98,21 +99,22 @@ contributions land.
 
 Maury serves this directly:
 
-- **Curator(s)** publish a team profile from a repo they hold
+- **Curator(s)** publish a team `rules` repo from a repo they hold
   `rw` on
-  ([ADR-0034](docs/adr/0034-published-subscribed-profiles.md)).
-- **Subscribers** consume it from a repo configured with `pr` mode
-  ([ADR-0033](docs/adr/0033-pr-repo-mode.md)) — they read freely
-  and inherit-and-extend in their own profile, but writes flow
-  through pull requests for curator review.
+  ([ADR-0037](docs/adr/0037-layer-taxonomy-and-repo-discovery.md),
+  [ADR-0038](docs/adr/0038-precept-acquisition-model.md)).
+- **Consumers** declare the team rules repo as a `rules` sublayer in
+  their own mode marker, with `repo_mode: pr`
+  ([ADR-0033](docs/adr/0033-pr-repo-mode.md)) — they read freely,
+  but writes flow through pull requests for curator review.
 - **Cross-boundary contributions** (a useful insight from a
-  client-engagement profile that belongs in the team base) are
-  routed via the promotion flow
+  client-engagement mode that belongs in the team base) are routed
+  via the promotion flow
   ([ADR-0009](docs/adr/0009-promotion-only-cross-boundary.md)),
   not direct pushes — an engineer holding `rw` on their own
   client-engagement repo still has only `ro` or `pr` on the shared
   team base, so the boundary holds.
-- **Personal layers** sit on top of team-published profiles. An
+- **Personal mode content** sits on top of team-published rules. An
   engineer's machine-specific overrides, secrets metadata, and
   per-host capability overrides stay personal and don't pollute
   the team repo.
@@ -163,7 +165,7 @@ not yet implemented, see [`docs/status.md`](docs/status.md).**
 For everything else:
 
 - [`docs/concepts.md`](docs/concepts.md) — canonical definitions
-  (six core concepts + theoretical foundations + glossary).
+  (nine core concepts + theoretical foundations + glossary).
   **Start here if you're new to maury.**
 - [`docs/tenets.md`](docs/tenets.md) — the principles maury is
   built on.
@@ -211,15 +213,16 @@ uv run maury --help
 
 ## Architecture (one paragraph)
 
-A host has one active profile. Profiles compose `base` + (optional
-inheritance chain) + `<profile>` fragment + `host overlay` and render to
-`~/.claude/`. Each trust boundary is its own git repo; per-host deploy
-keys grant scoped read/write. Hooks are written against named actions
-(`notify`, `log_jsonl`, `run_script`) that the render engine resolves to
-platform-specific commands using each host's capability probe. Mining
-runs locally on every host and emits structured fragments; classification
-is a pure rule engine over `.meta/rules.yaml`; the user reviews proposals
-and reclassifications synthesize new rules.
+A host has one active mode. Renders compose `base` + the mode chain
+(leaf to root) + `rules` sublayers attached at each level of the
+chain, and write to `~/.claude/`. Each trust boundary is its own git
+repo; per-host deploy keys grant scoped read/write. Hooks are written
+against named actions (`notify`, `log_jsonl`, `run_script`) that the
+render engine resolves to platform-specific commands using each
+host's capability probe. Mining runs locally on every host and emits
+structured fragments; classification is a pure rule engine over
+`.meta/rules.yaml`; the user reviews proposals and reclassifications
+synthesize new rules.
 
 ## Related work
 
@@ -230,7 +233,7 @@ Maury stands on shoulders. Credit:
   threshold and observe-reflect-retrieve cadence are from claude-diary.
   Maury reimplements rather than depends.
 - **[MikeVeerman/jean-claude](https://github.com/MikeVeerman/jean-claude)**
-  — sync UX reference. Confirmed the gap a profile-aware + learning tool fills.
+  — sync UX reference. Confirmed the gap a mode-aware + learning tool fills.
 - **[chezmoi](https://github.com/twpayne/chezmoi)** — generic dotfile
   manager whose host-detection model inspired the capability probe. Not
   used as a dependency; the multi-repo trust-boundary architecture is

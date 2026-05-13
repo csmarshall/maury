@@ -79,7 +79,7 @@ design:
   bearing — what fired, what was overridden, when it was dismissed,
   at what version of the rules repo.
 
-[cc-memory]: https://docs.claude.com/en/docs/claude-code/memory
+[cc-memory]: https://code.claude.com/docs/en/memory
 
 ## Decision
 

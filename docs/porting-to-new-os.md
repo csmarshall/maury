@@ -225,10 +225,9 @@ uv run maury sync
 
 If you've got a port working on a new OS:
 
-1. Open an [issue using the "Design question"
-   template](https://github.com/csmarshall/maury/issues/new/choose)
-   describing what tier you reached and what assumptions you
-   had to add.
+1. Open an issue using the "Design question" template on the
+   maury repo, describing what tier you reached and what
+   assumptions you had to add.
 2. Submit a PR with the probe + resolver + wrapper changes.
 3. Tag any platform-specific quirks you discovered for
    inclusion in this doc.

@@ -6,7 +6,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile; controlled difference across profiles](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
+- [Tenet 2 — Consistency within a mode; controlled difference across modes](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 6 — Identity is not name](../tenets.md#6-identity-is-not-name)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
@@ -561,7 +561,7 @@ make it acknowledgeable, do not gate. This is consistent with Tenet 5
 (the user arbitrates ambiguity) and Tenet 8 (hand-edits are
 first-class input).
 
-[cc-memory]: https://docs.claude.com/en/docs/claude-code/memory
+[cc-memory]: https://code.claude.com/docs/en/memory
 
 ---
 

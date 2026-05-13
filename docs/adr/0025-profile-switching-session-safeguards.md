@@ -352,4 +352,4 @@ Code documentation:
 
 ## Amendment history
 
-- 2026-05-11 — "mode" renamed to "mode" throughout per ADR-0037 doctoral examination. `maury mode use` → `maury mode use`; `mode-switches.jsonl` → `mode-switches.jsonl`; audit schema fields updated. No semantic changes to safeguard logic.
+- 2026-05-11 — "profile" renamed to "mode" throughout per ADR-0037 doctoral examination. `maury profile use` → `maury mode use`; `profile-switches.jsonl` → `mode-switches.jsonl`; audit schema fields updated (`from_profile`/`to_profile` → `from_mode`/`to_mode`). No semantic changes to safeguard logic.

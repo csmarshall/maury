@@ -19,11 +19,19 @@
 A new host adopting maury should need the absolute minimum: one URL
 (or a tarball for air-gap) plus an SSH key already on the host, with
 `pipx install maury` as the only prereq. `maury init` pulls the base
-repo, reads its manifest, self-identifies (or proposes a new host
+repo, reads its marker file, self-identifies (or proposes a new host
 entry), and bootstraps additional deploy keys. `maury bootstrap` is a
 separate verb for curator-side agency ops. Trade-off: the user must
 remember the base URL + auth credential out-of-band (password
 manager) — maury can't solve that without a chicken-and-egg.
+
+> **Note (2026-05-08):** [ADR-0039](0039-bootstrap-and-host-lifecycle.md)
+> rewrites this ADR's bootstrap flow against the distributed-marker
+> model from [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md):
+> there is no single authoritative manifest — each repo carries its
+> own `.meta/maury-marker.json` declaring only its direct sublayers.
+> The step-by-step flow below is preserved as historical record; ADR-0039
+> is the source of truth for the current bootstrap UX.
 
 ## Context and Problem Statement
 
@@ -104,9 +112,13 @@ maury init --from-dir /mnt/usb/maury-base/
    the SSH key the user has configured (per ADR-0016, default
    transport auth is SSH for git/github backends in v1). Offline:
    unpacks the tarball or copies the directory.
-3. **Read the manifest.** The base repo's `.meta/manifest.json` is
-   now authoritative — maury knows about every other repo, every
-   other host, every profile from this point forward.
+3. **Read the base marker and walk outward.** The base repo's
+   `.meta/maury-marker.json` declares the base's direct sublayers;
+   each sublayer's marker declares its own direct sublayers; the
+   traversal continues until every reachable layer in the agency
+   has been discovered. There is no single authoritative manifest —
+   the agency view is assembled by walking the marker graph (per
+   ADR-0037).
 4. **Decide who I am.** Two paths:
    - **Pre-registered:** the manifest already has a host entry whose
      `host_id` matches `~/.maury-host-id`. Render and exit. Most
@@ -371,3 +383,4 @@ render engine (Phase 3 — already shipped) are prerequisites.
 ## Amendment history
 
 - 2026-05-11 — "fleet" renamed to "agency" per ADR-0037 doctoral examination. No semantic changes to bootstrap flow.
+- 2026-05-13 — `.meta/manifest.json` → `.meta/maury-marker.json`; step 3 reworded to reflect the distributed-marker model from [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md). Note added at top deferring to [ADR-0039](0039-bootstrap-and-host-lifecycle.md) as the source of truth for current bootstrap UX.

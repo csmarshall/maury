@@ -241,7 +241,7 @@ maury manifest upgrade-v1-to-v2 --in <path>
 
 Generates fresh IDs for every host and profile, rewrites the file,
 and prints a mapping report. Existing seed manifest in
-`base-template/.meta/manifest.json` gets regenerated.
+`base-template/.meta/maury-marker.json` gets regenerated.
 
 ### Consequences
 

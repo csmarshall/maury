@@ -7,7 +7,7 @@
 
 ## Related tenets
 
-- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
+- [Tenet 2 — Consistency within a mode](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
 ## TL;DR
@@ -52,7 +52,7 @@ mentions the same file.
 <details>
 <summary><b>Decision drivers</b> (4 items — click to expand)</summary>
 
-- **Tenet 2:** consistency within a profile. The user's
+- **Tenet 2:** consistency within a mode. The user's
   mental model of inheritance must hold — child *adds to*
   parent, doesn't silently throw it away.
 - **Tenet 8:** hand-edits are first-class input. Suppressions

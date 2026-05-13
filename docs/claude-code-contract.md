@@ -235,7 +235,7 @@ The three entries here were promoted from "❓ Assumed but
 unverified" on 2026-05-07 after running `maury verify-cc-hooks`
 on a real macOS host with Claude Code installed. The harness
 source lives at `src/maury/empirical_tests.py`; the verification
-command is documented in `docs/operations.md` and runs in an
+command is documented in `docs/status.md` and runs in an
 isolated workspace (no risk to the user's real `~/.claude/`).
 
 ### `cc-contract:hook-shell-execution`

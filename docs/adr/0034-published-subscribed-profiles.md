@@ -1,9 +1,20 @@
 # ADR-0034: Published/subscribed profiles
 
-**Status:** Accepted
+**Status:** Accepted (mechanics superseded by [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) + [ADR-0038](0038-precept-acquisition-model.md); the use-case framing is preserved)
 **Date:** 2026-05-07
 **Amended:**
   - 2026-05-11 — "profile" renamed to "mode" per ADR-0037. The published/subscribed model is refined by ADR-0038 (rules layer + governance metadata); ADR-0038 is now the canonical reference for shared-rules acquisition.
+  - 2026-05-13 — schema examples updated to the per-repo marker file (`.meta/maury-marker.json` with `layer`/`agency_id`/`sublayers`/`hosts` fields per [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)). The old flat-manifest `profiles` map / `profile_<hex>` keys no longer exist as a schema; the modern model expresses "subscribe to a team profile" as **declaring a `rules` sublayer with `repo_mode: pr` or `ro`** in the consuming mode's marker.
+
+> **Reading this ADR:** the use-case framing (curator publishes team
+> conventions; engineers subscribe + contribute back via PR) is still
+> the right product story. The mechanics, however, are now expressed
+> through [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)'s
+> `rules` layer type and [ADR-0038](0038-precept-acquisition-model.md)'s
+> acquisition / advisory model. Where this ADR says "publish a
+> profile," read "publish a `rules` repo"; where it says "subscribe,"
+> read "declare a `rules` sublayer in your mode's marker." The
+> JSON examples below have been updated to the new schema.
 
 ## Related tenets
 
@@ -66,12 +77,12 @@ on a different host can configure that host with `pr` mode
    `github.com/acme/maury-team-engineering`) following
    [ADR-0002](0002-repo-per-trust-boundary.md)'s repo-per-
    trust-boundary structure.
-2. The repo's `.meta/manifest.json` declares the published
-   profile(s) using maury's normal manifest schema. Per
-   [ADR-0001](0001-n-profiles.md), multiple profiles can
-   live in one repo if the curator wants to publish a tree
-   (e.g., `team-engineering` + child `team-eng-backend` +
-   child `team-eng-frontend`).
+2. The repo's `.meta/maury-marker.json` declares it as a
+   `rules` layer belonging to the curator's agency (per
+   [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)).
+   The curator's `agency_id` appears as a **provenance claim**
+   on the rules repo — cross-agency consumption is expected
+   and the field is informational on the consumer side.
 3. Curator's host has `rw` deploy key for this repo;
    subscribers will get read-only deploy keys.
 4. Curator pushes initial content. Done — the profile is
@@ -85,57 +96,62 @@ subscribe to.
 ### How an engineer subscribes
 
 ```sh
-maury subscribe <repo-url> [--as-profile <name>]
+maury subscribe <repo-url> [--repo-mode pr|ro]
 ```
 
 This convenience command:
 
-1. Adds the URL to the engineer's manifest as a new repo
-   entry with `mode: pr` (per ADR-0033).
-2. Generates a read-only deploy keypair for this host on
-   this repo, prints the public key, and prompts the user
-   to add it on the upstream side (the standard per-host
-   deploy-key flow per [ADR-0003](0003-per-host-deploy-keys.md)).
-3. Writes the maury repo's profile-name as a subscribed
-   profile in the engineer's local manifest, with optional
-   rename via `--as-profile`.
-4. Pulls the repo and renders.
+1. Adds the URL as a new `rules` sublayer entry in the
+   engineer's active mode's `.meta/maury-marker.json`, with
+   `repo_mode` defaulting to `pr` (per ADR-0033).
+2. Generates a per-host deploy keypair for this rules repo,
+   prints the public key, and prompts the user to add it on
+   the upstream side (the standard per-host deploy-key flow
+   per [ADR-0003](0003-per-host-deploy-keys.md)).
+3. Pulls the repo and renders. The rules content is now part
+   of the mode's render output per
+   [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)'s
+   attachment-point order.
 
 Behind the scenes, this is identical to manually editing the
-manifest and running `maury init` — but the convenience helper
-captures the right defaults (`mode: pr`, deploy key
-generation) and reduces friction.
+mode's marker file and running `maury sync` — but the
+convenience helper captures the right defaults (`repo_mode:
+pr`, deploy key generation) and reduces friction.
 
-### Engineer's profile extends the team profile
+### Engineer's mode declares the team rules repo as a sublayer
 
-After subscribe, the engineer's own personal profile typically
-**extends** the team profile via the inheritance mechanism
-([ADR-0001](0001-n-profiles.md), [ADR-0019](0019-inheritance-semantics-refine-by-default.md)):
+After subscribe, the engineer's mode marker declares the team
+rules repo as a sublayer with `repo_mode: pr` (per
+[ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)'s
+marker schema):
 
 ```json
 {
-  "profiles": {
-    "profile_3f1a8b2c...": {
-      "name": "alice-engineering",
-      "extends": "profile_a3f9c421..."
-    },
-    "profile_a3f9c421...": {
-      "name": "team-engineering"
+  "schema_version": 1,
+  "layer": "mode",
+  "agency_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sublayers": [
+    {
+      "url": "git@github.com:acme-corp/rules-team-engineering.git",
+      "repo_mode": "pr"
+    }
+  ],
+  "hosts": {
+    "host_3f1a8b2c...": {
+      "registered_at": "2026-05-08T10:00:00Z",
+      "environment_tags": ["ubuntu", "laptop", "work-desk"]
     }
   }
 }
 ```
 
-*(Profile IDs elided for brevity per [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md);
-each is a `profile_<32 hex>` surrogate key. `extends:`
-references the parent's ID, not its name, so a name-rename
-doesn't break inheritance.)*
-
-So Alice's render composes: team-base + team-engineering +
-alice-engineering + alice-host-overlay. Her personal
-preferences refine the team conventions ([ADR-0019](0019-inheritance-semantics-refine-by-default.md)
+So Alice's render composes: `base` + `mode:alice-engineering`
++ the `rules-team-engineering` sublayer (attached at her
+mode's position in the chain, per ADR-0037's attachment-point
+order). Her personal preferences refine the team conventions
+([ADR-0019](0019-inheritance-semantics-refine-by-default.md)
 refinement-by-default). Updates the curator pushes to
-team-engineering flow into Alice's render on her next
+`rules-team-engineering` flow into Alice's render on her next
 `maury sync`.
 
 ### Engineer contributes back via PR
@@ -178,12 +194,12 @@ case still out of scope. Specifically:
   conflicts, etc.).
 
 **Still out of scope (per ADR-0024):**
-- Two curators editing the *same* `.meta/manifest.json` file
-  concurrently — handled by ADR-0024's structured-merge
+- Two curators editing the *same* `.meta/maury-marker.json`
+  file concurrently — handled by ADR-0024's structured-merge
   semantics, but the multi-curator case multiplies the
-  manifest-conflict frequency. v1 caveat: small curator
-  teams are fine; larger teams may need additional
-  coordination tooling.
+  marker-conflict frequency. v1 caveat: small curator teams
+  are fine; larger teams may need additional coordination
+  tooling.
 - Per-subscriber visibility into "who else is subscribed."
   Maury doesn't track subscriber lists; that's GitHub's
   problem (the deploy-key list).

@@ -11,7 +11,7 @@
 
 ## Context
 
-Two hosts can mutate `.meta/manifest.json` concurrently. Bootstrap
+Two hosts can mutate `.meta/maury-marker.json` concurrently. Bootstrap
 two new machines in the same hour: both `maury init`, both add
 themselves to `hosts: {…}`, both push. Second one rejects.
 
@@ -149,8 +149,8 @@ push a structurally broken manifest.
 
 ### Other concurrency hygiene
 
-- **Atomic write:** every manifest write goes via
-  `manifest.json.tmp` + POSIX `rename(2)`. Crash-safe.
+- **Atomic write:** every marker write goes via
+  `maury-marker.json.tmp` + POSIX `rename(2)`. Crash-safe.
 - **Per-host process lock:** `~/.config/maury/.lock` (advisory
   fcntl). Prevents two `maury` processes on the same host from
   racing each other through the merge flow. Clearly errors if held.

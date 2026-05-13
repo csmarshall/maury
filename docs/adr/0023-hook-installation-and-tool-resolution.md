@@ -6,7 +6,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
+- [Tenet 2 — Consistency within a mode](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
 
 ## TL;DR
@@ -58,7 +58,7 @@ branches.
 - **Tenet 1:** first, do no harm. Coexistence with user-set
   hooks is mandatory — clobbering hand-added hooks is a
   data-loss event.
-- **Tenet 2:** consistency within a profile. Hooks should
+- **Tenet 2:** consistency within a mode. Hooks should
   install identically on every host through normal sync; no
   host-specific install ceremony.
 - **Tenet 8:** hand-edits are first-class input. A hand-

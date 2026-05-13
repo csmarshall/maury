@@ -6,7 +6,7 @@
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
-- [Tenet 2 — Consistency within a profile; controlled difference across profiles](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
+- [Tenet 2 — Consistency within a mode; controlled difference across modes](../tenets.md#2-consistency-within-a-mode-controlled-difference-across-modes)
 - [Tenet 5 — The user arbitrates ambiguity](../tenets.md#5-the-user-arbitrates-ambiguity)
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
 - [Tenet 8 — Hand-edits are first-class input](../tenets.md#8-hand-edits-are-first-class-input)
@@ -340,9 +340,9 @@ current release before using. The render engine does not emit
 `@import` directives in rules files until verification confirms
 support.
 
-[cc-memory]: https://docs.claude.com/en/docs/claude-code/memory
-[cc-subagents]: https://docs.claude.com/en/docs/claude-code/sub-agents
-[cc-settings]: https://docs.claude.com/en/docs/claude-code/settings
+[cc-memory]: https://code.claude.com/docs/en/memory
+[cc-subagents]: https://code.claude.com/docs/en/sub-agents
+[cc-settings]: https://code.claude.com/docs/en/settings
 
 ---
 

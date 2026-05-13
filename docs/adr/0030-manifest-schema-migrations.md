@@ -124,7 +124,7 @@ Recommended workflow:
 2. Verify each host's maury supports the new version:
    `maury --version` and `maury manifest --supported-versions`.
 3. On any one host: `maury manifest upgrade-v2-to-v3 --in
-   .meta/manifest.json` then commit + push.
+   .meta/maury-marker.json` then commit + push.
 4. Other hosts pull and continue normally on next sync.
 
 If the user pushes the upgrade before upgrading peers, peers
@@ -201,7 +201,7 @@ distribution is a separate, deliberate step.
 
 It does NOT touch other state files (`~/.claude/maury-state/`
 contents per ADR-0029, the synced repo's other content). Only
-`.meta/manifest.json` is in scope.
+`.meta/maury-marker.json` is in scope.
 
 It does NOT auto-bump dependent files (e.g., a v3 schema that
 also requires changes to `rules.yaml` would need a separate
