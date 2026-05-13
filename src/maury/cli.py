@@ -16,7 +16,12 @@ from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
 from maury.doctor import Report, render_json, render_text, run_all
 from maury.drift import DriftEntry, detect_drift, read_last_render
-from maury.empirical_tests import HarnessReport, claude_present
+from maury.empirical_tests import (
+    HarnessReport,
+    ProjectDirHarnessReport,
+    claude_present,
+    run_project_dir_harness,
+)
 from maury.empirical_tests import run as run_empirical
 from maury.ids import short as short_id
 from maury.llm import BackendUnavailableError, get_backend
@@ -1436,4 +1441,164 @@ def verify_cc_hooks(
     )
 
     _print_empirical_report(report, output_format)
+    sys.exit(0 if report.passed else 1)
+
+
+# ---- verify-cc-projects-dir command -------------------------------------
+
+
+def _print_project_dir_report(report: ProjectDirHarnessReport, output_format: str) -> None:
+    """Pretty-print or JSON-print a ProjectDirHarnessReport."""
+    if output_format == "json":
+        payload = {
+            "test_root": str(report.test_root),
+            "claude_present": report.claude_present,
+            "claude_version": report.claude_version,
+            "passed": report.passed,
+            "collision_groups_verified": list(report.collision_groups_verified),
+            "new_project_dirs": list(report.new_project_dirs),
+            "results": [
+                {
+                    "description": r.case.description,
+                    "cwd_suffix": r.case.cwd_suffix,
+                    "cwd": str(r.cwd),
+                    "predicted": r.predicted_dir_name,
+                    "observed": list(r.observed_dir_names),
+                    "collision_group": r.case.collision_group,
+                    "matched": r.matched,
+                    "detail": r.detail,
+                }
+                for r in report.results
+            ],
+        }
+        click.echo(json.dumps(payload, indent=2, default=str))
+        return
+
+    if not report.claude_present:
+        click.echo("❌ `claude` not found on PATH.")
+        click.echo("\nThis verifier requires Claude Code installed and authenticated.")
+        return
+
+    click.echo(f"claude version: {report.claude_version}")
+    click.echo(f"test root: {report.test_root}")
+    click.echo()
+    for r in report.results:
+        mark = "✅" if r.matched else "❌"
+        group = f" (group={r.case.collision_group})" if r.case.collision_group else ""
+        click.echo(f"{mark} {r.case.cwd_suffix!r}  — {r.case.description}{group}")
+        click.echo(f"   predicted: {r.predicted_dir_name!r}")
+        if r.observed_dir_names:
+            click.echo(f"   observed : {list(r.observed_dir_names)}")
+        else:
+            click.echo("   observed : (none — bucketed into existing dir or claude failed)")
+        click.echo(f"   {r.detail}")
+        click.echo()
+
+    declared_groups = {r.case.collision_group for r in report.results if r.case.collision_group}
+    if declared_groups:
+        click.echo(f"collision groups declared: {sorted(declared_groups)}")
+        click.echo(f"collision groups verified: {sorted(report.collision_groups_verified)}")
+        click.echo()
+
+    if report.passed:
+        click.echo(
+            "All corpus cases matched the predictor. Algorithm holds at this claude version.\n"
+            "See `cc-contract:project-directory-derivation` in docs/claude-code-contract.md\n"
+            "and anthropics/claude-code#54865 for the canonical algorithm reference."
+        )
+    else:
+        click.echo(
+            "One or more cases diverged from the predictor. The algorithm has changed,\n"
+            "or our prediction is wrong. Update `derive_project_dir()` in\n"
+            "`src/maury/empirical_tests.py` and re-run."
+        )
+
+
+@main.command("verify-cc-projects-dir")
+@click.option(
+    "--test-root",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory to create per-case cwds under (default: a fresh temp dir, removed after run).",
+)
+@click.option(
+    "--prompt",
+    "claude_prompt",
+    type=str,
+    default="say only the word: ok",
+    show_default=True,
+    help="Prompt sent to `claude -p` in each test cwd. Trivial by design.",
+)
+@click.option(
+    "--timeout",
+    type=float,
+    default=60.0,
+    show_default=True,
+    help="Seconds per claude invocation.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+@click.option(
+    "--keep-project-dirs",
+    is_flag=True,
+    help=(
+        "Don't clean up the per-case directories the harness created under "
+        "`~/.claude/projects/`. Useful for forensic inspection. By default the "
+        "harness removes only the dirs it created."
+    ),
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Only check whether `claude` is present on PATH; don't run the harness.",
+)
+def verify_cc_projects_dir(
+    test_root: Path | None,
+    claude_prompt: str,
+    timeout: float,
+    output_format: str,
+    keep_project_dirs: bool,
+    check_only: bool,
+) -> None:
+    """Verify Claude Code's `~/.claude/projects/<X>/` directory-derivation algorithm.
+
+    Runs `claude -p` in a corpus of test cwds (ASCII, punctuation, non-ASCII,
+    emoji, plus a collision pair) and asserts that the directory each creates
+    under `~/.claude/projects/` matches `derive_project_dir()`'s prediction.
+
+    Algorithm (empirically verified 2026-05-13 against claude 2.1.140 on
+    macOS; cross-referenced against the `fh()` source quoted in
+    anthropics/claude-code#54865):
+
+      1. Resolve symlinks (realpath).
+      2. Iterate the path as UTF-16 code units (JS regex semantics).
+      3. Per unit: keep `[A-Za-z0-9]`; else substitute `-`.
+
+    The algorithm is **non-injective**: distinct cwds can produce the same
+    dir name. The harness exercises this via a deliberate collision pair
+    (`a-b-c` and `a/b/c`) and verifies they bucket into the same dir.
+
+    Exit code: 0 if all cases match the predictor, 1 otherwise.
+    """
+    if check_only:
+        if claude_present():
+            click.echo("✅ `claude` is present on PATH.")
+            sys.exit(0)
+        else:
+            click.echo("❌ `claude` not found on PATH.")
+            sys.exit(1)
+
+    report = run_project_dir_harness(
+        test_root=test_root,
+        claude_prompt=claude_prompt,
+        timeout=timeout,
+        cleanup_project_dirs=not keep_project_dirs,
+    )
+
+    _print_project_dir_report(report, output_format)
     sys.exit(0 if report.passed else 1)

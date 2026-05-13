@@ -35,6 +35,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury sessions prune` | ⏳ planned | Clean up stale `active-sessions.jsonl` entries. Per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | `maury verify-cc-contract` | ⏳ planned | Re-fetch cited Claude Code docs and diff against `docs/claude-code-snapshots/`. Drift detection for upstream documentation changes. |
 | `maury verify-cc-hooks` | ✅ shipped | Empirically verify the three load-bearing Claude Code hook behaviors (comment stripping, subprocess env, file-IO permissions) by spinning up an isolated workspace and invoking `claude -p` against it. Used 2026-05-07 to close out ADR-0023's "Empirical-test debt." |
+| `maury verify-cc-projects-dir` | ✅ shipped | Empirically verify the algorithm Claude Code uses to derive `~/.claude/projects/<X>/` from the cwd. Runs `claude -p` against a 14-case corpus (ASCII, punctuation, BMP non-ASCII, non-BMP emoji, plus a collision pair) and asserts `derive_project_dir()` predictions match observation. Promoted `cc-contract:project-directory-derivation` from ❓ to 🧪 on 2026-05-13. Cross-referenced against [anthropics/claude-code#54865](https://github.com/anthropics/claude-code/issues/54865). |
 | `maury subscribe <url>` | ⏳ planned (v1.1+) | Subscribe to a published profile (gap K). Per planned gap-K ADRs. |
 | `maury uninstall` | ⏳ planned | Strip maury hooks/scripts/state from a host. Per [ADR-0023 §8](adr/0023-hook-installation-and-tool-resolution.md). |
 

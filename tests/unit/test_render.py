@@ -319,8 +319,9 @@ def test_render_against_seed_template(tmp_path: Path) -> None:
     from maury.manifest import load_manifest
 
     m = load_manifest(seed_root / ".meta" / "manifest.json")
-    # Pick toad as the test host
-    hid = m.host_id_by_name("toad")
+    # Pick the genericized `workstation` example host (renamed from `toad`
+    # 2026-05-13 when base-template was made public-safe).
+    hid = m.host_id_by_name("workstation")
     assert hid is not None
     pid = m.hosts[hid].profile
 
@@ -332,4 +333,4 @@ def test_render_against_seed_template(tmp_path: Path) -> None:
     # Content from base, profile, and host overlay should all appear
     assert "Code style" in content  # from base CLAUDE.md
     assert "Home context" in content  # from profile fragment
-    assert "Host: toad" in content  # from host overlay
+    assert "Host: workstation" in content  # from host-tagged fragment

@@ -375,3 +375,318 @@ def run(
         claude_stderr_excerpt=stderr_tail,
         probes=probes,
     )
+
+
+# =========================================================================
+# Project-directory derivation verifier.
+#
+# Verifies the algorithm Claude Code uses to map cwd → directory name under
+# `~/.claude/projects/<X>/`. The algorithm is empirically derived; see
+# `cc-contract:project-directory-derivation` in docs/claude-code-contract.md
+# and upstream issue anthropics/claude-code#54865 for the canonical
+# reference (which quotes the relevant `fh()` function from cli.js).
+# =========================================================================
+
+
+def derive_project_dir(cwd: Path) -> str:
+    """Predict the directory name Claude Code creates under `~/.claude/projects/`
+    when invoked with the given working directory.
+
+    Algorithm (empirically verified 2026-05-13 against claude 2.1.140 on macOS;
+    matches the `fh()` source quoted in anthropics/claude-code#54865):
+
+        1. Resolve symlinks on the cwd (`Path.resolve()` ≈ POSIX `realpath`).
+        2. Iterate the resolved path **as UTF-16 code units** (matching the JS
+           runtime's regex semantics — the CLI is Node).
+        3. For each code unit: keep iff it matches `[A-Za-z0-9]`; otherwise
+           replace with `-`. No collapse of consecutive replacements.
+
+    Non-injective. Distinct cwds can produce the same name: `/a/b/c` and
+    `/a-b-c` both yield `-a-b-c`. Consumers walking `~/.claude/projects/`
+    MUST NOT assume one directory uniquely identifies one cwd.
+
+    Non-BMP characters (emoji etc.) are encoded as UTF-16 surrogate pairs;
+    neither surrogate is alphanumeric, so each non-BMP codepoint becomes
+    **two** hyphens (e.g., `🚀` → `--`).
+    """
+    resolved = str(cwd.resolve())
+    out: list[str] = []
+    for ch in resolved:
+        cp = ord(ch)
+        if cp > 0xFFFF:
+            # Non-BMP codepoint → UTF-16 surrogate pair → two hyphens.
+            out.append("--")
+        elif (0x30 <= cp <= 0x39) or (0x41 <= cp <= 0x5A) or (0x61 <= cp <= 0x7A):
+            # ASCII [A-Za-z0-9] — preserved.
+            out.append(ch)
+        else:
+            # Any other BMP character (including non-ASCII letters like 'é',
+            # punctuation, whitespace) — single hyphen.
+            out.append("-")
+    return "".join(out)
+
+
+@dataclass(frozen=True)
+class ProjectDirCase:
+    """One cwd shape to test in the project-dir derivation corpus."""
+
+    # Path component(s) to append under the harness's test root. May contain
+    # one slash to test nested paths; the harness mkdirs the full chain.
+    cwd_suffix: str
+    # Human-readable description (what shape this case is testing).
+    description: str
+    # If non-empty, declares this case is expected to bucket together with
+    # other cases sharing the same group label (collision-test pair).
+    collision_group: str = ""
+
+
+# Default corpus — cases that lock in the algorithm AND demonstrate the
+# load-bearing collision property.
+DEFAULT_PROJECT_DIR_CORPUS: tuple[ProjectDirCase, ...] = (
+    ProjectDirCase("plain", "all-ASCII plain"),
+    ProjectDirCase("CamelCase", "mixed case preserved"),
+    ProjectDirCase("digit-2026", "digits + existing hyphen preserved"),
+    ProjectDirCase("dash-already", "existing hyphens preserved"),
+    ProjectDirCase("under_score", "underscore → hyphen"),
+    ProjectDirCase("has.dot", "dot → hyphen"),
+    ProjectDirCase("has space here", "space → hyphen (each space its own hyphen)"),
+    ProjectDirCase("with+plus", "plus → hyphen"),
+    ProjectDirCase("with@at", "at-sign → hyphen"),
+    # Collision pair: distinct cwds, same predicted dir name.
+    ProjectDirCase("a-b-c", "collision pair (hyphen form)", collision_group="abc"),
+    ProjectDirCase("a/b/c", "collision pair (slash form)", collision_group="abc"),
+    # Non-ASCII coverage.
+    ProjectDirCase("café", "BMP non-ASCII (Latin-1 supplement)"),
+    ProjectDirCase("日本語", "BMP non-ASCII (CJK)"),
+    ProjectDirCase("emoji-🚀", "non-BMP (UTF-16 surrogate pair → two hyphens)"),
+)
+
+
+@dataclass(frozen=True)
+class ProjectDirCaseResult:
+    """Outcome of running one corpus case."""
+
+    case: ProjectDirCase
+    cwd: Path  # The resolved absolute path the harness invoked claude in.
+    predicted_dir_name: str
+    observed_dir_names: tuple[str, ...]  # All NEW dirs that appeared in projects/ after this case.
+    matched: bool
+    detail: str
+
+
+@dataclass(frozen=True)
+class ProjectDirHarnessReport:
+    """Aggregate result for `maury verify-cc-projects-dir`."""
+
+    test_root: Path
+    claude_present: bool
+    claude_version: str | None
+    results: tuple[ProjectDirCaseResult, ...]
+    collision_groups_verified: tuple[str, ...]  # group labels whose members all bucketed together.
+    new_project_dirs: tuple[str, ...]  # Dirs created under ~/.claude/projects/ during the run.
+
+    @property
+    def passed(self) -> bool:
+        """All cases matched their predictions AND all declared collision groups merged."""
+        if not self.claude_present:
+            return False
+        if not all(r.matched for r in self.results):
+            return False
+        # Every declared collision group must show up as one observed dir.
+        declared_groups = {r.case.collision_group for r in self.results if r.case.collision_group}
+        return declared_groups.issubset(set(self.collision_groups_verified))
+
+
+def _projects_dir() -> Path:
+    """Path to `~/.claude/projects/` (the directory we observe)."""
+    return Path.home() / ".claude" / "projects"
+
+
+def _snapshot_projects_dir() -> set[str]:
+    """Return the current set of entry names under `~/.claude/projects/`.
+
+    Returns an empty set if the directory doesn't exist (first-run case).
+    """
+    pd = _projects_dir()
+    if not pd.exists():
+        return set()
+    return {p.name for p in pd.iterdir()}
+
+
+def _claude_version() -> str | None:
+    """Return `claude --version`'s output trimmed, or None if claude isn't on PATH."""
+    if not claude_present():
+        return None
+    try:
+        proc = subprocess.run(
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return (proc.stdout or "").strip() or None
+
+
+def run_project_dir_harness(
+    *,
+    test_root: Path | None = None,
+    corpus: tuple[ProjectDirCase, ...] = DEFAULT_PROJECT_DIR_CORPUS,
+    claude_prompt: str = "say only the word: ok",
+    timeout: float = 60.0,
+    cleanup_project_dirs: bool = True,
+) -> ProjectDirHarnessReport:
+    """Run the project-dir derivation verifier end-to-end.
+
+    For each case in the corpus:
+      1. Create the target cwd directory under `test_root`.
+      2. Snapshot `~/.claude/projects/` before invoking claude.
+      3. Invoke `claude -p <claude_prompt>` in that cwd.
+      4. Re-snapshot; the delta is the set of new project dirs.
+      5. Compare to `derive_project_dir()`'s prediction.
+
+    Collision-group cases intentionally predict the same dir name; we verify
+    that all members of a group produce exactly one observed dir between them.
+
+    Args:
+        test_root: directory under which to create per-case cwds. If None,
+            a fresh tempdir is used and (unless `cleanup_project_dirs` is
+            False) cleaned up afterward.
+        corpus: cases to run. Defaults to DEFAULT_PROJECT_DIR_CORPUS.
+        claude_prompt: prompt sent to `claude -p`. Should be trivial; the
+            substance doesn't matter, only that claude actually invokes.
+        timeout: seconds per `claude -p` invocation.
+        cleanup_project_dirs: if True, remove the project-dirs this harness
+            created under `~/.claude/projects/` after the run. Set False
+            for forensic inspection.
+    """
+    cleanup_test_root = test_root is None
+    test_root = test_root or Path(tempfile.mkdtemp(prefix="maury-projdir-"))
+    test_root.mkdir(parents=True, exist_ok=True)
+
+    version = _claude_version()
+    if version is None:
+        return ProjectDirHarnessReport(
+            test_root=test_root,
+            claude_present=False,
+            claude_version=None,
+            results=(),
+            collision_groups_verified=(),
+            new_project_dirs=(),
+        )
+
+    pre_run_baseline = _snapshot_projects_dir()
+    cumulative_new: set[str] = set()
+    results: list[ProjectDirCaseResult] = []
+    # Map collision group → set of observed dir names (should converge to 1).
+    group_observed: dict[str, set[str]] = {}
+
+    for case in corpus:
+        cwd = test_root / case.cwd_suffix
+        cwd.mkdir(parents=True, exist_ok=True)
+        cwd_resolved = cwd.resolve()
+        predicted = derive_project_dir(cwd_resolved)
+
+        before = _snapshot_projects_dir()
+        try:
+            subprocess.run(
+                ["claude", "-p", claude_prompt],
+                cwd=str(cwd_resolved),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            results.append(
+                ProjectDirCaseResult(
+                    case=case,
+                    cwd=cwd_resolved,
+                    predicted_dir_name=predicted,
+                    observed_dir_names=(),
+                    matched=False,
+                    detail=f"claude invocation failed: {exc}",
+                )
+            )
+            continue
+
+        after = _snapshot_projects_dir()
+        new_this_case = after - before
+        cumulative_new |= new_this_case
+        observed = tuple(sorted(new_this_case))
+        prediction_exists = predicted in after
+
+        if case.collision_group:
+            # Collision-group members may legitimately see NO new dir if a
+            # group-mate already created the bucket. Success criterion: the
+            # predicted dir is present in projects/ post-claude AND it was
+            # created during this run (i.e., it's in our cumulative set).
+            group_observed.setdefault(case.collision_group, set()).update(new_this_case)
+            prediction_in_cumulative = predicted in cumulative_new
+            matched = prediction_exists and prediction_in_cumulative
+            if matched and not new_this_case:
+                detail = f"collision case: bucketed into existing {predicted!r} (group-mate created it earlier)"
+            elif matched:
+                detail = f"collision case: created {predicted!r}"
+            elif new_this_case:
+                detail = f"collision case: predicted {predicted!r} but observed {observed}"
+            else:
+                detail = f"collision case: predicted {predicted!r} but nothing created and dir not in projects/"
+        else:
+            # Non-collision case: expect exactly one new dir matching prediction.
+            if not new_this_case:
+                matched = False
+                detail = f"claude invocation produced no new dir under {_projects_dir()} — claude may have errored silently"
+            elif len(new_this_case) == 1 and predicted in new_this_case:
+                matched = True
+                detail = f"predicted and observed {predicted!r}"
+            elif len(new_this_case) == 1:
+                actual = next(iter(new_this_case))
+                matched = False
+                detail = f"predicted {predicted!r} but claude created {actual!r}"
+            else:
+                matched = False
+                detail = f"predicted {predicted!r}; claude created multiple new dirs: {observed}"
+
+        results.append(
+            ProjectDirCaseResult(
+                case=case,
+                cwd=cwd_resolved,
+                predicted_dir_name=predicted,
+                observed_dir_names=observed,
+                matched=matched,
+                detail=detail,
+            )
+        )
+
+    # A collision group is verified if all its declared members bucketed
+    # together (i.e., produced exactly one distinct dir across the group).
+    verified_groups: list[str] = []
+    for group, observed_set in group_observed.items():
+        # observed_set is the union of new dirs across the group's members.
+        # If the group bucketed correctly, only the FIRST member produced a
+        # new dir; subsequent members saw it as already-existing. So the
+        # union should be a single dir AND should equal the prediction.
+        if len(observed_set) == 1:
+            verified_groups.append(group)
+
+    if cleanup_project_dirs:
+        pd = _projects_dir()
+        for name in cumulative_new:
+            target = pd / name
+            if target.exists() and target.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+
+    if cleanup_test_root:
+        shutil.rmtree(test_root, ignore_errors=True)
+
+    return ProjectDirHarnessReport(
+        test_root=test_root,
+        claude_present=True,
+        claude_version=version,
+        results=tuple(results),
+        collision_groups_verified=tuple(verified_groups),
+        new_project_dirs=tuple(sorted(cumulative_new - pre_run_baseline)),
+    )

@@ -19,6 +19,17 @@ Each entry is in one of three categories:
   entry lists what breaks if the assumption is wrong, so we
   know what to fix when reality contradicts us.
 
+**Orthogonal per-entry field — 📌 `Tracked upstream:`.** Many
+behaviors maury depends on are also discussed in open issues on
+[`anthropics/claude-code`](https://github.com/anthropics/claude-code/issues).
+An entry in any tier may carry a `Tracked upstream:` field listing
+the relevant issue(s). This is independent of evidence strength —
+an entry can be empirically verified by us AND tracked upstream
+(strongest signal: we have a working reproduction *and* Anthropic
+knows). When Anthropic resolves an upstream issue by documenting
+the behavior, the entry moves to ✅; when they fix the behavior
+itself, the entry's claim updates and we re-verify.
+
 Entries here are referenced by ID (e.g., `cc-contract:hooks-stdin-payload`)
 from individual ADRs. The ADR cites the abstract behavior; this
 file owns the verification status and the "what if we're wrong"
@@ -231,12 +242,20 @@ delegate this to CC and simplify.
 
 ## 🧪 Empirically verified behaviors
 
-The three entries here were promoted from "❓ Assumed but
-unverified" on 2026-05-07 after running `maury verify-cc-hooks`
-on a real macOS host with Claude Code installed. The harness
-source lives at `src/maury/empirical_tests.py`; the verification
-command is documented in `docs/status.md` and runs in an
-isolated workspace (no risk to the user's real `~/.claude/`).
+The entries here were promoted from "❓ Assumed but unverified"
+after running maury's empirical-test harness on a real macOS host
+with Claude Code installed. The harness source lives at
+[`src/maury/empirical_tests.py`](../src/maury/empirical_tests.py);
+re-verification commands are documented in
+[`docs/status.md`](status.md). Every verifier runs in isolation
+(no risk to the user's real `~/.claude/` content, though
+`verify-cc-projects-dir` does create and clean up its own test
+buckets under `~/.claude/projects/`).
+
+| Verifier command | Promotes | Verified |
+|---|---|---|
+| `maury verify-cc-hooks` | `cc-contract:hook-shell-execution`, `cc-contract:hook-subprocess-path`, `cc-contract:hook-file-io-permissions` | 2026-05-07 (claude 2.1.x, macOS) |
+| `maury verify-cc-projects-dir` | `cc-contract:project-directory-derivation` | 2026-05-13 (claude 2.1.140, macOS) |
 
 ### `cc-contract:hook-shell-execution`
 
@@ -294,6 +313,54 @@ stdin JSON, not from env. Realpath any path you compare to
 
 ---
 
+### `cc-contract:project-directory-derivation`
+
+**Verified 2026-05-13** (claude 2.1.140, macOS 14.5).
+
+**Behavior observed:** Claude Code derives the directory under
+`~/.claude/projects/<X>/` from the cwd at launch via a three-step
+algorithm:
+
+1. **Resolve symlinks** on the cwd (`realpath` / `Path.resolve`).
+   On macOS this means `/var/foo` → `/private/var/foo` before any
+   substitution.
+2. **Iterate the resolved path as UTF-16 code units** (matching
+   the JS regex semantics — the CLI is Node).
+3. **Per code unit:** keep iff it matches `[A-Za-z0-9]`; else
+   substitute `-`. No collapse of consecutive substitutions.
+
+Non-BMP codepoints (e.g., 🚀 U+1F680) are encoded as UTF-16
+surrogate pairs; neither surrogate is alphanumeric, so each
+non-BMP codepoint produces **two** hyphens, not one. This is
+the JS-runtime fingerprint and the encoded predictor matches
+empirically.
+
+**The algorithm is non-injective.** Distinct cwds collide:
+`/a/b/c` and `/a-b-c` both produce `-a-b-c`. The verifier
+exercises this directly via a declared collision-group pair and
+asserts they bucket together.
+
+**Implication for ADR-0005, ADR-0020:** mining must not assume
+project-dir uniquely identifies cwd. A cwd-keyed view computed
+from project-dir alone is lossy. (Per-session JSONL records
+carry `cwd` directly; that field is the authoritative cwd.)
+
+**Re-verification:** `maury verify-cc-projects-dir` re-runs the
+14-case corpus and asserts every prediction matches observation.
+Re-run after any Claude Code minor-version bump.
+
+**📌 Tracked upstream:**
+- [anthropics/claude-code #54865](https://github.com/anthropics/claude-code/issues/54865)
+  — *open*. Quotes `fh()` from cli.js source; documents the
+  same non-injectivity from a Windows path-form angle.
+- [anthropics/claude-code #46522](https://github.com/anthropics/claude-code/issues/46522)
+  — *open*. `/resume` hides sessions after project dir rename/move.
+- [anthropics/claude-code #57920](https://github.com/anthropics/claude-code/issues/57920)
+  — *open*. `--resume <id>` can't find transcript after worktree
+  path removed.
+
+---
+
 ### `cc-contract:hook-file-io-permissions`
 
 **Verified 2026-05-07** (macOS).
@@ -324,46 +391,50 @@ assumption is wrong.
 
 
 
-### `cc-contract:project-directory-derivation`
-
-**Assumption:** `~/.claude/projects/<project>/<session-id>.jsonl`'s
-`<project>` segment is derived from the working directory path
-in some stable, reproducible way (likely a hash, possibly a
-slug).
-
-**What breaks if wrong:** Mining (ADR-0005, ADR-0020) walks
-this directory tree expecting the structure. If the derivation
-isn't stable, mining could miss transcripts or double-count
-them across worktrees.
-
-**How to verify:**
-1. Run `claude` in directory `/tmp/test-foo`, send a message,
-   exit. Note the directory created under `~/.claude/projects/`.
-2. Run `claude` in `/tmp/test-foo` worktree (e.g., `git
-   worktree add /tmp/test-foo-2`), repeat.
-3. Compare directory names — same? different?
-
-**Fallback if wrong:** ADR-0005 needs an addendum on how mining
-handles ambiguous cases.
-
-**Risk level:** Medium. Affects mining correctness but not
-sync/render safety.
-
----
-
 ### `cc-contract:hook-execution-timing`
 
 **Assumption:** Hooks execute synchronously and complete before
 Claude Code proceeds. Failures (non-zero exit) are surfaced.
-Timeouts have a default behavior we haven't verified.
+Timeouts have a default behavior we haven't verified. **Multiple
+hooks registered on the same event fire in declaration order.**
 
 **What breaks if wrong:** ADR-0023's `log_tool_use` hook racing
 the next tool call, claude-writes.jsonl with out-of-order
 events, drift attribution failing.
 
+**📌 Tracked upstream:**
+- [anthropics/claude-code #57800](https://github.com/anthropics/claude-code/issues/57800)
+  — *open*. Documentation contradiction: multi-hook firing
+  order is documented as "parallel" in the Agent SDK hooks
+  reference but "sequential with short-circuit on exit code 2"
+  in the hooks guide. This directly impacts ADR-0023's
+  drift-attribution chain, which depends on deterministic
+  ordering. Resolution of the contradiction (either way)
+  would tell us whether the current design works as written.
+- [anthropics/claude-code #23747](https://github.com/anthropics/claude-code/issues/23747)
+  — *closed (duplicate)*. SessionStart hooks hang indefinitely
+  on Windows even with `timeout: 5` configured. Confirms
+  timeout-handling is fragile in at least one platform path.
+- [anthropics/claude-code #50160](https://github.com/anthropics/claude-code/issues/50160)
+  — *closed (duplicate of #23747)*. Hook entries without a
+  `timeout` field block the SDK/CLI forever when the command
+  doesn't exit. Confirms there is no useful built-in default
+  timeout for hooks.
+- [anthropics/claude-code #37135](https://github.com/anthropics/claude-code/issues/37135)
+  — *open*. Stop hooks can hang indefinitely on large JSON
+  block responses since 2.1.78.
+- [anthropics/claude-code #38162](https://github.com/anthropics/claude-code/issues/38162)
+  — *closed*. Async hooks receive empty stdin on macOS but
+  work on Linux — platform-specific hook semantics.
+
+**Maury contribution:** add a maury-use-case voice to #57800
+(the ordering contradiction is the most load-bearing of the
+above for ADR-0023) rather than filing a new duplicate.
+
 **How to verify:** Test hooks that sleep and observe whether
 Claude Code blocks. Test hooks that fail and observe whether
-Claude Code surfaces the error.
+Claude Code surfaces the error. Two hooks on the same event —
+do they run in declared order or in parallel?
 
 **Risk level:** Medium. Drift attribution depends on event
 ordering; out-of-order events would still mostly work but
@@ -382,8 +453,25 @@ documented.
 A user upgrades Claude Code, runs `maury mine`, and gets an
 error or worse (silently mis-parsed transcripts).
 
+**📌 Tracked upstream:**
+- [anthropics/claude-code #53516](https://github.com/anthropics/claude-code/issues/53516)
+  — *open feature request*. Stable, documented schema for
+  `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl` line types,
+  filed by the `aims.dashboard` VS Code extension team (whose
+  use case overlaps maury's: file-watch transcripts they
+  didn't spawn). Resolution would promote this entry to ✅.
+- [anthropics/claude-code #49400](https://github.com/anthropics/claude-code/issues/49400)
+  — *open docs request*. Publish the JSONL session schema —
+  the same ask from a different angle.
+
+**Maury contribution:** add a maury-use-case voice to the
+existing issues (#53516 + #49400) rather than filing a third
+duplicate. More downstream voices = higher upstream priority.
+
 **Fallback:** Pin maury to a tested CC version range; bump
-deliberately.
+deliberately. Long-term: ship a maury-side JSON Schema lock
++ strict parser so a silent CC schema drift fails loud
+instead of silently mis-parsing.
 
 **Risk level:** Medium-long-term. Won't bite us today; will
 absolutely bite us in a year if we don't watch for it.

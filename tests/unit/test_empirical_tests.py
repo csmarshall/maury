@@ -15,8 +15,12 @@ import pytest
 
 from maury.empirical_tests import (
     COMMENT_MARKER,
+    DEFAULT_PROJECT_DIR_CORPUS,
     HarnessReport,
     ProbeResult,
+    ProjectDirCase,
+    ProjectDirCaseResult,
+    ProjectDirHarnessReport,
     _build_settings,
     _evaluate_comment,
     _evaluate_env,
@@ -24,6 +28,7 @@ from maury.empirical_tests import (
     _parse_env_output,
     _write_probe_scripts,
     claude_present,
+    derive_project_dir,
 )
 
 # ---- _write_probe_scripts ------------------------------------------------
@@ -281,3 +286,225 @@ def test_harness_report_is_frozen(tmp_path: Path) -> None:
     with pytest.raises(Exception):  # noqa: B017
         # Frozen-mutation invariant test (see test_probe_result_is_frozen).
         r.claude_invoked = True  # type: ignore[misc]
+
+
+# =========================================================================
+# derive_project_dir — pure-Python predictor for Claude Code's projects-dir
+# naming algorithm. The expected outputs below were empirically observed
+# on 2026-05-13 against claude 2.1.140 / macOS 14.5; see
+# `cc-contract:project-directory-derivation` in docs/claude-code-contract.md
+# and anthropics/claude-code#54865 for the canonical reference.
+# =========================================================================
+
+
+def test_derive_keeps_ascii_alphanumerics(tmp_path: Path) -> None:
+    cwd = tmp_path / "AlphaNum123"
+    cwd.mkdir()
+    out = derive_project_dir(cwd)
+    # tmp_path varies between runs; the trailing component is what we care about.
+    assert out.endswith("-AlphaNum123")
+
+
+def test_derive_substitutes_punctuation_with_hyphen(tmp_path: Path) -> None:
+    # All these non-alnum punctuation chars should each become a single hyphen.
+    for suffix, expected_tail in [
+        ("has.dot", "-has-dot"),
+        ("under_score", "-under-score"),
+        ("with+plus", "-with-plus"),
+        ("with@at", "-with-at"),
+        ("two..dots", "-two--dots"),
+    ]:
+        cwd = tmp_path / suffix
+        cwd.mkdir()
+        assert derive_project_dir(cwd).endswith(expected_tail), suffix
+
+
+def test_derive_preserves_existing_hyphens(tmp_path: Path) -> None:
+    cwd = tmp_path / "dash-already-here"
+    cwd.mkdir()
+    assert derive_project_dir(cwd).endswith("-dash-already-here")
+
+
+def test_derive_substitutes_spaces(tmp_path: Path) -> None:
+    # Each space is its own hyphen; consecutive spaces are NOT collapsed.
+    cwd = tmp_path / "multi   spaces"
+    cwd.mkdir()
+    assert derive_project_dir(cwd).endswith("-multi---spaces")
+
+
+def test_derive_collision_pair_produces_same_name(tmp_path: Path) -> None:
+    """The load-bearing non-injectivity property. `a-b-c` and `a/b/c` collide."""
+    hyphen_form = tmp_path / "a-b-c"
+    slash_form = tmp_path / "a" / "b" / "c"
+    hyphen_form.mkdir()
+    slash_form.mkdir(parents=True)
+    assert derive_project_dir(hyphen_form) == derive_project_dir(slash_form)
+
+
+def test_derive_substitutes_bmp_non_ascii_one_per_codepoint(tmp_path: Path) -> None:
+    # 'é' is BMP (U+00E9); one codepoint → one hyphen.
+    cwd = tmp_path / "café"
+    cwd.mkdir()
+    assert derive_project_dir(cwd).endswith("-caf-")
+
+    # Three CJK characters, all BMP; three codepoints → three hyphens.
+    cwd2 = tmp_path / "日本語"
+    cwd2.mkdir()
+    assert derive_project_dir(cwd2).endswith("----")  # -<3 hyphens for 日本語>
+
+
+def test_derive_non_bmp_emoji_becomes_two_hyphens(tmp_path: Path) -> None:
+    """Non-BMP codepoints (e.g., 🚀 U+1F680) are surrogate pairs in UTF-16;
+    each surrogate is non-alnum and substitutes to a hyphen, producing TWO
+    hyphens per non-BMP codepoint. This is the JS-runtime fingerprint.
+    """
+    cwd = tmp_path / "rocket-🚀"
+    cwd.mkdir()
+    # Pre-emoji: "rocket-" → "-rocket-"; emoji → "--"; total trailing: "-rocket---"
+    assert derive_project_dir(cwd).endswith("-rocket---")
+
+
+def test_derive_resolves_symlinks(tmp_path: Path) -> None:
+    """`Path.resolve()` follows symlinks before substitution, so two paths
+    pointing at the same target via different symlink chains produce the
+    same project-dir name.
+    """
+    target = tmp_path / "real-target"
+    target.mkdir()
+    link = tmp_path / "via-symlink"
+    link.symlink_to(target)
+    assert derive_project_dir(target) == derive_project_dir(link)
+
+
+def test_derive_is_deterministic(tmp_path: Path) -> None:
+    """Same input → same output across repeated calls."""
+    cwd = tmp_path / "stable"
+    cwd.mkdir()
+    first = derive_project_dir(cwd)
+    second = derive_project_dir(cwd)
+    third = derive_project_dir(cwd)
+    assert first == second == third
+
+
+def test_derive_starts_with_hyphen_for_absolute_paths(tmp_path: Path) -> None:
+    """Resolved absolute paths start with `/`, which is non-alnum and
+    becomes the leading `-`. Matches the observed project-dir naming
+    convention (`-Users-charles-…`, `-private-var-folders-…`, etc.).
+    """
+    cwd = tmp_path / "leading-check"
+    cwd.mkdir()
+    assert derive_project_dir(cwd).startswith("-")
+
+
+# ---- DEFAULT_PROJECT_DIR_CORPUS contract -------------------------------
+
+
+def test_default_corpus_contains_collision_pair() -> None:
+    """The corpus MUST include a collision pair so the harness can verify
+    the non-injectivity property, which is load-bearing for mining
+    correctness analysis.
+    """
+    groups: dict[str, list[ProjectDirCase]] = {}
+    for case in DEFAULT_PROJECT_DIR_CORPUS:
+        if case.collision_group:
+            groups.setdefault(case.collision_group, []).append(case)
+    assert any(len(members) >= 2 for members in groups.values()), (
+        "DEFAULT_PROJECT_DIR_CORPUS must contain at least one collision_group "
+        "with 2+ members for the verifier to exercise the non-injectivity case"
+    )
+
+
+def test_default_corpus_covers_required_shapes() -> None:
+    """Sanity check: the default corpus exercises every shape the algorithm
+    treats specially (ASCII punctuation, BMP non-ASCII, non-BMP, mixed case).
+    """
+    suffixes = [c.cwd_suffix for c in DEFAULT_PROJECT_DIR_CORPUS]
+    # Mixed case
+    assert any(any(ch.isupper() for ch in s) and any(ch.islower() for ch in s) for s in suffixes)
+    # BMP non-ASCII (anything outside ASCII but inside BMP)
+    assert any(any(0x80 <= ord(ch) <= 0xFFFF for ch in s) for s in suffixes)
+    # Non-BMP (emoji or similar)
+    assert any(any(ord(ch) > 0xFFFF for ch in s) for s in suffixes)
+    # Punctuation variety
+    punct = {".", "_", "+", "@", " "}
+    found_punct = set()
+    for s in suffixes:
+        for ch in s:
+            if ch in punct:
+                found_punct.add(ch)
+    assert len(found_punct) >= 3, f"corpus only covers punct {found_punct}; expected ≥3"
+
+
+def test_project_dir_case_is_frozen() -> None:
+    c = ProjectDirCase(cwd_suffix="x", description="x")
+    with pytest.raises(Exception):  # noqa: B017
+        c.cwd_suffix = "y"  # type: ignore[misc]
+
+
+def test_project_dir_harness_report_passed_requires_claude(tmp_path: Path) -> None:
+    """If claude wasn't present, the harness can't have verified anything."""
+    report = ProjectDirHarnessReport(
+        test_root=tmp_path,
+        claude_present=False,
+        claude_version=None,
+        results=(),
+        collision_groups_verified=(),
+        new_project_dirs=(),
+    )
+    assert not report.passed
+
+
+def test_project_dir_harness_report_passed_requires_all_matched(tmp_path: Path) -> None:
+    """One mismatch is enough to fail the whole report."""
+    case_a = ProjectDirCase(cwd_suffix="a", description="a")
+    case_b = ProjectDirCase(cwd_suffix="b", description="b")
+    match = ProjectDirCaseResult(
+        case=case_a, cwd=tmp_path / "a", predicted_dir_name="-a",
+        observed_dir_names=("-a",), matched=True, detail="ok",
+    )
+    miss = ProjectDirCaseResult(
+        case=case_b, cwd=tmp_path / "b", predicted_dir_name="-b",
+        observed_dir_names=("-c",), matched=False, detail="diverged",
+    )
+    report = ProjectDirHarnessReport(
+        test_root=tmp_path,
+        claude_present=True,
+        claude_version="2.1.140 (Claude Code)",
+        results=(match, miss),
+        collision_groups_verified=(),
+        new_project_dirs=("-a", "-c"),
+    )
+    assert not report.passed
+
+
+def test_project_dir_harness_report_passed_requires_collision_groups_verified(
+    tmp_path: Path,
+) -> None:
+    """If the corpus declares a collision group but the harness didn't
+    observe the group's members bucketing together, the report fails."""
+    case = ProjectDirCase(cwd_suffix="x", description="x", collision_group="alpha")
+    match = ProjectDirCaseResult(
+        case=case, cwd=tmp_path / "x", predicted_dir_name="-x",
+        observed_dir_names=("-x",), matched=True, detail="ok",
+    )
+    # Declared group `alpha`, but `collision_groups_verified` is empty.
+    report = ProjectDirHarnessReport(
+        test_root=tmp_path,
+        claude_present=True,
+        claude_version="2.1.140 (Claude Code)",
+        results=(match,),
+        collision_groups_verified=(),
+        new_project_dirs=("-x",),
+    )
+    assert not report.passed
+
+    # Same report but with the group verified → passes.
+    report_passing = ProjectDirHarnessReport(
+        test_root=tmp_path,
+        claude_present=True,
+        claude_version="2.1.140 (Claude Code)",
+        results=(match,),
+        collision_groups_verified=("alpha",),
+        new_project_dirs=("-x",),
+    )
+    assert report_passing.passed

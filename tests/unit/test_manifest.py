@@ -488,5 +488,9 @@ def test_seed_manifest_is_valid(tmp_path: Path) -> None:
         pytest.skip(f"seed manifest not present at {seed}")
     m = load_manifest(seed)
     assert validate_manifest(m) == []
-    assert "toad" in {s.name for s in m.hosts.values()}
-    assert "work-laptop" in {s.name for s in m.hosts.values()}
+    # The seed ships placeholder example hosts (genericized 2026-05-13):
+    # one home-mode host named `workstation` and one work-mode host named
+    # `work-laptop`. If we ever rename either, update this test.
+    host_names = {s.name for s in m.hosts.values()}
+    assert "workstation" in host_names
+    assert "work-laptop" in host_names
