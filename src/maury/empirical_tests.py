@@ -396,10 +396,14 @@ def derive_project_dir(cwd: Path) -> str:
     matches the `fh()` source quoted in anthropics/claude-code#54865):
 
         1. Resolve symlinks on the cwd (`Path.resolve()` ≈ POSIX `realpath`).
-        2. Iterate the resolved path **as UTF-16 code units** (matching the JS
-           runtime's regex semantics — the CLI is Node).
-        3. For each code unit: keep iff it matches `[A-Za-z0-9]`; otherwise
-           replace with `-`. No collapse of consecutive replacements.
+        2. Substitute every non-`[A-Za-z0-9]` character with `-`, matching
+           the JS runtime's regex semantics. The reference `fh()` in cli.js
+           iterates UTF-16 code units (the CLI is Node); this Python port
+           iterates codepoints and special-cases non-BMP codepoints by
+           emitting two hyphens (one per UTF-16 surrogate half). Output is
+           byte-for-byte identical to a literal UTF-16-code-unit iteration
+           for any input we can construct.
+        3. No collapse of consecutive replacements.
 
     Non-injective. Distinct cwds can produce the same name: `/a/b/c` and
     `/a-b-c` both yield `-a-b-c`. Consumers walking `~/.claude/projects/`

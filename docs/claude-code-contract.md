@@ -35,8 +35,12 @@ from individual ADRs. The ADR cites the abstract behavior; this
 file owns the verification status and the "what if we're wrong"
 analysis.
 
-**Last verification pass:** 2026-05-07 against Claude Code
-documentation at `https://code.claude.com/docs/en/`.
+**Last verification pass:** 2026-05-13 against Claude Code
+documentation at `https://code.claude.com/docs/en/` and the
+`anthropics/claude-code` issue tracker (the three `📌 Tracked upstream:`
+entries were cross-referenced against open issues; the
+`project-directory-derivation` entry was empirically promoted from
+❓ to 🧪 in this pass).
 
 **Reference rot mitigation:** every cited Anthropic page also has
 an in-repo snapshot at
@@ -318,16 +322,19 @@ stdin JSON, not from env. Realpath any path you compare to
 **Verified 2026-05-13** (claude 2.1.140, macOS 14.5).
 
 **Behavior observed:** Claude Code derives the directory under
-`~/.claude/projects/<X>/` from the cwd at launch via a three-step
-algorithm:
+`~/.claude/projects/<X>/` from the cwd at launch via the algorithm
+quoted in [anthropics/claude-code#54865](https://github.com/anthropics/claude-code/issues/54865)
+from cli.js:
 
 1. **Resolve symlinks** on the cwd (`realpath` / `Path.resolve`).
    On macOS this means `/var/foo` → `/private/var/foo` before any
    substitution.
-2. **Iterate the resolved path as UTF-16 code units** (matching
-   the JS regex semantics — the CLI is Node).
-3. **Per code unit:** keep iff it matches `[A-Za-z0-9]`; else
-   substitute `-`. No collapse of consecutive substitutions.
+2. **Substitute every non-`[A-Za-z0-9]` character with `-`.**
+   The reference implementation in cli.js applies the regex over a
+   JS string, which iterates UTF-16 code units; non-BMP codepoints
+   (e.g. emoji) are encoded as surrogate pairs, so each non-BMP
+   codepoint becomes **two** hyphens.
+3. **No collapse of consecutive substitutions.**
 
 Non-BMP codepoints (e.g., 🚀 U+1F680) are encoded as UTF-16
 surrogate pairs; neither surrogate is alphanumeric, so each

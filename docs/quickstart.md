@@ -105,11 +105,12 @@ uv run maury render --check \
   --target /tmp/quickstart-claude
 ```
 
-Expected output:
+Expected output (byte counts may differ by a handful if the seed
+has been edited):
 
 ```
 rendering host=workstation profile=home (layers=3, files=2)
-  would write  CLAUDE.md  (new, ≈2 KB)
+  would write  CLAUDE.md  (new, 2376 bytes)
   would write  settings.json  (new, 55 bytes)
 (--check; no files written)
 ```
@@ -117,6 +118,15 @@ rendering host=workstation profile=home (layers=3, files=2)
 The `--check` flag is the safe way to see what *would* happen
 without writing anything (the same flag is on every state-changing
 maury command — `init`, `sync`, etc.).
+
+> **Vocabulary note.** The CLI still uses `--profile` as the flag
+> name and prints `profile=…` in its output, but the canonical
+> term in maury's design docs is **mode** (per
+> [`concepts.md`](concepts.md) and ADR-0037). They mean the same
+> thing — a rename to `--mode` is queued for the next manifest
+> schema bump per
+> [ADR-0030](adr/0030-manifest-schema-migrations.md). Until then,
+> `--profile` (the flag) and "mode" (the concept) coexist.
 
 Drop the `--check` flag to actually write, then look at the
 rendered files:

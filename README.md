@@ -21,9 +21,10 @@
 
 Multi-host Claude Code configuration sync, mode isolation, and
 learned-rule mining. Maury keeps `~/.claude/` consistent across machines,
-isolates modes (home / work / per-client) at the GitHub-repo level so
-personal content cannot leak onto a work device, and periodically
-mines local conversation transcripts to propose updates to your CLAUDE.md,
+isolates modes (home / work / per-client) at the trust-boundary
+(one git repo per boundary, per-host SSH deploy keys) so personal
+content cannot leak onto a work device, and periodically mines local
+conversation transcripts to propose updates to your CLAUDE.md,
 settings, hooks, and skills.
 
 ## Why maury exists

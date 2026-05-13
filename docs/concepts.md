@@ -296,6 +296,35 @@ precepts for consumers.
   owners and the PR target — see
   [ADR-0038](adr/0038-precept-acquisition-model.md).
 
+#### Environment-tagged and host-tagged sections
+
+Environment and machine-specific differences are **content**
+inside a layer, not layer types of their own. Two tagging
+mechanisms live inside `base` and `mode` repos:
+
+- **Environment-tagged sections** are gated on the host's
+  declared `environment_tags` (e.g., `["ubuntu", "laptop",
+  "work-desk"]`). A section tagged `[ubuntu]` is included in
+  the render only when a host's tags include `ubuntu`. Used
+  for OS- or location-shaped variation that applies to any
+  host of that shape.
+- **Host-tagged sections** are gated on a specific `host_<hex>`
+  ID. A section tagged `[host_abc123…]` is included only when
+  rendering for that one specific host. Used for one-host
+  variation that doesn't generalize — workstation-specific
+  paths, hostname references, anything that's true on exactly
+  one box.
+
+Host-tagged sections live inside the **mode** repo whose host
+they reference (per [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md)).
+They're not a separate "host overlay" layer — that older
+framing was retired with ADR-0037. They compose at the mode's
+position in the chain, alongside the rest of the mode's content.
+
+When neither env-tagged nor host-tagged sections are needed,
+the mode's content applies uniformly to every host registered
+to it.
+
 ### 3. Sublayers
 
 A **sublayer** is a direct dependency of a layer, declared in

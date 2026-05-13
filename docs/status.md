@@ -5,7 +5,7 @@ which parts of maury are real today vs. which are designed but
 not yet implemented. README and the ADRs describe the *target*
 shape; this file describes the *current* shape.
 
-> **Last updated:** 2026-05-07
+> **Last updated:** 2026-05-13
 > **Branch:** `devel` (pre-v0.1, scaffolding stage)
 
 For the authoritative scope split between v1 and v1.1, see
@@ -79,7 +79,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | docs/quickstart.md | ✅ shipped (≈5-minute try-without-committing walkthrough against `base-template/`) |
 | docs/workflow.md | ✅ shipped (4 user-journey diagrams, mermaid) |
 | docs/operations.md | ✅ shipped (8 per-command flowcharts, mermaid) |
-| docs/claude-code-contract.md | ✅ shipped (9 documented + 3 assumed-but-unverified entries) |
+| docs/claude-code-contract.md | ✅ shipped (9 documented + 4 empirically verified + 2 assumed-but-unverified entries) |
 | docs/claude-code-snapshots/ | ✅ shipped (8 HTML snapshots, MANIFEST with sha256) |
 | docs/adr/ (0001-0025) | ✅ shipped |
 | ADRs 0026 (mode-aware mining), 0027 (cross-mode promotion via shared root), 0028 (offline behavior), 0029 (maury-state layout contract), 0030 (manifest schema migrations), 0031 (self-update), 0032 (backup + DR), 0033 (`pr` repo mode), 0034 (published/subscribed profiles — use-case framing; mechanics superseded by 0037/0038) | ✅ shipped |

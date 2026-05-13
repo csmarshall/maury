@@ -73,7 +73,7 @@ machine-local.
 - **You're a small team curating shared Claude Code conventions**
   (a `rules` repo) and want PR-style contribution flow without
   hand-passing dotfiles. See
-  [`docs/patterns/team-upstream.md`](patterns/team-upstream.md).
+  [`patterns/team-upstream.md`](patterns/team-upstream.md).
 
 ## Who maury is **not** for
 
