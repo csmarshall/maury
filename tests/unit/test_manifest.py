@@ -494,3 +494,184 @@ def test_seed_manifest_is_valid(tmp_path: Path) -> None:
     host_names = {s.name for s in m.hosts.values()}
     assert "workstation" in host_names
     assert "work-laptop" in host_names
+
+
+# ---- additional error-path coverage ------------------------------------
+# Lifts manifest.py's coverage by exercising the remaining structural-
+# validation error paths that the existing tests didn't cover.
+
+
+def test_parse_invalid_json_raises_manifest_error() -> None:
+    """Bare JSON parse failures get wrapped in ManifestError with source."""
+    with pytest.raises(ManifestError, match="JSON parse error"):
+        parse_manifest("{not valid json", source="bogus.json")
+
+
+def test_parse_top_level_must_be_object() -> None:
+    with pytest.raises(ManifestError, match="top-level must be an object"):
+        parse_manifest("[1, 2, 3]")
+
+
+def test_parse_v1_manifest_raises_with_migration_hint() -> None:
+    """v1 manifests are rejected with a pointer at the migration command."""
+    v1 = '{"version": 1, "profiles": {}, "hosts": {}}'
+    with pytest.raises(ManifestError, match="surrogate-key migration required"):
+        parse_manifest(v1, source="legacy.json")
+
+
+def test_parse_unsupported_version_raises() -> None:
+    v3 = '{"version": 3, "profiles": {}, "hosts": {}}'
+    with pytest.raises(ManifestError, match="unsupported version 3"):
+        parse_manifest(v3)
+
+
+def test_parse_profiles_must_be_object() -> None:
+    bad = '{"version": 2, "profiles": [], "hosts": {}}'
+    with pytest.raises(ManifestError, match="'profiles' must be an object"):
+        parse_manifest(bad)
+
+
+def test_parse_profile_value_must_be_object() -> None:
+    bad = f'{{"version": 2, "profiles": {{"{P_HOME}": "not-an-object"}}, "hosts": {{}}}}'
+    with pytest.raises(ManifestError, match=r"value must be an object"):
+        parse_manifest(bad)
+
+
+def test_parse_hosts_must_be_object() -> None:
+    bad = f'{{"version": 2, "profiles": {{"{P_HOME}": {{"name": "home"}}}}, "hosts": []}}'
+    with pytest.raises(ManifestError, match="'hosts' must be an object"):
+        parse_manifest(bad)
+
+
+def test_parse_host_value_must_be_object() -> None:
+    bad = (
+        '{"version": 2, '
+        f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
+        f'"hosts": {{"{H_WORKSTATION}": "not-an-object"}}}}'
+    )
+    with pytest.raises(ManifestError, match=r"value must be an object"):
+        parse_manifest(bad)
+
+
+def test_parse_host_unknown_top_level_keys_raise() -> None:
+    bad = (
+        '{"version": 2, '
+        f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
+        f'"hosts": {{"{H_WORKSTATION}": {{'
+        f'"name": "workstation", "profile": "{P_HOME}", "bogus_field": 1, "repos": {{}}'
+        '}}}'
+    )
+    with pytest.raises(ManifestError, match=r"unknown keys"):
+        parse_manifest(bad)
+
+
+def test_parse_repos_must_be_object() -> None:
+    bad = (
+        '{"version": 2, '
+        f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
+        f'"hosts": {{"{H_WORKSTATION}": {{'
+        f'"name": "workstation", "profile": "{P_HOME}", "repos": []'
+        '}}}'
+    )
+    with pytest.raises(ManifestError, match="'repos' must be an object"):
+        parse_manifest(bad)
+
+
+def test_parse_repo_value_must_be_object() -> None:
+    bad = (
+        '{"version": 2, '
+        f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
+        f'"hosts": {{"{H_WORKSTATION}": {{'
+        f'"name": "workstation", "profile": "{P_HOME}", '
+        '"repos": {"base": "not-an-object"}}}}'
+    )
+    with pytest.raises(ManifestError, match=r"repo .base.+value must be an object"):
+        parse_manifest(bad)
+
+
+def test_parse_repo_unknown_keys_raise() -> None:
+    bad = (
+        '{"version": 2, '
+        f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
+        f'"hosts": {{"{H_WORKSTATION}": {{'
+        f'"name": "workstation", "profile": "{P_HOME}", '
+        '"repos": {"base": {"url": "x", "mode": "rw", "bogus": 1}}}}}'
+    )
+    with pytest.raises(ManifestError, match=r"repo .base.+unknown keys"):
+        parse_manifest(bad)
+
+
+def test_parse_repo_missing_url_raises() -> None:
+    bad = (
+        '{"version": 2, '
+        f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
+        f'"hosts": {{"{H_WORKSTATION}": {{'
+        f'"name": "workstation", "profile": "{P_HOME}", '
+        '"repos": {"base": {"mode": "rw"}}}}}'
+    )
+    with pytest.raises(ManifestError, match="missing 'url'"):
+        parse_manifest(bad)
+
+
+# ---- inheritance-chain edge cases --------------------------------------
+
+
+def test_inheritance_chain_references_unknown_profile_raises() -> None:
+    """If a profile's `extends` chain reaches an undefined profile,
+    `inheritance_chain` raises with a helpful message."""
+    m = Manifest(
+        version=2,
+        profiles={
+            P_HOME: ProfileSpec(name="home", extends="profile_00000000000000000000000000000099"),
+        },
+        hosts={},
+    )
+    with pytest.raises(ManifestError, match="referenced but not defined"):
+        m.inheritance_chain(P_HOME)
+
+
+# ---- dump_manifest round-trip preserves backend_config -----------------
+
+
+def test_dump_manifest_preserves_backend_config() -> None:
+    """A RepoSpec with non-default backend AND backend_config round-trips
+    through dump_manifest → parse_manifest cleanly."""
+    repo = RepoSpec(
+        url="custom://path",
+        mode=RepoMode.RW,
+        backend="s3-age",
+        backend_config={"bucket": "my-bucket", "prefix": "config/"},
+    )
+    host = HostSpec(
+        name="workstation",
+        profile=P_HOME,
+        repos={"base": repo},
+    )
+    original = Manifest(
+        version=2,
+        profiles={P_HOME: ProfileSpec(name="home", extends=None)},
+        hosts={H_WORKSTATION: host},
+    )
+    text = dump_manifest(original)
+    reparsed = parse_manifest(text)
+    assert reparsed.hosts[H_WORKSTATION].repos["base"].backend == "s3-age"
+    assert reparsed.hosts[H_WORKSTATION].repos["base"].backend_config == {
+        "bucket": "my-bucket",
+        "prefix": "config/",
+    }
+
+
+def test_dump_manifest_omits_default_backend() -> None:
+    """When backend is the default 'git' and backend_config is empty,
+    neither key appears in the dumped output (keeps the manifest tight)."""
+    repo = RepoSpec(url="git@github.com:x/y.git", mode=RepoMode.RW)
+    host = HostSpec(name="workstation", profile=P_HOME, repos={"base": repo})
+    m = Manifest(
+        version=2,
+        profiles={P_HOME: ProfileSpec(name="home", extends=None)},
+        hosts={H_WORKSTATION: host},
+    )
+    text = dump_manifest(m)
+    # The repo dict for 'base' shouldn't carry backend/backend_config.
+    assert '"backend"' not in text
+    assert '"backend_config"' not in text
