@@ -495,7 +495,7 @@ def bootstrap_host_cmd(
     "--target",
     "target_dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=str(Path.home() / ".claude"),
+    default="~/.claude",
     show_default=True,
     help="Where to write the rendered config tree.",
 )
@@ -521,6 +521,7 @@ def init_cmd(
     non_interactive: bool,
 ) -> None:
     """Initialize maury on a new host (first-run bootstrap)."""
+    target_dir = target_dir.expanduser()
     if from_dir is None and from_tarball is None:
         raise click.ClickException(
             "provide one of --from-dir <path> or --from-tarball <path>. "
@@ -576,7 +577,7 @@ def status() -> None:
     "--target",
     "target_dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=str(Path.home() / ".claude"),
+    default="~/.claude",
     show_default=True,
     help="Target directory whose drift to reconcile.",
 )
@@ -584,7 +585,7 @@ def status() -> None:
     "--repos-root",
     "repos_root",
     type=click.Path(file_okay=False, path_type=Path),
-    default=str(Path.home() / ".config" / "maury" / "repos"),
+    default="~/.config/maury/repos",
     show_default=True,
     help="Where local clones live.",
 )
@@ -602,6 +603,8 @@ def reconcile_cmd(
     v0: hand-edit menu only. Claude-write drift menu (3 actions) lands
     when claude-writes.jsonl attribution is wired (Phase 5.x.a slice 5).
     """
+    target_dir = target_dir.expanduser()
+    repos_root = repos_root.expanduser()
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
     if not mpath.exists():
         raise click.ClickException(f"manifest file not found: {mpath}")
@@ -718,7 +721,7 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
     "--target",
     "target_dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=str(Path.home() / ".claude"),
+    default="~/.claude",
     show_default=True,
     help="Target directory where rendered files would be written.",
 )
@@ -726,7 +729,7 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
     "--repos-root",
     "repos_root",
     type=click.Path(file_okay=False, path_type=Path),
-    default=str(DEFAULT_REPOS_ROOT),
+    default="~/.config/maury/repos",
     show_default=True,
     help="Where local clones live. Each repo nickname becomes a subdir.",
 )
@@ -763,6 +766,8 @@ def sync_cmd(
     deferred to subsequent slices. Drift detection per ADR-0017's three
     flows is wired in (--check / --non-interactive / --force / default).
     """
+    target_dir = target_dir.expanduser()
+    repos_root = repos_root.expanduser()
     if force and non_interactive:
         raise click.ClickException("--force and --non-interactive are mutually exclusive.")
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
@@ -881,7 +886,7 @@ def sync_cmd(
     "--target",
     "target_dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=str(Path.home() / ".claude"),
+    default="~/.claude",
     show_default=True,
     help="Target directory where rendered files would be written.",
 )
@@ -895,6 +900,7 @@ def render_cmd(
     check: bool,
 ) -> None:
     """Render base + profile chain + host overlay into the target directory."""
+    target_dir = target_dir.expanduser()
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
     if not mpath.exists():
         raise click.ClickException(f"manifest file not found: {mpath}")
@@ -986,7 +992,7 @@ _DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
     "projects_dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=str(_DEFAULT_PROJECTS_DIR),
-    show_default=True,
+    show_default="~/.claude/projects",
     help="Directory holding per-project transcript JSONL.",
 )
 @click.option(
@@ -1036,7 +1042,7 @@ _DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
     "claude_md_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=str(Path.home() / ".claude" / "CLAUDE.md"),
-    show_default=True,
+    show_default="~/.claude/CLAUDE.md",
     help="Path to current CLAUDE.md for cross-reference (only used with --crossref).",
 )
 @click.option(
@@ -1265,7 +1271,7 @@ _DEFAULT_CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"
     "claude_md",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=str(_DEFAULT_CLAUDE_MD),
-    show_default=True,
+    show_default="~/.claude/CLAUDE.md",
     help="Path to CLAUDE.md to evaluate.",
 )
 @click.option(

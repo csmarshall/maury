@@ -128,3 +128,52 @@ def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path: Path, monk
     )
     assert result.exit_code == 0, result.output
     assert (target / "maury-state" / "last-render.json").is_file()
+
+
+# ---- help-text default rendering ---------------------------------------
+#
+# Per a 2026-05-13 doc-review finding, command --help should render
+# home-relative path defaults in their universal `~/...` form, NOT
+# leak the resolved /Users/<maintainer>/... or /home/<user>/... path
+# of whoever is currently running the binary. This is a UX correctness
+# check, not a security check — the binary doesn't have any specific
+# home dir baked in; it's just that the resolved form looks like a
+# hardcoded path to first-time readers.
+
+
+@pytest.mark.parametrize(
+    "command_path",
+    [
+        ["init", "--help"],
+        ["render", "--help"],
+        ["reconcile", "--help"],
+        ["sync", "--help"],
+        ["mine", "--help"],
+        ["doctor", "--help"],
+    ],
+)
+def test_help_text_uses_tilde_for_home_defaults(command_path: list[str]) -> None:
+    """Help text must show `~/...` for home-relative defaults, never a
+    resolved `/Users/...` or `/home/...` path."""
+    runner = CliRunner()
+    result = runner.invoke(main, command_path)
+    assert result.exit_code == 0, result.output
+
+    # No `/Users/` or `/home/` substrings should appear in the help text.
+    # (These would indicate that a Click default was eagerly resolved to
+    # the maintainer's home directory at decorator time and leaked into
+    # `show_default=True` rendering.)
+    assert "/Users/" not in result.output, (
+        f"help for {command_path} leaks resolved /Users/... path:\n{result.output}"
+    )
+    assert "/home/" not in result.output, (
+        f"help for {command_path} leaks resolved /home/... path:\n{result.output}"
+    )
+
+
+def test_init_help_shows_tilde_target_default() -> None:
+    """`init --help` should render the --target default as `~/.claude`."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["init", "--help"])
+    assert result.exit_code == 0
+    assert "~/.claude" in result.output, result.output
