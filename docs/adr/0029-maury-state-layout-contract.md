@@ -95,6 +95,8 @@ specifies its schema, its lifecycle, and its purpose.
 | `mode-switches.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) §"On a clean switch" point 1 | JSONL (append-only) | Stub audit log for profile-switch events until Phase 10 audit log lands; gets folded into the audit log later. |
 | `audit.jsonl` | [ADR-0035](0035-audit-log.md) | JSONL (append-only) | Comprehensive audit of every state-changing maury operation. Subsumes `mode-switches.jsonl` via one-shot migration. |
 | `last-version-check.json` | [ADR-0031](0031-self-update-path.md) | JSON (single doc) | Cached result of the once-per-day PyPI version check (installed_version, latest_version, channel, checked_at). Used to gate the stale-version warning without re-probing PyPI on every command. |
+| `host-identity.json` | [ADR-0042](0042-host-identity-guard.md) | JSON (single doc) | Identity baseline written at `maury init`. Every mode-scoped command compares the current `~/.maury-host-id` 8-hex prefix against `host_id_hex` here; mismatch triggers the identity-change abort. Tag suffix edits do not trigger the guard. Updated only by `init`, `init --reset`, or `sync --confirm-identity-change`. |
+| `last-mine.json` | [ADR-0043](0043-incremental-mining.md) | JSON (single doc) | Per-project watermark for incremental mining. Records `last_jsonl_mtime` per project dir name; `maury mine` reads it to skip already-processed transcript ranges. `mining_algorithm_version` field bumps invalidate all watermarks. |
 
 ### Cross-cutting invariants
 

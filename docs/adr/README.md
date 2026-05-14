@@ -135,6 +135,7 @@ The mining → proposal → review pipeline.
 | [`0026`](0026-profile-aware-mining.md) | Session-to-profile linkage; bucketize findings by source profile |
 | [`0027`](0027-cross-context-promotion-via-shared-root.md) | Promotion graph IS the inheritance graph; only ancestor-direction promotion |
 | [`0041`](0041-per-mode-anthropic-credentials.md) | Mining crosses a network boundary; mode trust contract gains a third (operational) piece: per-mode Anthropic credentials |
+| [`0043`](0043-incremental-mining.md) | Per-project mining watermark; `derive_project_dir()` promoted to load-bearing production code |
 
 Superseded breadcrumb: [`0021`](0021-promotion-changelog.md)
 (do not implement).
@@ -152,6 +153,7 @@ hand-edits or silently diverging from peers.
 | [`0025`](0025-profile-switching-session-safeguards.md) | Profile switch refuses on active session / drift / casual `--force` |
 | [`0029`](0029-maury-state-layout-contract.md) | Single canonical contract for `~/.claude/maury-state/` |
 | [`0035`](0035-audit-log.md) | The Phase 10 audit log — every state-changing op recorded |
+| [`0042`](0042-host-identity-guard.md) | Host-identity guard: sync-time hex-change detection + `--confirm-identity-change` (SSH `known_hosts` pattern) |
 
 ### 4. "How does maury share content across hosts and people?"
 

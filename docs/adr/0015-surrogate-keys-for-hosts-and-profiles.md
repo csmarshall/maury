@@ -21,6 +21,15 @@
   (profile → mode vocabulary rename). The `host_<32 hex>` prefix is
   unchanged. All existing `profile_<hex>` values in manifests require
   migration per ADR-0030. See ADR-0037 §mode for the full context.
+- 2026-05-14 — **non-breaking format extension:** `host_<hex>` IDs may
+  now carry an optional **cosmetic tag suffix** for human readability:
+  `host_<8-hex>_<tag>` (e.g., `host_24b2a0aa_laptop`). The 8-hex prefix
+  remains the lookup primitive; the tag is purely cosmetic and never
+  parsed for resolution. Tag grammar: `[a-z0-9-]{1,32}` (DNS hostname
+  rules per RFC 1123). Existing 32-hex IDs (`host_<32 hex>`) remain
+  valid forever — no migration. The "never modified after first init"
+  invariant splits: the hex is immutable identity; the tag is freely
+  editable. See §"Tagged ID format" below.
 
 ## Related tenets
 
@@ -129,8 +138,94 @@ profile_<32 hex chars>   e.g., profile_3f1a8b2c4d5e6f7081a2b3c4d5e6f708
 ```
 
 Implementation: `uuid4().hex` with the prefix prepended. Stdlib only,
-no dependency. The prefix (`host_`, `profile_`) makes IDs
+no dependency. The prefix (`host_`, `mode_`) makes IDs
 self-describing in audit logs and error messages.
+
+#### Tagged ID format (amended 2026-05-14)
+
+The legacy `host_<32 hex>` form has a real readability problem: a
+user looking at `~/.maury-host-id` or grepping the manifest sees
+`host_24b2a0aadfd3459fa2a21ed7d0d79333` and has no idea which
+host that refers to without cross-referencing the manifest's
+`name` field. For an entity that's surfaced in every audit log
+entry, in error messages, and in the local-state file, that's
+cognitive friction with no payoff.
+
+The amended format adds an **optional cosmetic tag suffix**:
+
+```
+host_<8 hex chars>_<tag>     e.g., host_24b2a0aa_laptop
+```
+
+Where:
+
+- **`<8 hex chars>`** — the lookup primitive. 8 hex = 4 billion
+  possibilities; for personal-scale fleets (≤ 100 hosts) the
+  birthday-paradox collision probability is < 1 in 800 million.
+  If a curator-side `bootstrap host` ever detects a hex
+  collision against the manifest, init regenerates.
+- **`<tag>`** — purely cosmetic. Grammar: `[a-z0-9-]{1,32}`
+  (lowercase alphanumeric + hyphens, max 32 chars). Matches DNS
+  hostname rules per [RFC 1123 §2.1](https://www.rfc-editor.org/rfc/rfc1123#section-2.1)
+  — stand-on-shoulders so anyone familiar with DNS labels
+  understands the grammar without re-reading maury's spec. The tag is **never parsed for
+  resolution**, **never used for lookup**, and **never validated
+  against anything load-bearing**. Maury's code touches the tag
+  only at two points: writing it during `init` (after
+  normalizing user input) and displaying it in human-facing
+  output.
+
+Both `host_<32 hex>` (legacy 32-hex) and `host_<8 hex>_<tag>`
+(new tagged) regex-validate. No migration needed; hosts initialized
+before 2026-05-14 keep their original IDs forever. The validation
+regex shipped in `src/maury/ids.py`:
+
+```
+^host_([0-9a-f]{32}|[0-9a-f]{8}_[a-z0-9-]{1,32})$
+```
+
+The `mode_<32 hex>` format is **not** extended with tags. Modes
+are not surfaced in `~/.maury-host-id` or in audit log entries
+where ID readability matters most; the manifest's `name` field
+already carries the human label. Adding tags to mode IDs would
+double the schema surface for no real payoff.
+
+#### Tag normalization
+
+The user's `--tag` input at `init` time gets normalized lossily
+to fit the grammar:
+
+1. Downcase: `XADAM` → `xadam`.
+2. Replace any non-`[a-z0-9-]` character with `-`: `xadam___` →
+   `xadam---`, `host@home` → `host-home`.
+3. Truncate to 32 characters.
+4. If the result is empty (e.g., user input was all special
+   characters): error and re-prompt.
+
+After normalization, `init` shows the user the proposed tag and
+asks: "Tag this host as `xadam---`? `[Y/n/edit]`" with the
+DNS-rule summary embedded in the help text. The user accepts,
+rejects (re-prompt), or edits.
+
+Defaults: at init's prompt, the suggested tag is
+`socket.gethostname()` normalized through the same pipeline.
+Most users hit enter.
+
+#### Mutability split (amended 2026-05-14)
+
+ADR-0015's original "never modified after first init" invariant
+splits into two:
+
+- **Hex (immutable identity).** The 8-hex prefix is written once
+  at `init` and is the lookup primitive. Editing it is
+  functionally equivalent to swapping the host's identity —
+  see ADR-0042 for the sync-time guard that detects and refuses
+  this case.
+- **Tag (mutable cosmetic).** The tag suffix in
+  `~/.maury-host-id` may be freely edited by the user. Maury's
+  code never reads the tag for any logic; it's purely a label.
+  Changing `host_24b2a0aa_laptop` to `host_24b2a0aa_main-laptop`
+  is harmless.
 
 #### Manifest schema (revised)
 
@@ -180,11 +275,14 @@ lives in.
 
 Each host writes its ID once at first bootstrap to
 `~/.maury-host-id`. The file is created by `maury init` on the
-host's first run and **never modified** thereafter.
-`socket.gethostname()` is a hint used only to match the host
-against an already-registered manifest entry on first init —
-never the source of truth for which manifest entry applies to
-this machine after the host-id file exists.
+host's first run. The 8-hex prefix is **never modified** after
+init; the cosmetic tag suffix is freely editable (see §"Mutability
+split" above for the post-2026-05-14 amendment). `socket.gethostname()`
+is **not** consulted for resolution after init — per ADR-0039 step 8,
+init generates a fresh `host_<hex>_<tag>` UUID and writes it locally,
+then the curator records that locally-generated UUID in the mode's
+marker file. Hostname is no longer load-bearing for any
+identity-resolution code path.
 
 If `~/.maury-host-id` is missing (e.g., fresh install before
 bootstrap), maury commands that need to know "which host am I"
@@ -359,3 +457,4 @@ keep their existing `id:` slug field. No migration.
 - 2026-05-06 — rule-IDs addendum proposed then retracted same day (see top-of-file note).
 - 2026-05-07 — corrected §"Host self-identification" claim (see top-of-file note).
 - 2026-05-11 — `profile_<32 hex>` renamed to `mode_<32 hex>` throughout. Breaking schema change; migration required per ADR-0030. `host_<32 hex>` unchanged.
+- 2026-05-14 — non-breaking format extension: `host_<hex>` IDs may carry an optional cosmetic tag suffix (`host_<8 hex>_<tag>`). Hex remains immutable identity; tag is freely editable. Existing 32-hex IDs accepted forever; no migration. See top-of-file note + §"Tagged ID format" for grammar (RFC 1123 DNS labels) and §"Mutability split" for the hex/tag invariant separation.

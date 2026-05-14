@@ -631,6 +631,35 @@ Why mode-scoped:
 - Replacement-hardware recovery is a content-copy, not an
   identity-transfer (per Tenet 6, identity is not name).
 
+**Tagged ID format and the hex/tag split** (per the 2026-05-14
+amendment to [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md)):
+host IDs may carry an optional cosmetic suffix —
+`host_<8 hex>_<tag>` (e.g., `host_24b2a0aa_laptop`). The 8-hex
+prefix is the **lookup primitive**; the **cosmetic tag**
+(`[a-z0-9-]{1,32}`, RFC 1123 DNS-label grammar) is purely a
+human-readable label and is never parsed for resolution. This
+yields a **mutability split**: the hex is immutable identity
+(editing it is functionally a host-identity swap, guarded by
+the identity baseline below); the tag is freely editable. The
+legacy `host_<32 hex>` form remains valid forever — no
+migration.
+
+**Identity baseline + host-identity guard** (per
+[ADR-0042](adr/0042-host-identity-guard.md)): every host has a
+**baseline** recorded at `~/.claude/maury-state/host-identity.json`
+on first sync, snapshotting the 8-hex prefix in
+`~/.maury-host-id` at registration time. Every subsequent
+mode-scoped command (sync, render, reconcile, mine, etc.)
+cross-checks the current hex against the baseline; on
+mismatch, maury aborts loudly and requires explicit
+`--confirm-identity-change` to proceed. The pattern follows
+SSH's `known_hosts` "trust on first use, refuse silently on
+change, require explicit acknowledgement to re-establish." It
+exists to catch accidental hex edits that would silently swap
+a host into a different mode-registration — the fourth
+checkpoint in the work/home physical trust contract from
+[ADR-0041](adr/0041-per-mode-anthropic-credentials.md).
+
 ### 9. `repo_mode` (access subtype)
 
 > *The mode tree tells you what content flows; `repo_mode`

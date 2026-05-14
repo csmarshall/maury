@@ -385,23 +385,67 @@ child modes.
 
 #### Step 8: host identity creation and mode registration
 
-- Maury generates a fresh `host_<32 hex>` UUID via `uuid4().hex`. This
-  is the **mode-registration ID** for this hardware in this mode.
+- Maury generates a fresh **tagged ID** per the amended ADR-0015
+  format: `host_<8 hex>_<tag>` (e.g., `host_24b2a0aa_laptop`). The 8-hex
+  prefix comes from `uuid4().hex[:8]`; the tag comes from the
+  interactive prompt in §"Tag UX at bootstrap" below.
+- The full tagged ID is the **mode-registration ID** for this hardware
+  in this mode.
 - The ID is written to `~/.maury-host-id`. Within this registration,
-  the file is never modified again.
+  the 8-hex prefix is never modified again; the tag suffix is freely
+  editable per the ADR-0015 mutability split.
 - Maury edits the chosen mode's `.meta/maury-marker.json` to add the
   host entry under `hosts`:
   ```json
   "hosts": {
-    "host_<new-id>": {
+    "host_24b2a0aa_laptop": {
       "registered_at": "<RFC 3339 now>",
       "environment_tags": ["<tags from step 6>"]
     }
   }
   ```
 - Maury commits and pushes the mode marker update.
+- Maury writes the identity baseline at
+  `~/.claude/maury-state/host-identity.json` per ADR-0042; this
+  baseline is the source of truth for the sync-time hex-change
+  guard.
 
 The host is now bootstrapped into the chosen mode.
+
+#### Tag UX at bootstrap (amended 2026-05-14)
+
+The tag is the user-controlled cosmetic suffix on the surrogate
+host ID per the amended ADR-0015 format. Bootstrap prompts the
+user interactively:
+
+```
+Tag this host registration (default: laptop)? [Y/n/edit]
+```
+
+Default suggestion = `socket.gethostname()` normalized through the
+tag-grammar pipeline (downcase + replace non-`[a-z0-9-]` with `-` +
+truncate to 32). Most users hit enter.
+
+If the user types `edit` and supplies a custom tag, normalization
+runs again and the result is shown before commit:
+
+```
+You entered: XADAM___
+Normalized to: xadam---
+Accept this tag? [Y/n/edit]
+```
+
+The normalized form gets written; the user can re-edit until
+satisfied. The tag is **not** validated against any uniqueness
+constraint within the manifest — two hosts may share the same tag
+(the hex prefix is the distinguishing identity). Maury's logic
+never reads the tag for resolution.
+
+For non-interactive bootstrap (CI runners, automated provisioning):
+`maury init --tag <value>` bypasses the prompt. If `--tag` is
+omitted and stdin is not a TTY, bootstrap fails with an explicit
+"--tag required for non-interactive mode" error rather than
+silently defaulting.
 
 ---
 
@@ -798,4 +842,10 @@ machinery that produced the rendered file.
 
 ## Amendment history
 
-None.
+- 2026-05-14 — step 8 ID format updated from `host_<32 hex>` to
+  `host_<8 hex>_<tag>` per amended ADR-0015. New §"Tag UX at
+  bootstrap" sub-section captures the interactive prompt + DNS-
+  rule normalization (downcase + replace non-`[a-z0-9-]` with
+  `-` + truncate). Step 8 also gained a line about writing the
+  identity baseline at `~/.claude/maury-state/host-identity.json`
+  per ADR-0042 (host-identity guard).
