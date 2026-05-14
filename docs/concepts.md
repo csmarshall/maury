@@ -190,9 +190,10 @@ unit it operates within is therefore an agency.
 
 Every agency has:
 
-- A stable **`agency_id`** — a UUID generated once at
-  `maury agency init` (per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md))
-  and never changed.
+- A stable **`agency_id`** — a UUID generated once at agency
+  creation time (per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md);
+  the planned `maury agency init` command is the entry point —
+  not yet shipped, see [`status.md`](status.md)) and never changed.
 - Exactly **one** `base` repo (the structural root).
 - Zero or more `mode` repos descending from base.
 - Zero or more `rules` repos attached as sublayers of `base` or
@@ -586,9 +587,9 @@ A host's active mode is set by:
 
 - `maury init` (initial assignment, per
   [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)).
-- `maury mode deregister` followed by `maury mode bootstrap`
-  (with safeguards per
-  [ADR-0025](adr/0025-profile-switching-session-safeguards.md);
+- A planned `maury mode deregister` followed by
+  `maury mode bootstrap` (not yet shipped — see [`status.md`](status.md)
+  for current state; per [ADR-0025](adr/0025-profile-switching-session-safeguards.md)
   mode change is a two-operation sequence, not a single atomic
   switch).
 - Manual edit of the host's marker entry (with all the same

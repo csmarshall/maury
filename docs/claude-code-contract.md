@@ -74,20 +74,34 @@ boundary leakage.
 
 ### `cc-contract:startup-files-loaded`
 
-A fresh `claude` invocation loads `~/.claude/CLAUDE.md`,
-`~/.claude/memory/MEMORY.md`, `~/.claude/settings.json`, hooks,
-agents, and skills at startup.
+A fresh `claude` invocation loads CLAUDE.md files (user-level at
+`~/.claude/CLAUDE.md`, project-level at `./CLAUDE.md` or
+`./.claude/CLAUDE.md`, local at `./CLAUDE.local.md`, plus any
+ancestor-directory CLAUDE.md files), `~/.claude/settings.json` +
+project-level `.claude/settings.json`, hooks declared therein,
+agents, and skills. Auto-memory (v2.1.59+, default-on) lives in a
+**per-project** directory at `~/.claude/projects/<project>/memory/`
+(MEMORY.md index + topic files); the first 200 lines or 25KB of
+`MEMORY.md` are loaded into every session for that project.
 
-> *"Each Claude Code session begins with a fresh context window."
-> CLAUDE.md files and settings load at start.*
+> *"Each Claude Code session begins with a fresh context window…
+> CLAUDE.md files: Loaded into every session… Auto memory… Loaded
+> into Every session (first 200 lines or 25KB)."*
 > — [Memory documentation](https://code.claude.com/docs/en/memory)
-> and [Claude Directory documentation](https://code.claude.com/docs/en/claude-directory)
+> ("CLAUDE.md vs auto memory" table and "Auto memory" section)
 
 **Maury depends on this for:** ADR-0017 (drift detection assumes
 `~/.claude/` content is what Claude reads), ADR-0023 (hook
-installation via settings.json), ADR-0025 (profile banner
-injection in CLAUDE.md is read by Claude on next session start),
+installation via settings.json), ADR-0025 (mode banner injection
+in CLAUDE.md is read by Claude on next session start),
 ADR-0011 (`maury doctor` evaluates `~/.claude/CLAUDE.md`).
+
+**Note (2026-05-13):** Auto-memory's per-project location was
+corrected here after a documentation review caught the earlier
+"`~/.claude/memory/MEMORY.md`" (global) claim — which is not the
+actual storage location. The user-level `~/.claude/CLAUDE.md` is
+the *global* memory analog; per-project auto-memory under
+`~/.claude/projects/<project>/memory/` is a separate mechanism.
 
 ---
 

@@ -37,6 +37,11 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury verify-cc-hooks` | ✅ shipped | Empirically verify the three load-bearing Claude Code hook behaviors (comment stripping, subprocess env, file-IO permissions) by spinning up an isolated workspace and invoking `claude -p` against it. Used 2026-05-07 to close out ADR-0023's "Empirical-test debt." |
 | `maury verify-cc-projects-dir` | ✅ shipped | Empirically verify the algorithm Claude Code uses to derive `~/.claude/projects/<X>/` from the cwd. Runs `claude -p` against a 14-case corpus (ASCII, punctuation, BMP non-ASCII, non-BMP emoji, plus a collision pair) and asserts `derive_project_dir()` predictions match observation. Promoted `cc-contract:project-directory-derivation` from ❓ to 🧪 on 2026-05-13. Cross-referenced against [anthropics/claude-code#54865](https://github.com/anthropics/claude-code/issues/54865). |
 | `maury subscribe <url>` | ⏳ planned (v1.1+) | Subscribe to a published profile (gap K). Per planned gap-K ADRs. |
+| `maury agency init` | ⏳ planned | Bootstrap a new agency: generate `agency_id` UUID, create the first `base` repo with the right marker. Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). |
+| `maury agency validate` | ⏳ planned | Validate marker-file integrity, sublayer-graph cycles, host-mode mismatches across an agency. Per [ADR-0040](adr/0040-render-pipeline.md). |
+| `maury mode bootstrap` | ⏳ planned | Register the current host into a specified mode (counterpart to deregister). Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). |
+| `maury mode deregister` | ⏳ planned | Retire the host's current mode registration (counterpart to bootstrap). Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). Mode change is two operations: deregister then bootstrap, never a single atomic switch. |
+| `maury repo init` | ⏳ planned | Initialize a new `rules` repo with marker + semver baseline + post-commit tagging hook. Per [ADR-0038](adr/0038-precept-acquisition-model.md). |
 | `maury uninstall` | ⏳ planned | Strip maury hooks/scripts/state from a host. Per [ADR-0023 §8](adr/0023-hook-installation-and-tool-resolution.md). |
 
 Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ planned for v1 · ⏳ (v1.1+) deferred
@@ -87,6 +92,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | ADRs 0026 (mode-aware mining), 0027 (cross-mode promotion via shared root), 0028 (offline behavior), 0029 (maury-state layout contract), 0030 (manifest schema migrations), 0031 (self-update), 0032 (backup + DR), 0033 (`pr` repo mode), 0034 (published/subscribed profiles — use-case framing; mechanics superseded by 0037/0038) | ✅ shipped |
 | ADRs 0035 (audit log), 0036 (open-standards alignment), 0037 (layer taxonomy + repo discovery), 0038 (precept acquisition model), 0039 (bootstrap + host lifecycle), 0040 (render pipeline), 0041 (per-mode Anthropic credentials) | ✅ shipped |
 | docs/patterns/team-upstream.md (gap K) | ✅ shipped |
+| docs/patterns/solo-dev.md | ✅ shipped (single-user mirror of team-upstream.md; recipe for the workstation+laptop+server case) |
 
 ## How to read this file alongside the ADRs
 

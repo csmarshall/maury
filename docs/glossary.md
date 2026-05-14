@@ -11,7 +11,7 @@ file it as a finding for the next ADR landscape audit.
 | Term | Means | See |
 |---|---|---|
 | **Agency** | The bounded set of repos and hosts maury manages together; identified by `agency_id` UUID | [concepts §1](concepts.md#1-agency), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md), [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md) |
-| **`agency_id`** | UUID generated once at `maury agency init`; membership claim on `base`/`mode`, provenance claim on `rules` | [concepts §1](concepts.md#1-agency), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
+| **`agency_id`** | UUID generated once at agency creation (the planned `maury agency init` command, not yet shipped — see [`status.md`](status.md)); membership claim on `base`/`mode`, provenance claim on `rules` | [concepts §1](concepts.md#1-agency), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
 | **Layer type** | One of `base`, `mode`, `rules`. The marker file's `layer` field | [concepts §2](concepts.md#2-layer-types), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
 | **Base** | The agency-wide foundation; exactly one per agency | [concepts §2](concepts.md#2-layer-types), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |
 | **Mode** | A named configuration mode in the WHAT dimension; modes form an arbitrary-depth tree below base | [concepts §2](concepts.md#2-layer-types), [concepts §5](concepts.md#5-mode-tree-and-inheritance), [ADR-0037](adr/0037-layer-taxonomy-and-repo-discovery.md) |

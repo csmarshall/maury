@@ -27,10 +27,13 @@ reference is in [`operations.md`](operations.md).
 ## 1. Clone and install (≈1 min)
 
 ```sh
-git clone https://github.com/<org>/maury.git
+git clone https://github.com/csmarshall/maury.git
 cd maury
 uv sync
 ```
+
+(The repo is at `csmarshall/maury` until namespace transfer; expect
+the canonical URL to change once an org/foundation home is sorted.)
 
 `uv sync` creates a project-local virtualenv and installs maury's
 dependencies. From here on, `uv run maury <args>` runs the CLI.

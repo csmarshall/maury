@@ -188,6 +188,10 @@ For everything else:
   maury sits alongside the other tools in this space
   (jean-claude, claude-diary, ccms, chezmoi, Anthropic native).
   Useful if you're comparing.
+- [`docs/patterns/solo-dev.md`](docs/patterns/solo-dev.md) and
+  [`docs/patterns/team-upstream.md`](docs/patterns/team-upstream.md)
+  — concrete setup recipes for the two main use cases (single-
+  user / multi-host vs. team curator + engineer consumers).
 - [`docs/workflow.md`](docs/workflow.md) — user-journey flowcharts
   (mermaid).
 - [`docs/operations.md`](docs/operations.md) — per-command
