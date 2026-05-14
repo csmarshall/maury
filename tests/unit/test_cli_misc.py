@@ -145,6 +145,90 @@ def test_rules_trace_malformed_manifest_yields_click_exception(tmp_path: Path) -
 # ---- rules validate with manifest cross-check --------------------------
 
 
+# ---- profile list/hosts manifest-load errors ----------------------------
+
+
+def test_profile_list_malformed_manifest_yields_click_exception(tmp_path: Path) -> None:
+    mpath = tmp_path / "manifest.json"
+    mpath.write_text('{"version": 2, "profiles": "not a dict", "hosts": {}}')
+    runner = CliRunner()
+    result = runner.invoke(main, ["profile", "list", "--manifest-file", str(mpath)])
+    assert result.exit_code != 0
+
+
+def test_profile_hosts_malformed_manifest_yields_click_exception(tmp_path: Path) -> None:
+    mpath = tmp_path / "manifest.json"
+    mpath.write_text('{"version": 2, "profiles": {}, "hosts": "not a dict"}')
+    runner = CliRunner()
+    result = runner.invoke(main, ["profile", "hosts", "--manifest-file", str(mpath)])
+    assert result.exit_code != 0
+
+
+# ---- init: source-arg validation ---------------------------------------
+
+
+def test_init_requires_one_of_from_dir_or_from_tarball(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`init` with neither --from-dir nor --from-tarball → friendly error."""
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(main, ["init", "--target", str(tmp_path / "out")])
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr or "")
+    assert "--from-dir" in combined and "--from-tarball" in combined
+
+
+def test_init_from_dir_and_from_tarball_are_mutually_exclusive(tmp_path: Path) -> None:
+    """`init --from-dir X --from-tarball Y` → friendly error before run_init."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    src_tar = tmp_path / "src.tar"
+    src_tar.write_text("not really a tarball")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "init",
+            "--from-dir",
+            str(src_dir),
+            "--from-tarball",
+            str(src_tar),
+            "--target",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr or "")
+    assert "mutually exclusive" in combined
+
+
+def test_init_invalid_source_dir_yields_click_exception(tmp_path: Path) -> None:
+    """`init --from-dir <empty-dir>` → InitError wrapped to ClickException."""
+    src = tmp_path / "empty-src"
+    src.mkdir()
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "init",
+            "--from-dir",
+            str(src),
+            "--target",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert result.exit_code != 0
+
+
+# ---- status stub -------------------------------------------------------
+
+
+def test_status_command_is_unimplemented() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["status"])
+    assert result.exit_code != 0
+    assert "not yet implemented" in result.output
+
+
 def test_rules_validate_with_manifest_resolves_profile_set(tmp_path: Path) -> None:
     """`rules validate --manifest-file` should pull known-profiles from the
     manifest's union of IDs + names. Covers the manifest-load + known_profiles_from
