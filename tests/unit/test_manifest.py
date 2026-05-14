@@ -559,7 +559,7 @@ def test_parse_host_unknown_top_level_keys_raise() -> None:
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", "bogus_field": 1, "repos": {{}}'
-        '}}}'
+        "}}}"
     )
     with pytest.raises(ManifestError, match=r"unknown keys"):
         parse_manifest(bad)
@@ -571,7 +571,7 @@ def test_parse_repos_must_be_object() -> None:
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", "repos": []'
-        '}}}'
+        "}}}"
     )
     with pytest.raises(ManifestError, match="'repos' must be an object"):
         parse_manifest(bad)

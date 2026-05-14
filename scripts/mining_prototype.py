@@ -84,10 +84,31 @@ SYSTEM_INJECTED_SUBSTRINGS = (
 
 # Common boilerplate to filter out (these add no signal)
 NOISE_PHRASES = {
-    "yes", "no", "ok", "okay", "thanks", "thank you", "great", "perfect",
-    "go", "go on", "continue", "keep going", "next", "?", "hmm",
-    "do it", "make it so", "lgtm", "looks good", "lets go", "let's go",
-    "sounds good", "sounds ok", "sounds great", "that's right",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "thanks",
+    "thank you",
+    "great",
+    "perfect",
+    "go",
+    "go on",
+    "continue",
+    "keep going",
+    "next",
+    "?",
+    "hmm",
+    "do it",
+    "make it so",
+    "lgtm",
+    "looks good",
+    "lets go",
+    "let's go",
+    "sounds good",
+    "sounds ok",
+    "sounds great",
+    "that's right",
 }
 
 
@@ -128,11 +149,7 @@ class Cluster:
         best = self.members[0]
         best_score = -1.0
         for candidate in self.members:
-            score = sum(
-                _jaccard(candidate.tokens, other.tokens)
-                for other in self.members
-                if other is not candidate
-            )
+            score = sum(_jaccard(candidate.tokens, other.tokens) for other in self.members if other is not candidate)
             if score > best_score:
                 best_score = score
                 best = candidate
@@ -293,9 +310,7 @@ def report(clusters: list[Cluster], top: int = 30) -> None:
     # filters by themselves let through some single-session noise; together
     # they're a reasonable proxy for "this is a recurring preference."
     interesting = [
-        c for c in clusters
-        if c.size >= MIN_OCCURRENCES
-        and (c.distinct_sessions >= 2 or c.distinct_projects >= 2)
+        c for c in clusters if c.size >= MIN_OCCURRENCES and (c.distinct_sessions >= 2 or c.distinct_projects >= 2)
     ]
     interesting.sort(key=lambda c: (-c.distinct_projects, -c.distinct_sessions, -c.size))
 
@@ -359,8 +374,7 @@ def main() -> int:
             print(f"  hit --max-messages cap of {args.max_messages}; stopping early")
             break
 
-    print(f"\nextracted {len(messages):,} signal-bearing user messages from "
-          f"{len(per_project)} project(s).")
+    print(f"\nextracted {len(messages):,} signal-bearing user messages from {len(per_project)} project(s).")
     if per_project:
         print("per-project counts:")
         for proj, n in per_project.most_common():

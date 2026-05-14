@@ -1655,7 +1655,13 @@ def _print_hook_timing_report(report: HookTimingHarnessReport, output_format: st
         click.echo(f"   {p.detail}")
         if p.findings:
             for k, v in p.findings.items():
-                if k in {"raw_output", "markers_observed", "post_a_markers", "expected_post_a_present", "markers_between_a_start_and_end"}:
+                if k in {
+                    "raw_output",
+                    "markers_observed",
+                    "post_a_markers",
+                    "expected_post_a_present",
+                    "markers_between_a_start_and_end",
+                }:
                     continue  # noisy; shown via --format json
                 click.echo(f"   {k}: {v!r}")
         click.echo()

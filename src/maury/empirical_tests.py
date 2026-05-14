@@ -644,7 +644,9 @@ def run_project_dir_harness(
             # Non-collision case: expect exactly one new dir matching prediction.
             if not new_this_case:
                 matched = False
-                detail = f"claude invocation produced no new dir under {_projects_dir()} — claude may have errored silently"
+                detail = (
+                    f"claude invocation produced no new dir under {_projects_dir()} — claude may have errored silently"
+                )
             elif len(new_this_case) == 1 and predicted in new_this_case:
                 matched = True
                 detail = f"predicted and observed {predicted!r}"
@@ -807,9 +809,7 @@ printf 'end=%s\\n' "$(date +%s)" >> "{out}"
 """
 
 
-def _write_hook_timing_scripts(
-    scripts_dir: Path, out_dir: Path, *, a_sleep_seconds: float = 0.5
-) -> dict[str, Path]:
+def _write_hook_timing_scripts(scripts_dir: Path, out_dir: Path, *, a_sleep_seconds: float = 0.5) -> dict[str, Path]:
     """Materialize the hook-timing probe shell scripts. Returns
     nickname -> absolute script path so settings.json hook configs
     can reference them by absolute path (matching the
@@ -821,7 +821,10 @@ def _write_hook_timing_scripts(
     timeout_out = out_dir / "timeout.out"
 
     scripts = {
-        "combined_a": (scripts_dir / "combined_a.sh", _ordering_hook_a_script(combined_out, sleep_seconds=a_sleep_seconds)),
+        "combined_a": (
+            scripts_dir / "combined_a.sh",
+            _ordering_hook_a_script(combined_out, sleep_seconds=a_sleep_seconds),
+        ),
         "combined_b": (scripts_dir / "combined_b.sh", _ordering_hook_b_script(combined_out)),
         "combined_c": (scripts_dir / "combined_c.sh", _ordering_hook_c_script(combined_out)),
         "combined_d": (scripts_dir / "combined_d.sh", _ordering_hook_d_script(combined_out)),
@@ -967,9 +970,7 @@ def _evaluate_combined_probe(out_path: Path, expected_order: tuple[str, ...]) ->
     findings["expected_post_a_present"] = present_expected
 
     # Short-circuit detection: did D appear after C exited 2?
-    short_circuit = (
-        _HOOK_TIMING_MARKER_C in markers and _HOOK_TIMING_MARKER_D not in markers
-    )
+    short_circuit = _HOOK_TIMING_MARKER_C in markers and _HOOK_TIMING_MARKER_D not in markers
     findings["short_circuit_on_exit_2"] = short_circuit
     findings["d_marker_present"] = _HOOK_TIMING_MARKER_D in markers
     findings["c_marker_present"] = _HOOK_TIMING_MARKER_C in markers
@@ -1009,7 +1010,11 @@ def _evaluate_timeout_probe(
             detail=f"timeout probe output not found at {out_path}; hook may not have fired",
         )
     raw = out_path.read_text()
-    findings: dict[str, object] = {"raw_output": raw, "hook_sleep_seconds": hook_sleep_seconds, "elapsed_seconds": elapsed_seconds}
+    findings: dict[str, object] = {
+        "raw_output": raw,
+        "hook_sleep_seconds": hook_sleep_seconds,
+        "elapsed_seconds": elapsed_seconds,
+    }
 
     start_match = None
     end_match = None
@@ -1036,9 +1041,7 @@ def _evaluate_timeout_probe(
         # Hook was killed before completing its sleep. Default timeout
         # is somewhere between 0 and hook_sleep_seconds.
         findings["hook_completed"] = False
-        findings["interpretation"] = (
-            f"hook killed mid-sleep; default timeout < {hook_sleep_seconds}s"
-        )
+        findings["interpretation"] = f"hook killed mid-sleep; default timeout < {hook_sleep_seconds}s"
         return HookTimingProbeResult(
             name="default_timeout",
             passed=True,

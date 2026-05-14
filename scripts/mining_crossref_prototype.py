@@ -125,8 +125,8 @@ def main() -> int:
     )
     evidence = (
         "when you tell me commands include a "
-        "`2>&1 > | tee <COMMAND_NAME>_$(date +\"%F-%H%M.%S\")` "
-        'so when I\'m done I just say "completed" and you\'ll know '
+        '`2>&1 > | tee <COMMAND_NAME>_$(date +"%F-%H%M.%S")` '
+        "so when I'm done I just say \"completed\" and you'll know "
         "what log to review"
     )
     # The surrounding context — assistant gave a command WITHOUT the tee

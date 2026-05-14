@@ -163,12 +163,8 @@ def test_help_text_uses_tilde_for_home_defaults(command_path: list[str]) -> None
     # (These would indicate that a Click default was eagerly resolved to
     # the maintainer's home directory at decorator time and leaked into
     # `show_default=True` rendering.)
-    assert "/Users/" not in result.output, (
-        f"help for {command_path} leaks resolved /Users/... path:\n{result.output}"
-    )
-    assert "/home/" not in result.output, (
-        f"help for {command_path} leaks resolved /home/... path:\n{result.output}"
-    )
+    assert "/Users/" not in result.output, f"help for {command_path} leaks resolved /Users/... path:\n{result.output}"
+    assert "/home/" not in result.output, f"help for {command_path} leaks resolved /home/... path:\n{result.output}"
 
 
 def test_init_help_shows_tilde_target_default() -> None:

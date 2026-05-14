@@ -27,13 +27,7 @@ def test_load_rules_reads_file(tmp_path: Path) -> None:
     """`load_rules` reads from disk and delegates to `parse_rules`."""
     path = tmp_path / "rules.yaml"
     path.write_text(
-        "version: 1\n"
-        "rules:\n"
-        "  - id: example\n"
-        "    when:\n"
-        "      pattern: 'foo'\n"
-        "    then:\n"
-        "      profile: home\n"
+        "version: 1\nrules:\n  - id: example\n    when:\n      pattern: 'foo'\n    then:\n      profile: home\n"
     )
     rules = load_rules(path)
     assert len(rules) == 1
@@ -95,43 +89,23 @@ def test_parse_rules_omits_rules_key_returns_empty() -> None:
 def test_parse_rules_unknown_top_level_key_raises() -> None:
     with pytest.raises(RuleParseError, match="unknown top-level keys"):
         parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: {pattern: foo}\n"
-            "    then: {profile: home}\n"
-            "    bogus_field: x\n"
+            "version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then: {profile: home}\n    bogus_field: x\n"
         )
 
 
 def test_parse_rules_missing_id_raises() -> None:
     with pytest.raises(RuleParseError, match="missing 'id'"):
-        parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - when: {pattern: foo}\n"
-            "    then: {profile: home}\n"
-        )
+        parse_rules("version: 1\nrules:\n  - when: {pattern: foo}\n    then: {profile: home}\n")
 
 
 def test_parse_rules_missing_when_raises() -> None:
     with pytest.raises(RuleParseError, match="missing 'when'"):
-        parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    then: {profile: home}\n"
-        )
+        parse_rules("version: 1\nrules:\n  - id: r1\n    then: {profile: home}\n")
 
 
 def test_parse_rules_missing_then_raises() -> None:
     with pytest.raises(RuleParseError, match="missing 'then'"):
-        parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: {pattern: foo}\n"
-        )
+        parse_rules("version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n")
 
 
 def test_parse_rules_invalid_confidence_raises() -> None:
@@ -147,36 +121,19 @@ def test_parse_rules_invalid_confidence_raises() -> None:
 
 
 def test_parse_rules_default_confidence_is_medium() -> None:
-    rules = parse_rules(
-        "version: 1\n"
-        "rules:\n"
-        "  - id: r1\n"
-        "    when: {pattern: foo}\n"
-        "    then: {profile: home}\n"
-    )
+    rules = parse_rules("version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then: {profile: home}\n")
     assert rules[0].confidence == Confidence.MEDIUM
 
 
 def test_parse_rules_priority_must_be_int() -> None:
     with pytest.raises(RuleParseError, match="priority must be an integer"):
         parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: {pattern: foo}\n"
-            "    then: {profile: home}\n"
-            "    priority: high\n"
+            "version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then: {profile: home}\n    priority: high\n"
         )
 
 
 def test_parse_rules_priority_default_is_zero() -> None:
-    rules = parse_rules(
-        "version: 1\n"
-        "rules:\n"
-        "  - id: r1\n"
-        "    when: {pattern: foo}\n"
-        "    then: {profile: home}\n"
-    )
+    rules = parse_rules("version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then: {profile: home}\n")
     assert rules[0].priority == 0
 
 
@@ -185,23 +142,13 @@ def test_parse_rules_priority_default_is_zero() -> None:
 
 def test_parse_when_must_be_mapping() -> None:
     with pytest.raises(RuleParseError, match="'when' must be a mapping"):
-        parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: 'not-a-mapping'\n"
-            "    then: {profile: home}\n"
-        )
+        parse_rules("version: 1\nrules:\n  - id: r1\n    when: 'not-a-mapping'\n    then: {profile: home}\n")
 
 
 def test_parse_when_unknown_keys_raise() -> None:
     with pytest.raises(RuleParseError, match=r"unknown 'when' keys"):
         parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: {pattern: foo, bogus_condition: x}\n"
-            "    then: {profile: home}\n"
+            "version: 1\nrules:\n  - id: r1\n    when: {pattern: foo, bogus_condition: x}\n    then: {profile: home}\n"
         )
 
 
@@ -225,34 +172,19 @@ def test_parse_when_accepts_any_keyword_and_all_keywords() -> None:
 
 def test_parse_then_must_be_mapping() -> None:
     with pytest.raises(RuleParseError, match="'then' must be a mapping"):
-        parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: {pattern: foo}\n"
-            "    then: 'not-a-mapping'\n"
-        )
+        parse_rules("version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then: 'not-a-mapping'\n")
 
 
 def test_parse_then_unknown_keys_raise() -> None:
     with pytest.raises(RuleParseError, match=r"unknown 'then' keys"):
         parse_rules(
-            "version: 1\n"
-            "rules:\n"
-            "  - id: r1\n"
-            "    when: {pattern: foo}\n"
-            "    then: {profile: home, bogus_action: x}\n"
+            "version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then: {profile: home, bogus_action: x}\n"
         )
 
 
 def test_parse_then_accepts_forbid_profile() -> None:
     rules = parse_rules(
-        "version: 1\n"
-        "rules:\n"
-        "  - id: r1\n"
-        "    when: {pattern: foo}\n"
-        "    then:\n"
-        "      forbid_profile: [work, '!home']\n"
+        "version: 1\nrules:\n  - id: r1\n    when: {pattern: foo}\n    then:\n      forbid_profile: [work, '!home']\n"
     )
     assert rules[0].then.forbid_profile == ("work", "!home")
 

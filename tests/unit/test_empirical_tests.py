@@ -464,12 +464,20 @@ def test_project_dir_harness_report_passed_requires_all_matched(tmp_path: Path) 
     case_a = ProjectDirCase(cwd_suffix="a", description="a")
     case_b = ProjectDirCase(cwd_suffix="b", description="b")
     match = ProjectDirCaseResult(
-        case=case_a, cwd=tmp_path / "a", predicted_dir_name="-a",
-        observed_dir_names=("-a",), matched=True, detail="ok",
+        case=case_a,
+        cwd=tmp_path / "a",
+        predicted_dir_name="-a",
+        observed_dir_names=("-a",),
+        matched=True,
+        detail="ok",
     )
     miss = ProjectDirCaseResult(
-        case=case_b, cwd=tmp_path / "b", predicted_dir_name="-b",
-        observed_dir_names=("-c",), matched=False, detail="diverged",
+        case=case_b,
+        cwd=tmp_path / "b",
+        predicted_dir_name="-b",
+        observed_dir_names=("-c",),
+        matched=False,
+        detail="diverged",
     )
     report = ProjectDirHarnessReport(
         test_root=tmp_path,
@@ -489,8 +497,12 @@ def test_project_dir_harness_report_passed_requires_collision_groups_verified(
     observe the group's members bucketing together, the report fails."""
     case = ProjectDirCase(cwd_suffix="x", description="x", collision_group="alpha")
     match = ProjectDirCaseResult(
-        case=case, cwd=tmp_path / "x", predicted_dir_name="-x",
-        observed_dir_names=("-x",), matched=True, detail="ok",
+        case=case,
+        cwd=tmp_path / "x",
+        predicted_dir_name="-x",
+        observed_dir_names=("-x",),
+        matched=True,
+        detail="ok",
     )
     # Declared group `alpha`, but `collision_groups_verified` is empty.
     report = ProjectDirHarnessReport(
@@ -529,7 +541,11 @@ def test_project_dir_harness_report_passed_requires_collision_groups_verified(
 
 def test_parse_combined_output_basic() -> None:
     assert _parse_combined_output("A:start\nB\nC\nD\nA:end\n") == [
-        "A:start", "B", "C", "D", "A:end",
+        "A:start",
+        "B",
+        "C",
+        "D",
+        "A:end",
     ]
 
 

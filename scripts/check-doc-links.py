@@ -44,17 +44,13 @@ from pathlib import Path
 
 # Inline link `[text](target)` — captures target including optional #anchor.
 # We deliberately do NOT match images `![...](...)`.
-INLINE_LINK_RE = re.compile(
-    r"(?<!\!)\[(?P<text>[^\]]+)\]\((?P<target>[^)\s]+)(?:\s+\"[^\"]*\")?\)"
-)
+INLINE_LINK_RE = re.compile(r"(?<!\!)\[(?P<text>[^\]]+)\]\((?P<target>[^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 # Reference-style link `[text][label]` (label can be empty meaning same as text).
 REF_LINK_RE = re.compile(r"(?<!\!)\[(?P<text>[^\]]+)\]\[(?P<label>[^\]]*)\]")
 
 # Link definition `[label]: target` at the top of a line.
-LINK_DEF_RE = re.compile(
-    r"^\s*\[(?P<label>[^\]]+)\]:\s*(?P<target>\S+)(?:\s+\"[^\"]*\")?\s*$"
-)
+LINK_DEF_RE = re.compile(r"^\s*\[(?P<label>[^\]]+)\]:\s*(?P<target>\S+)(?:\s+\"[^\"]*\")?\s*$")
 
 # Heading `# text`, `## text`, etc. Captures the text after the #s.
 HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<text>.+?)\s*$")
@@ -130,6 +126,7 @@ def _strip_code_spans(line: str) -> str:
 
     Length preservation keeps regex match offsets sensible if needed elsewhere.
     """
+
     def _blank(m: re.Match[str]) -> str:
         # Replace the entire match (including backticks) with same-length spaces.
         return " " * len(m.group(0))
@@ -289,7 +286,7 @@ def check_link(
         suggestion = ""
         if candidates:
             # Pick anchors that share at least 3 characters with the bad one.
-            close = [c for c in candidates if any(c[i:i + 3] in anchor for i in range(max(1, len(c) - 2)))]
+            close = [c for c in candidates if any(c[i : i + 3] in anchor for i in range(max(1, len(c) - 2)))]
             if close:
                 suggestion = f"  did you mean: {', '.join(close[:3])}"
         return Issue(
@@ -331,10 +328,7 @@ def find_md_files(roots: list[Path], repo_root: Path) -> list[Path]:
                 continue
             seen.add(p.resolve())
     # Apply SKIP_FILES (path-relative-to-repo-root).
-    return sorted(
-        p for p in seen
-        if not _is_skipped(p, repo_root)
-    )
+    return sorted(p for p in seen if not _is_skipped(p, repo_root))
 
 
 def _is_skipped(p: Path, repo_root: Path) -> bool:
@@ -404,7 +398,9 @@ def main() -> int:
             issues.append(issue)
 
     if not args.quiet:
-        print(f"scanned {len(md_files)} markdown file(s); {checked_internal} internal link(s) checked, {skipped_external} external link(s) skipped.")
+        print(
+            f"scanned {len(md_files)} markdown file(s); {checked_internal} internal link(s) checked, {skipped_external} external link(s) skipped."
+        )
 
     if not issues:
         if not args.quiet:
@@ -413,7 +409,11 @@ def main() -> int:
 
     print(f"\n❌ {len(issues)} broken internal link(s):\n", file=sys.stderr)
     for issue in issues:
-        rel = issue.source.relative_to(repo_root) if repo_root in issue.source.parents or issue.source == repo_root else issue.source
+        rel = (
+            issue.source.relative_to(repo_root)
+            if repo_root in issue.source.parents or issue.source == repo_root
+            else issue.source
+        )
         print(f"  {rel}:{issue.line}  {issue.target}", file=sys.stderr)
         print(f"    {issue.reason}{issue.context}", file=sys.stderr)
     return 1
