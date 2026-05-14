@@ -52,6 +52,15 @@ strict = true
 warn_return_any = true
 warn_unused_ignores = true
 
+# Optional-dependency stubs that mypy --strict can't resolve in the
+# default `dev` install (per ADR-0012, the SDK backend is opt-in via
+# `maury[sdk]`). The runtime import is correctly wrapped in
+# try/except ImportError; this tells mypy to stop strict-checking the
+# missing module declaration itself.
+[[tool.mypy.overrides]]
+module = ["anthropic", "anthropic.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
