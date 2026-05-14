@@ -17,14 +17,19 @@ from maury.empirical_tests import (
     COMMENT_MARKER,
     DEFAULT_PROJECT_DIR_CORPUS,
     HarnessReport,
+    HookTimingHarnessReport,
+    HookTimingProbeResult,
     ProbeResult,
     ProjectDirCase,
     ProjectDirCaseResult,
     ProjectDirHarnessReport,
     _build_settings,
+    _evaluate_combined_probe,
     _evaluate_comment,
     _evaluate_env,
     _evaluate_io,
+    _evaluate_timeout_probe,
+    _parse_combined_output,
     _parse_env_output,
     _write_probe_scripts,
     claude_present,
@@ -508,3 +513,178 @@ def test_project_dir_harness_report_passed_requires_collision_groups_verified(
         new_project_dirs=("-x",),
     )
     assert report_passing.passed
+
+
+# =========================================================================
+# Hook-timing probe — pure parsing + evaluation logic.
+# The harness's run() function shells out to `claude`; not exercised here.
+# Everything below verifies the parsers + per-probe evaluators against
+# synthetic raw outputs derived from the actual empirical runs (2026-05-13,
+# claude 2.1.141, macOS — see commit message for the findings).
+# =========================================================================
+
+
+# ---- combined-probe parser + evaluator ---------------------------------
+
+
+def test_parse_combined_output_basic() -> None:
+    assert _parse_combined_output("A:start\nB\nC\nD\nA:end\n") == [
+        "A:start", "B", "C", "D", "A:end",
+    ]
+
+
+def test_parse_combined_output_strips_blank_lines() -> None:
+    assert _parse_combined_output("A:start\n\nB\n\n") == ["A:start", "B"]
+
+
+_EXPECTED_ORDER = ("A:start", "A:end", "B", "C", "D")
+
+
+def test_combined_probe_sequential_with_short_circuit(tmp_path: Path) -> None:
+    """ADR-0023's safer reading: hooks run sequentially in declaration
+    order; exit 2 short-circuits subsequent hooks."""
+    out = tmp_path / "combined.out"
+    out.write_text("A:start\nA:end\nB\nC\n")  # no D — short-circuit on exit 2
+    result = _evaluate_combined_probe(out, expected_order=_EXPECTED_ORDER)
+    assert result.passed
+    assert result.findings["synchronous_execution"] is True
+    assert result.findings["execution_ordering"] == "declaration"
+    assert result.findings["short_circuit_on_exit_2"] is True
+    assert result.findings["d_marker_present"] is False
+
+
+def test_combined_probe_sequential_no_short_circuit(tmp_path: Path) -> None:
+    out = tmp_path / "combined.out"
+    out.write_text("A:start\nA:end\nB\nC\nD\n")  # D present — no short-circuit
+    result = _evaluate_combined_probe(out, expected_order=_EXPECTED_ORDER)
+    assert result.passed
+    assert result.findings["synchronous_execution"] is True
+    assert result.findings["short_circuit_on_exit_2"] is False
+    assert result.findings["d_marker_present"] is True
+
+
+def test_combined_probe_ordered_fire_and_forget(tmp_path: Path) -> None:
+    """The empirical model observed 2026-05-13: hooks fire in declaration
+    order but each fires without waiting for the previous to complete.
+    Markers B, C, D appear between A:start and A:end."""
+    out = tmp_path / "combined.out"
+    out.write_text("A:start\nB\nC\nD\nA:end\n")
+    result = _evaluate_combined_probe(out, expected_order=_EXPECTED_ORDER)
+    assert result.passed
+    assert result.findings["synchronous_execution"] is False
+    # Ordering is still "declaration" because B/C/D fire in registration order.
+    assert result.findings["short_circuit_on_exit_2"] is False
+    assert result.findings["d_marker_present"] is True
+
+
+def test_combined_probe_missing_output_file(tmp_path: Path) -> None:
+    result = _evaluate_combined_probe(tmp_path / "absent.out", expected_order=_EXPECTED_ORDER)
+    assert not result.passed
+    assert "not found" in result.detail
+
+
+def test_combined_probe_empty_output_file(tmp_path: Path) -> None:
+    out = tmp_path / "combined.out"
+    out.write_text("")
+    result = _evaluate_combined_probe(out, expected_order=_EXPECTED_ORDER)
+    assert not result.passed
+    assert "empty" in result.detail
+
+
+def test_combined_probe_missing_a_markers(tmp_path: Path) -> None:
+    """If A's start/end markers are absent, the probe can't classify
+    sync — fail with a clear detail message."""
+    out = tmp_path / "combined.out"
+    out.write_text("B\nC\nD\n")
+    result = _evaluate_combined_probe(out, expected_order=_EXPECTED_ORDER)
+    assert not result.passed
+    assert "A:start or A:end missing" in result.detail
+
+
+# ---- timeout-probe evaluator -------------------------------------------
+
+
+def test_timeout_probe_hook_completed(tmp_path: Path) -> None:
+    out = tmp_path / "timeout.out"
+    out.write_text("start=1000\nend=1010\n")
+    result = _evaluate_timeout_probe(out, hook_sleep_seconds=10, elapsed_seconds=12.0)
+    assert result.passed
+    assert result.findings["hook_completed"] is True
+    assert result.findings["hook_duration_seconds"] == 10
+    assert "no default timeout below" in result.detail
+
+
+def test_timeout_probe_hook_killed_mid_sleep(tmp_path: Path) -> None:
+    """If only the start= line appears, claude killed the hook before
+    the sleep completed — default timeout < hook_sleep_seconds."""
+    out = tmp_path / "timeout.out"
+    out.write_text("start=1000\n")
+    result = _evaluate_timeout_probe(out, hook_sleep_seconds=30, elapsed_seconds=20.0)
+    assert result.passed
+    assert result.findings["hook_completed"] is False
+    assert result.findings["hook_end_timestamp"] is None
+    assert "default timeout < 30s" in result.detail
+
+
+def test_timeout_probe_missing_output(tmp_path: Path) -> None:
+    result = _evaluate_timeout_probe(tmp_path / "absent.out", hook_sleep_seconds=30, elapsed_seconds=5.0)
+    assert not result.passed
+
+
+def test_timeout_probe_no_start_line(tmp_path: Path) -> None:
+    out = tmp_path / "timeout.out"
+    out.write_text("garbage\n")
+    result = _evaluate_timeout_probe(out, hook_sleep_seconds=30, elapsed_seconds=5.0)
+    assert not result.passed
+    assert "didn't write a start timestamp" in result.detail
+
+
+# ---- HookTimingHarnessReport contract -----------------------------------
+
+
+def test_hook_timing_report_requires_claude(tmp_path: Path) -> None:
+    report = HookTimingHarnessReport(
+        workspace=tmp_path,
+        claude_present=False,
+        claude_version=None,
+        probes=(),
+        claude_returncode_combined=None,
+        claude_returncode_timeout=None,
+        claude_stderr_excerpt_combined="not on PATH",
+        claude_stderr_excerpt_timeout="not on PATH",
+    )
+    assert not report.passed
+
+
+def test_hook_timing_report_requires_all_probes_passed(tmp_path: Path) -> None:
+    pass_ = HookTimingProbeResult(name="x", passed=True, detail="ok")
+    fail_ = HookTimingProbeResult(name="y", passed=False, detail="bad")
+    report = HookTimingHarnessReport(
+        workspace=tmp_path,
+        claude_present=True,
+        claude_version="2.1.141",
+        probes=(pass_, fail_),
+        claude_returncode_combined=0,
+        claude_returncode_timeout=0,
+        claude_stderr_excerpt_combined="",
+        claude_stderr_excerpt_timeout="",
+    )
+    assert not report.passed
+
+    report_passing = HookTimingHarnessReport(
+        workspace=tmp_path,
+        claude_present=True,
+        claude_version="2.1.141",
+        probes=(pass_, pass_),
+        claude_returncode_combined=0,
+        claude_returncode_timeout=0,
+        claude_stderr_excerpt_combined="",
+        claude_stderr_excerpt_timeout="",
+    )
+    assert report_passing.passed
+
+
+def test_hook_timing_probe_result_is_frozen() -> None:
+    p = HookTimingProbeResult(name="x", passed=True, detail="ok")
+    with pytest.raises(Exception):  # noqa: B017
+        p.passed = False  # type: ignore[misc]

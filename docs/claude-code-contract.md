@@ -274,6 +274,7 @@ buckets under `~/.claude/projects/`).
 |---|---|---|
 | `maury verify-cc-hooks` | `cc-contract:hook-shell-execution`, `cc-contract:hook-subprocess-path`, `cc-contract:hook-file-io-permissions` | 2026-05-07 (claude 2.1.x, macOS) |
 | `maury verify-cc-projects-dir` | `cc-contract:project-directory-derivation` | 2026-05-13 (claude 2.1.140, macOS) |
+| `maury verify-cc-hook-timing` | `cc-contract:hook-execution-timing` | 2026-05-13 (claude 2.1.141, macOS) |
 
 ### `cc-contract:hook-shell-execution`
 
@@ -384,6 +385,81 @@ Re-run after any Claude Code minor-version bump.
 
 ---
 
+### `cc-contract:hook-execution-timing`
+
+**Verified 2026-05-13** (claude 2.1.141, macOS 14.5).
+
+**Behavior observed:** Multiple hooks registered on the same
+matcher exhibit a model neither documented Anthropic reading
+matches — call it **"ordered fire-and-forget."** Specifically:
+
+1. **Execution order is declaration order.** Markers from hooks
+   A, B, C, D registered in that order appear in the output in
+   declaration order (`A:start, B, C, D, A:end`).
+2. **NOT synchronous.** Hook A brackets a 0.5-second sleep with
+   `A:start` / `A:end` markers; hooks B, C, D fire **between**
+   `A:start` and `A:end`, meaning Claude Code does not wait for
+   hook A to finish before firing B, C, D.
+3. **Exit code 2 does NOT short-circuit subsequent hooks.** Hook
+   C writes `C` and exits with code 2; hook D still fires (its
+   `D` marker appears in the output). The hooks-guide claim that
+   "exit code 2 blocks the rest" does not match observed behavior
+   at this CC version on macOS.
+4. **No default timeout below 30s observed.** A hook that sleeps
+   for 30 seconds runs to completion; Claude Code waits the full
+   duration. The actual default timeout (if any) is somewhere
+   above 30s. (Earlier upstream issues — #23747, #50160 — suggest
+   the practical answer is "no useful default" on at least some
+   platforms; cross-reference but not re-verified here.)
+
+**Stable across two consecutive runs.** Re-verification via
+`maury verify-cc-hook-timing`.
+
+**Implication for ADR-0023:** the drift-attribution chain
+documented there assumes `PostToolUse log_tool_use` completes
+before Claude Code proceeds. The observed fire-and-forget model
+means `claude-writes.jsonl` may not yet contain the latest entry
+when the next tool call begins or when the user observes the
+rendered effect. ADR-0023 needs to be amended to account for
+this — flagged as a design conversation in session-state.md
+(2026-05-13 autonomous-run findings), NOT amended in this
+commit.
+
+**📌 Tracked upstream:**
+- [anthropics/claude-code #57800](https://github.com/anthropics/claude-code/issues/57800)
+  — *open*. Documentation contradiction: multi-hook firing
+  order is documented as "parallel" in the Agent SDK hooks
+  reference but "sequential with short-circuit on exit code 2"
+  in the hooks guide. The empirical results above match
+  **neither** documented reading: hooks fire in declaration
+  order (rules out pure-parallel) but don't wait for completion
+  (rules out pure-sequential) and don't short-circuit on exit 2
+  (rules out the hooks-guide reading). Maury added a downstream-
+  voice comment on 2026-05-13 ([comment](https://github.com/anthropics/claude-code/issues/57800#issuecomment-4445691094))
+  explaining the drift-attribution dependency; the empirical
+  findings above provide the data the upstream contradiction
+  needs to be resolved.
+- [anthropics/claude-code #23747](https://github.com/anthropics/claude-code/issues/23747)
+  — *closed (duplicate)*. SessionStart hooks hang indefinitely
+  on Windows even with `timeout: 5` configured.
+- [anthropics/claude-code #50160](https://github.com/anthropics/claude-code/issues/50160)
+  — *closed (duplicate of #23747)*. Hook entries without a
+  `timeout` field block the SDK/CLI forever when the command
+  doesn't exit.
+- [anthropics/claude-code #37135](https://github.com/anthropics/claude-code/issues/37135)
+  — *open*. Stop hooks can hang indefinitely on large JSON
+  block responses since 2.1.78.
+- [anthropics/claude-code #38162](https://github.com/anthropics/claude-code/issues/38162)
+  — *closed*. Async hooks receive empty stdin on macOS but
+  work on Linux — platform-specific hook semantics.
+
+**Re-verification:** `maury verify-cc-hook-timing` re-runs both
+probes (combined ordering/sync/short-circuit + default-timeout)
+and reports observed behavior. Re-run after any Claude Code
+minor-version bump that touches the hook subsystem.
+
+---
+
 ### `cc-contract:hook-file-io-permissions`
 
 **Verified 2026-05-07** (macOS).
@@ -413,60 +489,6 @@ empirically tested them. Each entry says what breaks if the
 assumption is wrong.
 
 
-
-### `cc-contract:hook-execution-timing`
-
-**Assumption:** Hooks execute synchronously and complete before
-Claude Code proceeds. Failures (non-zero exit) are surfaced.
-Timeouts have a default behavior we haven't verified. **Multiple
-hooks registered on the same event fire in declaration order.**
-
-**What breaks if wrong:** ADR-0023's `log_tool_use` hook racing
-the next tool call, claude-writes.jsonl with out-of-order
-events, drift attribution failing.
-
-**📌 Tracked upstream:**
-- [anthropics/claude-code #57800](https://github.com/anthropics/claude-code/issues/57800)
-  — *open*. Documentation contradiction: multi-hook firing
-  order is documented as "parallel" in the Agent SDK hooks
-  reference but "sequential with short-circuit on exit code 2"
-  in the hooks guide. This directly impacts ADR-0023's
-  drift-attribution chain, which depends on deterministic
-  ordering. Resolution of the contradiction (either way)
-  would tell us whether the current design works as written.
-  Maury added a downstream-voice comment on 2026-05-13
-  ([comment](https://github.com/anthropics/claude-code/issues/57800#issuecomment-4445691094))
-  explaining the drift-attribution dependency.
-- [anthropics/claude-code #23747](https://github.com/anthropics/claude-code/issues/23747)
-  — *closed (duplicate)*. SessionStart hooks hang indefinitely
-  on Windows even with `timeout: 5` configured. Confirms
-  timeout-handling is fragile in at least one platform path.
-- [anthropics/claude-code #50160](https://github.com/anthropics/claude-code/issues/50160)
-  — *closed (duplicate of #23747)*. Hook entries without a
-  `timeout` field block the SDK/CLI forever when the command
-  doesn't exit. Confirms there is no useful built-in default
-  timeout for hooks.
-- [anthropics/claude-code #37135](https://github.com/anthropics/claude-code/issues/37135)
-  — *open*. Stop hooks can hang indefinitely on large JSON
-  block responses since 2.1.78.
-- [anthropics/claude-code #38162](https://github.com/anthropics/claude-code/issues/38162)
-  — *closed*. Async hooks receive empty stdin on macOS but
-  work on Linux — platform-specific hook semantics.
-
-**Maury contribution:** add a maury-use-case voice to #57800
-(the ordering contradiction is the most load-bearing of the
-above for ADR-0023) rather than filing a new duplicate.
-
-**How to verify:** Test hooks that sleep and observe whether
-Claude Code blocks. Test hooks that fail and observe whether
-Claude Code surfaces the error. Two hooks on the same event —
-do they run in declared order or in parallel?
-
-**Risk level:** Medium. Drift attribution depends on event
-ordering; out-of-order events would still mostly work but
-edge cases get weird.
-
----
 
 ### `cc-contract:transcript-jsonl-stability`
 

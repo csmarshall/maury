@@ -18,8 +18,10 @@ from maury.doctor import Report, render_json, render_text, run_all
 from maury.drift import DriftEntry, detect_drift, read_last_render
 from maury.empirical_tests import (
     HarnessReport,
+    HookTimingHarnessReport,
     ProjectDirHarnessReport,
     claude_present,
+    run_hook_timing_harness,
     run_project_dir_harness,
 )
 from maury.empirical_tests import run as run_empirical
@@ -1607,4 +1609,165 @@ def verify_cc_projects_dir(
     )
 
     _print_project_dir_report(report, output_format)
+    sys.exit(0 if report.passed else 1)
+
+
+# ---- verify-cc-hook-timing command ---------------------------------------
+
+
+def _print_hook_timing_report(report: HookTimingHarnessReport, output_format: str) -> None:
+    """Pretty-print or JSON-print a HookTimingHarnessReport."""
+    if output_format == "json":
+        payload = {
+            "workspace": str(report.workspace),
+            "claude_present": report.claude_present,
+            "claude_version": report.claude_version,
+            "passed": report.passed,
+            "claude_returncode_combined": report.claude_returncode_combined,
+            "claude_returncode_timeout": report.claude_returncode_timeout,
+            "claude_stderr_excerpt_combined": report.claude_stderr_excerpt_combined,
+            "claude_stderr_excerpt_timeout": report.claude_stderr_excerpt_timeout,
+            "probes": [
+                {
+                    "name": p.name,
+                    "passed": p.passed,
+                    "detail": p.detail,
+                    "findings": p.findings,
+                    "captured": p.captured,
+                }
+                for p in report.probes
+            ],
+        }
+        click.echo(json.dumps(payload, indent=2, default=str))
+        return
+
+    if not report.claude_present:
+        click.echo("❌ `claude` not found on PATH.")
+        click.echo("\nThis verifier requires Claude Code installed and authenticated.")
+        return
+
+    click.echo(f"claude version: {report.claude_version}")
+    click.echo(f"workspace:      {report.workspace}")
+    click.echo()
+    for p in report.probes:
+        mark = "✅" if p.passed else "❌"
+        click.echo(f"{mark} {p.name}")
+        click.echo(f"   {p.detail}")
+        if p.findings:
+            for k, v in p.findings.items():
+                if k in {"raw_output", "markers_observed", "post_a_markers", "expected_post_a_present", "markers_between_a_start_and_end"}:
+                    continue  # noisy; shown via --format json
+                click.echo(f"   {k}: {v!r}")
+        click.echo()
+
+    click.echo(
+        "Each probe SUCCEEDS if claude was invoked and probe scripts ran to produce\n"
+        "readable output. Interpretation of the observed behavior — whether maury's\n"
+        "ADR-0023 assumptions (sequential, sync, short-circuit-on-exit-2) hold — is\n"
+        "in the per-probe `findings` map. Maintainer reads findings, decides whether\n"
+        "to promote `cc-contract:hook-execution-timing` from ❓ to 🧪.\n"
+        "\n"
+        "See `cc-contract:hook-execution-timing` in docs/claude-code-contract.md\n"
+        "and anthropics/claude-code#57800 for the canonical contradiction this\n"
+        "verifier resolves empirically."
+    )
+
+
+@main.command("verify-cc-hook-timing")
+@click.option(
+    "--workspace",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Persist the probe workspace at this path (default: a fresh temp dir, kept for inspection).",
+)
+@click.option(
+    "--prompt",
+    "claude_prompt",
+    type=str,
+    default="List the files in the current directory.",
+    show_default=True,
+    help="Prompt to send to `claude -p`. Should reliably trigger at least one PostToolUse fire.",
+)
+@click.option(
+    "--per-probe-timeout",
+    type=float,
+    default=120.0,
+    show_default=True,
+    help="Seconds wall-clock cap per claude -p invocation.",
+)
+@click.option(
+    "--timeout-probe-sleep",
+    type=int,
+    default=30,
+    show_default=True,
+    help="How long the timeout-probe hook sleeps. Longer = detects larger default timeouts but slower.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Only check whether `claude` is present on PATH; don't run the harness.",
+)
+def verify_cc_hook_timing(
+    workspace: Path | None,
+    claude_prompt: str,
+    per_probe_timeout: float,
+    timeout_probe_sleep: int,
+    output_format: str,
+    check_only: bool,
+) -> None:
+    """Verify Claude Code's hook execution-timing semantics empirically.
+
+    Two probes:
+
+    \b
+    1. **Combined ordering / sync / short-circuit.** Four hooks on
+       PostToolUse in declared order (A, B, C, D); A brackets a sleep
+       so we can detect parallel execution; C exits with code 2 so we
+       can detect the documented short-circuit behavior; D's presence
+       or absence reveals whether short-circuit is real.
+    2. **Default timeout.** One hook that sleeps a configurable
+       duration. If claude has a default hook timeout shorter than
+       the sleep, the hook is killed mid-sleep.
+
+    Probes SUCCEED if claude was invoked and probe scripts produced
+    readable output. The observed behavior (sequential vs. parallel,
+    sync vs. async, short-circuit vs. not, default timeout duration)
+    is reported as per-probe findings for the contract-doc maintainer
+    to interpret.
+
+    Background:
+
+    \b
+    - anthropics/claude-code#57800 documents a contradiction between
+      the Agent SDK hooks docs ("hooks run in parallel") and the
+      hooks guide ("hooks run in order; first failure blocks the
+      rest"). This verifier produces empirical ground truth.
+    - ADR-0023 (drift attribution via `PostToolUse log_tool_use`)
+      depends on knowing the ordering and sync semantics.
+
+    Exit code: 0 if all probes produced usable data, 1 otherwise.
+    """
+    if check_only:
+        if claude_present():
+            click.echo("✅ `claude` is present on PATH.")
+            sys.exit(0)
+        else:
+            click.echo("❌ `claude` not found on PATH.")
+            sys.exit(1)
+
+    report = run_hook_timing_harness(
+        workspace=workspace,
+        claude_prompt=claude_prompt,
+        per_probe_timeout=per_probe_timeout,
+        timeout_probe_hook_sleep=timeout_probe_sleep,
+    )
+
+    _print_hook_timing_report(report, output_format)
     sys.exit(0 if report.passed else 1)

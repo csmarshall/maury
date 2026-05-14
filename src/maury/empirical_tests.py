@@ -31,11 +31,13 @@ The harness is exposed via `maury verify-cc-hooks` (see cli.py).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -693,4 +695,516 @@ def run_project_dir_harness(
         results=tuple(results),
         collision_groups_verified=tuple(verified_groups),
         new_project_dirs=tuple(sorted(cumulative_new - pre_run_baseline)),
+    )
+
+
+# =========================================================================
+# Hook-timing verifier.
+#
+# Probes the execution semantics of Claude Code's hook subsystem along
+# four axes:
+#   1. Execution ordering — when multiple hooks share a matcher, do
+#      they run in declaration order, reverse order, or in parallel?
+#   2. Synchronicity — does Claude Code wait for hook N to complete
+#      before running hook N+1?
+#   3. Short-circuit-on-exit-2 — if hook N exits with code 2 (the
+#      "blocking exit code" per the hooks guide), do subsequent hooks
+#      in the same matcher still fire?
+#   4. Default timeout — if a hook never exits, does Claude Code
+#      eventually move on (and after how long), or does it hang
+#      indefinitely?
+#
+# Maury depends on knowing (1)+(2)+(3) for ADR-0023's drift-attribution
+# chain (`PostToolUse log_tool_use` writes claude-writes.jsonl; we need
+# to know whether that write reliably happens before the user sees the
+# rendered effect, and whether other PostToolUse hooks can interfere).
+# (4) is informational — we don't depend on a specific timeout value,
+# but knowing the default lets ADR-0023 set the upper bound on
+# `log_tool_use`'s permitted execution time.
+#
+# Background:
+# - anthropics/claude-code#57800 documents a contradiction between the
+#   Agent SDK docs ("hooks run in parallel; most-restrictive wins") and
+#   the hooks guide ("hooks run in order; first failure blocks the
+#   rest"). This verifier produces empirical ground truth.
+# - anthropics/claude-code#23747 / #50160 / #37135 / #38162 surface
+#   adjacent timeout / hang / async-stdin issues. Not directly probed
+#   here but worth re-running this verifier when those land in CC.
+#
+# Output framing:
+# - The probe SUCCEEDS if claude was invoked and the probe scripts ran
+#   to produce readable output. SUCCESS is about measurement integrity,
+#   not about which behavior was observed.
+# - Each probe records its observed behavior as a structured finding
+#   (e.g., `execution_order: "declaration"`, `short_circuit_on_exit_2:
+#   true`). The user / contract-doc maintainer interprets these to
+#   decide whether ADR-0023's assumptions hold.
+# =========================================================================
+
+
+# Marker strings the combined-behavior probe writes.
+_HOOK_TIMING_MARKER_A_START = "A:start"
+_HOOK_TIMING_MARKER_A_END = "A:end"
+_HOOK_TIMING_MARKER_B = "B"
+_HOOK_TIMING_MARKER_C = "C"
+_HOOK_TIMING_MARKER_D = "D"
+
+
+def _ordering_hook_a_script(out: Path, sleep_seconds: float = 0.5) -> str:
+    """Hook A: writes A:start, sleeps, writes A:end. Lets the order/sync
+    probe detect parallel execution (other hooks would write between
+    A:start and A:end if parallel) vs. sequential (A:end strictly before
+    any other marker)."""
+    return f"""#!/bin/sh
+# Hook-timing probe A: brackets a sleep with start + end markers.
+{{
+    printf '{_HOOK_TIMING_MARKER_A_START}\\n'
+    sleep {sleep_seconds}
+    printf '{_HOOK_TIMING_MARKER_A_END}\\n'
+}} >> "{out}"
+"""
+
+
+def _ordering_hook_b_script(out: Path) -> str:
+    """Hook B: appends B. Position in output reveals order vs. hook A."""
+    return f"""#!/bin/sh
+# Hook-timing probe B: single-line append.
+printf '{_HOOK_TIMING_MARKER_B}\\n' >> "{out}"
+"""
+
+
+def _ordering_hook_c_script(out: Path) -> str:
+    """Hook C: appends C then exits 2. Triggers the documented
+    short-circuit behavior (per the hooks guide); subsequent hooks
+    should NOT fire if short-circuit is real."""
+    return f"""#!/bin/sh
+# Hook-timing probe C: appends C, exits with code 2.
+printf '{_HOOK_TIMING_MARKER_C}\\n' >> "{out}"
+exit 2
+"""
+
+
+def _ordering_hook_d_script(out: Path) -> str:
+    """Hook D: appends D. If D appears in output, hook C's exit 2 did
+    NOT short-circuit subsequent hooks."""
+    return f"""#!/bin/sh
+# Hook-timing probe D: single-line append.
+printf '{_HOOK_TIMING_MARKER_D}\\n' >> "{out}"
+"""
+
+
+def _timeout_probe_script(out: Path, sleep_seconds: int) -> str:
+    """Single hook that records start timestamp, sleeps, then records
+    end. If claude has a default timeout shorter than sleep_seconds,
+    only the start line will appear in the output file."""
+    return f"""#!/bin/sh
+# Hook-timing default-timeout probe: brackets a long sleep with
+# start + end timestamps. If claude kills the hook before sleep
+# completes, only 'start=...' appears.
+printf 'start=%s\\n' "$(date +%s)" > "{out}"
+sleep {sleep_seconds}
+printf 'end=%s\\n' "$(date +%s)" >> "{out}"
+"""
+
+
+def _write_hook_timing_scripts(
+    scripts_dir: Path, out_dir: Path, *, a_sleep_seconds: float = 0.5
+) -> dict[str, Path]:
+    """Materialize the hook-timing probe shell scripts. Returns
+    nickname -> absolute script path so settings.json hook configs
+    can reference them by absolute path (matching the
+    verify-cc-hooks pattern)."""
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    combined_out = out_dir / "combined.out"
+    timeout_out = out_dir / "timeout.out"
+
+    scripts = {
+        "combined_a": (scripts_dir / "combined_a.sh", _ordering_hook_a_script(combined_out, sleep_seconds=a_sleep_seconds)),
+        "combined_b": (scripts_dir / "combined_b.sh", _ordering_hook_b_script(combined_out)),
+        "combined_c": (scripts_dir / "combined_c.sh", _ordering_hook_c_script(combined_out)),
+        "combined_d": (scripts_dir / "combined_d.sh", _ordering_hook_d_script(combined_out)),
+        "timeout": (scripts_dir / "timeout.sh", _timeout_probe_script(timeout_out, sleep_seconds=30)),
+    }
+    paths: dict[str, Path] = {}
+    for name, (path, body) in scripts.items():
+        path.write_text(body)
+        path.chmod(0o755)
+        paths[name] = path
+    return paths
+
+
+def _combined_settings(scripts: dict[str, Path]) -> dict[str, Any]:
+    """settings.json for the combined ordering / sync / short-circuit
+    probe. Four hooks on PostToolUse in declared order: A, B, C, D."""
+    return {
+        "hooks": {
+            "PostToolUse": [
+                {
+                    "matcher": "*",
+                    "hooks": [
+                        {"type": "command", "command": str(scripts["combined_a"])},
+                        {"type": "command", "command": str(scripts["combined_b"])},
+                        {"type": "command", "command": str(scripts["combined_c"])},
+                        {"type": "command", "command": str(scripts["combined_d"])},
+                    ],
+                }
+            ]
+        }
+    }
+
+
+def _timeout_settings(scripts: dict[str, Path]) -> dict[str, Any]:
+    """settings.json for the default-timeout probe. One hook that
+    sleeps 30 seconds; observe whether claude waits or moves on."""
+    return {
+        "hooks": {
+            "PostToolUse": [
+                {
+                    "matcher": "*",
+                    "hooks": [
+                        {"type": "command", "command": str(scripts["timeout"])},
+                    ],
+                }
+            ]
+        }
+    }
+
+
+@dataclass(frozen=True)
+class HookTimingProbeResult:
+    """Outcome of one hook-timing probe.
+
+    `passed` means "the probe produced usable measurement data," NOT
+    "the observed behavior matches an expected behavior." Interpretation
+    of the observed behavior lives in `findings` for the contract-doc
+    maintainer to read.
+    """
+
+    name: str
+    passed: bool
+    detail: str
+    findings: dict[str, object] = field(default_factory=dict)
+    captured: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class HookTimingHarnessReport:
+    """Aggregate result for `maury verify-cc-hook-timing`."""
+
+    workspace: Path
+    claude_present: bool
+    claude_version: str | None
+    probes: tuple[HookTimingProbeResult, ...]
+    claude_returncode_combined: int | None
+    claude_returncode_timeout: int | None
+    claude_stderr_excerpt_combined: str
+    claude_stderr_excerpt_timeout: str
+
+    @property
+    def passed(self) -> bool:
+        """All probes produced usable measurement data."""
+        return self.claude_present and all(p.passed for p in self.probes)
+
+
+def _parse_combined_output(text: str) -> list[str]:
+    """Parse the combined-probe output into a list of markers in the
+    order they were written."""
+    return [line for line in text.splitlines() if line]
+
+
+def _evaluate_combined_probe(out_path: Path, expected_order: tuple[str, ...]) -> HookTimingProbeResult:
+    """Read the combined probe's output file and derive findings."""
+    if not out_path.exists():
+        return HookTimingProbeResult(
+            name="combined_ordering_sync_shortcircuit",
+            passed=False,
+            detail=f"combined probe output not found at {out_path}; hooks may not have fired",
+        )
+    raw = out_path.read_text()
+    markers = _parse_combined_output(raw)
+    findings: dict[str, object] = {"markers_observed": markers, "raw_output": raw}
+
+    if not markers:
+        return HookTimingProbeResult(
+            name="combined_ordering_sync_shortcircuit",
+            passed=False,
+            detail="combined probe output file was empty",
+            findings=findings,
+        )
+
+    # Was A:end strictly before B, C, D? That tells us sync.
+    try:
+        idx_a_start = markers.index(_HOOK_TIMING_MARKER_A_START)
+        idx_a_end = markers.index(_HOOK_TIMING_MARKER_A_END)
+    except ValueError:
+        return HookTimingProbeResult(
+            name="combined_ordering_sync_shortcircuit",
+            passed=False,
+            detail=f"A:start or A:end missing from output: {markers}",
+            findings=findings,
+        )
+
+    # Sync detection: A:end appears strictly after A:start. If sync, no
+    # other marker should appear between A:start and A:end.
+    between_a_markers = markers[idx_a_start + 1 : idx_a_end]
+    sync_observed = len(between_a_markers) == 0
+    findings["synchronous_execution"] = sync_observed
+    findings["markers_between_a_start_and_end"] = between_a_markers
+
+    # Ordering detection: are markers in the declared order (A, B, C, D)?
+    # We've already confirmed A:start < A:end. Check that the post-A-end
+    # markers appear in the expected order.
+    post_a = markers[idx_a_end + 1 :]
+    expected_post_a = [m for m in expected_order if m not in (_HOOK_TIMING_MARKER_A_START, _HOOK_TIMING_MARKER_A_END)]
+    # Trim expected_post_a to only the markers actually present (for
+    # short-circuit cases where D may be absent).
+    present_expected = [m for m in expected_post_a if m in post_a]
+    ordering = "declaration" if post_a == present_expected else "non-declaration"
+    findings["execution_ordering"] = ordering
+    findings["post_a_markers"] = post_a
+    findings["expected_post_a_present"] = present_expected
+
+    # Short-circuit detection: did D appear after C exited 2?
+    short_circuit = (
+        _HOOK_TIMING_MARKER_C in markers and _HOOK_TIMING_MARKER_D not in markers
+    )
+    findings["short_circuit_on_exit_2"] = short_circuit
+    findings["d_marker_present"] = _HOOK_TIMING_MARKER_D in markers
+    findings["c_marker_present"] = _HOOK_TIMING_MARKER_C in markers
+
+    # Build a human-readable summary.
+    parts = []
+    parts.append(f"execution-order={ordering}")
+    parts.append(f"synchronous={sync_observed}")
+    parts.append(f"short-circuit-on-exit-2={short_circuit}")
+
+    return HookTimingProbeResult(
+        name="combined_ordering_sync_shortcircuit",
+        passed=True,
+        detail="; ".join(parts),
+        findings=findings,
+        captured={"raw_output": raw},
+    )
+
+
+def _evaluate_timeout_probe(
+    out_path: Path,
+    *,
+    hook_sleep_seconds: int,
+    elapsed_seconds: float,
+) -> HookTimingProbeResult:
+    """Read the timeout-probe output and derive findings.
+
+    If both `start=` and `end=` lines appear with end-start ≈ sleep,
+    claude waited patiently — no default timeout shorter than the sleep
+    duration. If only `start=` appears, the hook was killed mid-sleep
+    by a default timeout.
+    """
+    if not out_path.exists():
+        return HookTimingProbeResult(
+            name="default_timeout",
+            passed=False,
+            detail=f"timeout probe output not found at {out_path}; hook may not have fired",
+        )
+    raw = out_path.read_text()
+    findings: dict[str, object] = {"raw_output": raw, "hook_sleep_seconds": hook_sleep_seconds, "elapsed_seconds": elapsed_seconds}
+
+    start_match = None
+    end_match = None
+    for line in raw.splitlines():
+        if line.startswith("start="):
+            with contextlib.suppress(ValueError):
+                start_match = int(line.split("=", 1)[1])
+        elif line.startswith("end="):
+            with contextlib.suppress(ValueError):
+                end_match = int(line.split("=", 1)[1])
+
+    findings["hook_start_timestamp"] = start_match
+    findings["hook_end_timestamp"] = end_match
+
+    if start_match is None:
+        return HookTimingProbeResult(
+            name="default_timeout",
+            passed=False,
+            detail="timeout probe didn't write a start timestamp",
+            findings=findings,
+        )
+
+    if end_match is None:
+        # Hook was killed before completing its sleep. Default timeout
+        # is somewhere between 0 and hook_sleep_seconds.
+        findings["hook_completed"] = False
+        findings["interpretation"] = (
+            f"hook killed mid-sleep; default timeout < {hook_sleep_seconds}s"
+        )
+        return HookTimingProbeResult(
+            name="default_timeout",
+            passed=True,
+            detail=f"hook killed before completing {hook_sleep_seconds}s sleep — default timeout < {hook_sleep_seconds}s",
+            findings=findings,
+            captured={"raw_output": raw},
+        )
+
+    hook_duration = end_match - start_match
+    findings["hook_duration_seconds"] = hook_duration
+    findings["hook_completed"] = True
+    findings["interpretation"] = (
+        f"hook completed full {hook_sleep_seconds}s sleep ({hook_duration}s observed); "
+        f"no default timeout below {hook_duration}s"
+    )
+    return HookTimingProbeResult(
+        name="default_timeout",
+        passed=True,
+        detail=f"hook completed in {hook_duration}s (sleep target {hook_sleep_seconds}s) — no default timeout below {hook_duration}s",
+        findings=findings,
+        captured={"raw_output": raw},
+    )
+
+
+def _run_one_probe(
+    workspace: Path,
+    settings: dict[str, Any],
+    claude_prompt: str,
+    timeout: float,
+) -> tuple[int | None, str]:
+    """Run claude -p in `workspace` with the given settings. Returns
+    (returncode, stderr_tail). Returns (None, error_msg) on
+    timeout/spawn failure.
+
+    Each call rewrites workspace/.claude/settings.json so consecutive
+    probes can use different hook configurations within one workspace.
+    """
+    settings_dir = workspace / ".claude"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text(json.dumps(settings, indent=2))
+
+    env = os.environ.copy()
+    env["CLAUDE_PROJECT_DIR"] = str(workspace)
+
+    try:
+        proc = subprocess.run(
+            ["claude", "-p", claude_prompt],
+            cwd=workspace,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return None, f"claude subprocess wall-clock timeout after {exc.timeout}s"
+    except OSError as exc:
+        return None, f"claude subprocess spawn failure: {exc}"
+
+    stderr_tail = (proc.stderr or "")[-400:]
+    return proc.returncode, stderr_tail
+
+
+def run_hook_timing_harness(
+    *,
+    workspace: Path | None = None,
+    claude_prompt: str = "List the files in the current directory.",
+    per_probe_timeout: float = 120.0,
+    timeout_probe_hook_sleep: int = 30,
+) -> HookTimingHarnessReport:
+    """Run the hook-timing verifier end-to-end.
+
+    Two probes:
+      1. combined_ordering_sync_shortcircuit — four hooks on PostToolUse
+         that together reveal execution order, synchronicity, and
+         short-circuit-on-exit-2 behavior.
+      2. default_timeout — one hook that sleeps `timeout_probe_hook_sleep`
+         seconds; reveals whether claude has a default hook timeout
+         shorter than that duration.
+
+    Args:
+        workspace: directory for the per-probe `.claude/settings.json` +
+            probe scripts. If None, a fresh tempdir is created.
+        claude_prompt: prompt sent to `claude -p`. Should reliably
+            trigger at least one PostToolUse fire (e.g., a file-listing
+            request).
+        per_probe_timeout: wall-clock cap per claude -p invocation. Set
+            high enough to accommodate `timeout_probe_hook_sleep` plus
+            claude's own startup time.
+        timeout_probe_hook_sleep: how long the timeout-probe hook sleeps.
+            Default 30s — long enough to detect short default timeouts
+            without holding the test up unreasonably.
+    """
+    if workspace is None:
+        workspace = Path(tempfile.mkdtemp(prefix="maury-hook-timing-"))
+
+    version = _claude_version()
+    if version is None:
+        return HookTimingHarnessReport(
+            workspace=workspace,
+            claude_present=False,
+            claude_version=None,
+            probes=(),
+            claude_returncode_combined=None,
+            claude_returncode_timeout=None,
+            claude_stderr_excerpt_combined="`claude` not on PATH",
+            claude_stderr_excerpt_timeout="`claude` not on PATH",
+        )
+
+    out_dir = workspace / "probe-out"
+    scripts_dir = workspace / ".claude" / "probes"
+    scripts = _write_hook_timing_scripts(scripts_dir, out_dir)
+
+    (workspace / "CLAUDE.md").write_text(
+        "# Hook-timing probe workspace\n\n"
+        "This is a throwaway project used by `maury verify-cc-hook-timing`. "
+        "When asked, list the files in this directory.\n"
+    )
+
+    # Probe 1: combined ordering / sync / short-circuit.
+    # Override the timeout-probe hook's sleep to 30s for the actual run.
+    combined_out = out_dir / "combined.out"
+    if combined_out.exists():
+        combined_out.unlink()
+
+    combined_settings_dict = _combined_settings(scripts)
+    rc1, stderr1 = _run_one_probe(workspace, combined_settings_dict, claude_prompt, per_probe_timeout)
+
+    expected_order = (
+        _HOOK_TIMING_MARKER_A_START,
+        _HOOK_TIMING_MARKER_A_END,
+        _HOOK_TIMING_MARKER_B,
+        _HOOK_TIMING_MARKER_C,
+        _HOOK_TIMING_MARKER_D,
+    )
+    combined_result = _evaluate_combined_probe(combined_out, expected_order=expected_order)
+
+    # Probe 2: default timeout.
+    timeout_out = out_dir / "timeout.out"
+    if timeout_out.exists():
+        timeout_out.unlink()
+
+    # Regenerate the timeout script with the configured sleep duration
+    # in case the caller overrode it.
+    timeout_script_path = scripts["timeout"]
+    timeout_script_path.write_text(_timeout_probe_script(timeout_out, sleep_seconds=timeout_probe_hook_sleep))
+    timeout_script_path.chmod(0o755)
+
+    timeout_settings_dict = _timeout_settings(scripts)
+    t_start = time.time()
+    rc2, stderr2 = _run_one_probe(workspace, timeout_settings_dict, claude_prompt, per_probe_timeout)
+    elapsed = time.time() - t_start
+
+    timeout_result = _evaluate_timeout_probe(
+        timeout_out,
+        hook_sleep_seconds=timeout_probe_hook_sleep,
+        elapsed_seconds=elapsed,
+    )
+
+    return HookTimingHarnessReport(
+        workspace=workspace,
+        claude_present=True,
+        claude_version=version,
+        probes=(combined_result, timeout_result),
+        claude_returncode_combined=rc1,
+        claude_returncode_timeout=rc2,
+        claude_stderr_excerpt_combined=stderr1,
+        claude_stderr_excerpt_timeout=stderr2,
     )
