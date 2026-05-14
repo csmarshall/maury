@@ -193,7 +193,7 @@ def pick_default_project(projects_dir: Path) -> str:
             project = jsonl.relative_to(projects_dir).parts[0]
         except ValueError:
             project = jsonl.parent.name
-        for m in filter_real_user_messages(extract_user_messages(jsonl)):
+        for _m in filter_real_user_messages(extract_user_messages(jsonl)):
             counts[project] += 1
     if not counts:
         raise SystemExit(f"no user messages found under {projects_dir}")
