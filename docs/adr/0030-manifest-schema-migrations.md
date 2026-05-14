@@ -146,9 +146,9 @@ If the user pushes the upgrade before upgrading peers, peers
 fail loud (per rule 2) until they're upgraded. No silent
 divergence.
 
-**Where the failure surfaces:** at the maury-manifest-load
-step, NOT at `git pull`. Peers' `git pull` succeeds (it's just
-fetching JSON); maury's manifest reader refuses on next read.
+**Where the failure surfaces:** at the marker/manifest load
+step in maury, NOT at `git pull`. Peers' `git pull` succeeds
+(it's just fetching JSON); maury's reader refuses on next read.
 Recovery is `pipx upgrade maury` followed by re-running the
 maury command that failed. The peer's local clone has the v3
 file but maury refuses to operate on it until the binary is

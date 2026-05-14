@@ -24,6 +24,13 @@ reference is in [`operations.md`](operations.md).
   PyPI — not yet)
 - About 5 minutes
 
+> **One vocabulary note before you start.** The CLI flag is still
+> spelled `--profile` even though the design docs call the concept
+> a **mode**. They're the same thing; the rename is queued for the
+> next manifest schema bump per
+> [ADR-0030](adr/0030-manifest-schema-migrations.md). When you see
+> `--profile home` in commands below, read it as "the `home` mode."
+
 ## 1. Clone and install (≈1 min)
 
 ```sh
@@ -122,14 +129,6 @@ The `--check` flag is the safe way to see what *would* happen
 without writing anything (the same flag is on every state-changing
 maury command — `init`, `sync`, etc.).
 
-> **Vocabulary note.** The CLI still uses `--profile` as the flag
-> name and prints `profile=…` in its output, but the canonical
-> term in maury's design docs is **mode** (per
-> [`concepts.md`](concepts.md) and ADR-0037). They mean the same
-> thing — a rename to `--mode` is queued for the next manifest
-> schema bump per
-> [ADR-0030](adr/0030-manifest-schema-migrations.md). Until then,
-> `--profile` (the flag) and "mode" (the concept) coexist.
 
 Drop the `--check` flag to actually write, then look at the
 rendered files:

@@ -346,8 +346,11 @@ Three load-bearing properties:
 
 #### Marker file schema
 
-The marker file is the per-layer manifest. Example for a `mode`
-repo with two `rules` sublayers:
+The marker file is the canonical per-layer artifact — the
+maury equivalent of a per-repo `package.json` or `Cargo.toml`,
+declaring what kind of layer this repo is and what other repos
+it depends on. Example for a `mode` repo with two `rules`
+sublayers:
 
 ```json
 {

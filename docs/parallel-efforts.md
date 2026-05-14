@@ -14,12 +14,12 @@ project is "best" — different shapes work for different setups.
 
 | Project | Multi-host sync | Work/personal isolation | Mines transcripts | Status |
 |---|---|---|---|---|
-| **maury** | ✓ (one git repo per trust boundary) | **structural** — per-host deploy keys; one mode = one server-side access scope | ✓ local-only; rule-engine classified; opt-in | pre-v0.1, active |
-| [jean-claude](https://github.com/MikeVeerman/jean-claude) | ✓ (single git repo with N profiles) | ✗ profile-aware but not enforced at the access layer | ✗ | active |
+| **maury** | ✓ one git repo per trust boundary | structural — per-host deploy keys; one mode = one server-side access scope | ✓ local-only; rule-engine classified; opt-in | pre-v0.1, active |
+| [jean-claude](https://github.com/MikeVeerman/jean-claude) | ✓ single git repo with N profiles | ✗ profile-aware but not enforced at the access layer | ✗ | active |
 | [claude-diary](https://github.com/rlancemartin/claude-diary) | ✗ single-host | n/a | ✓ session reflection + transcript parse | active |
-| [ccms](https://github.com/miwidot/ccms) | ✓ (rsync over SSH; the full `~/.claude/`) | ✗ syncs everything | ✗ | active |
-| [chezmoi](https://github.com/twpayne/chezmoi) + [age](https://github.com/FiloSottile/age) | ✓ (generic dotfile manager + per-file encryption) | ⚠ encryption-based, not trust-boundary | ✗ | very active |
-| [Anthropic auto-memory](https://code.claude.com/docs/en/memory) (CC v2.1.59+) | ✗ per-project, machine-local | ✗ | ✓ Claude writes its own memory dir (`MEMORY.md` index + topic files) | shipped, default on |
+| [ccms](https://github.com/miwidot/ccms) | ✓ rsync over SSH; the full `~/.claude/` | ✗ syncs everything | ✗ | active |
+| [chezmoi](https://github.com/twpayne/chezmoi) + [age](https://github.com/FiloSottile/age) | ✓ generic dotfile manager + per-file encryption | ⚠ encryption-based, not trust-boundary | ✗ | very active |
+| [Anthropic auto-memory](https://code.claude.com/docs/en/memory) (CC v2.1.59+) | ✗ machine-local; per-project memory dir, not cross-host | ✗ | ✓ Claude writes its own per-project memory dir (`MEMORY.md` index + topic files) | shipped, default on |
 
 ## What each one does, in one paragraph
 
