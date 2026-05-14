@@ -245,6 +245,97 @@ def test_sync_unknown_host_yields_click_exception(tmp_path: Path) -> None:
     assert "not in the manifest" in combined or "Run `maury init`" in combined
 
 
+# ---- post-host-id output paths -----------------------------------------
+
+
+def test_sync_check_dry_run_prints_warnings_and_host_lines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end --check dry-run with `_identify_host` monkeypatched so
+    sync proceeds past host identification. Covers cli.py post-host-id
+    output: host/profile lines, _progress callback echo, warnings block,
+    and the --check footer.
+
+    No git I/O happens because --check skips _sync_one_repo's network
+    calls; render is also skipped (base path absent under repos_root)
+    and surfaced as a warning.
+
+    Monkeypatching `_identify_host` is necessary because the default
+    `host_id_file=HOST_ID_FILE` is bound at definition time; patching
+    `maury.sync.HOST_ID_FILE` after the fact does nothing.
+    """
+    mpath = tmp_path / "manifest.json"
+    _pid, hid = _write_manifest(mpath, hostname="fixture-host")
+    # Build the host_spec we want _identify_host to return, then patch.
+    from maury.manifest import load_manifest
+
+    manifest = load_manifest(mpath)
+    host_spec = manifest.hosts[hid]
+
+    def fake_identify_host(manifest_arg: object, host_id_file: object) -> tuple[str, object]:
+        return hid, host_spec
+
+    monkeypatch.setattr("maury.sync._identify_host", fake_identify_host)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "sync",
+            "--manifest-file",
+            str(mpath),
+            "--target",
+            str(tmp_path / "out"),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--check",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # host: / profile: lines appear post-_identify_host
+    assert "host:" in result.output
+    assert "profile:" in result.output
+    # _progress callback fired once per repo (the seed manifest has one "base" repo)
+    assert "base" in result.output
+    # Dry-run + missing base clone → warning block
+    assert "warnings:" in result.output
+    # Final --check footer
+    assert "no remote I/O performed and no files written" in result.output
+
+
+def test_sync_no_host_id_no_hostname_match_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """If `_identify_host` raises SyncError (host id stale or hostname
+    not in manifest), the CLI surfaces it as a ClickException with the
+    friendly `Run `maury init`` pointer."""
+    from maury.sync import SyncError
+
+    def fake_identify_host(*_a: object, **_kw: object) -> tuple[str, object]:
+        raise SyncError(
+            "this host (hostname='ghost-host') is not in the manifest "
+            "and no /nonexistent/.maury-host-id exists. Run `maury init` first."
+        )
+
+    monkeypatch.setattr("maury.sync._identify_host", fake_identify_host)
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath, hostname="other-host")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "sync",
+            "--manifest-file",
+            str(mpath),
+            "--target",
+            str(tmp_path / "out"),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--check",
+        ],
+    )
+    assert result.exit_code == 1
+    combined = result.output + (result.stderr or "")
+    assert "Run `maury init`" in combined
+
+
 # ---- target / repos-root home expansion --------------------------------
 
 
