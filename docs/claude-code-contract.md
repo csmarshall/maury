@@ -416,14 +416,19 @@ matches — call it **"ordered fire-and-forget."** Specifically:
 `maury verify-cc-hook-timing`.
 
 **Implication for ADR-0023:** the drift-attribution chain
-documented there assumes `PostToolUse log_tool_use` completes
-before Claude Code proceeds. The observed fire-and-forget model
-means `claude-writes.jsonl` may not yet contain the latest entry
-when the next tool call begins or when the user observes the
-rendered effect. ADR-0023 needs to be amended to account for
-this — flagged as a design conversation in session-state.md
-(2026-05-13 autonomous-run findings), NOT amended in this
-commit.
+documented there originally assumed `PostToolUse log_tool_use`
+completes before Claude Code proceeds. The observed fire-and-
+forget model means `claude-writes.jsonl` may not yet contain the
+latest entry when the next tool call begins or when the user
+observes the rendered effect. ADR-0023 was amended 2026-05-14 to
+formalize drift attribution as eventually-consistent within
+~hook-completion-time; see
+[ADR-0023 §"Hook timing model"](adr/0023-hook-installation-and-tool-resolution.md#hook-timing-model-eventually-consistent-attribution-amended-2026-05-14).
+No code changes required because `maury sync` reads
+`claude-writes.jsonl` between sessions, so prior hook
+subprocesses have drained by then. ADR-0017 carries a cross-
+reference callout so the drift-detection algorithm's reader
+sees the eventual-consistency model at first encounter.
 
 **📌 Tracked upstream:**
 - [anthropics/claude-code #57800](https://github.com/anthropics/claude-code/issues/57800)

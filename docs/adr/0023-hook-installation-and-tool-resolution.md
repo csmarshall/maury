@@ -23,7 +23,13 @@ drift attribution can't gracefully degrade. Trade-off: eight
 load-bearing decisions to test together. Three empirical claims
 about Claude Code shell behavior were unverified at write time;
 verified ✅ on 2026-05-07 via `maury verify-cc-hooks` (see
-"Empirical-test debt — RESOLVED" section below).
+"Empirical-test debt — RESOLVED" section below). A fourth
+load-bearing assumption — that `log_tool_use` completes before
+the next tool call — was contradicted empirically on 2026-05-13
+via `maury verify-cc-hook-timing`; the amendment below formalizes
+drift attribution as **eventually-consistent within
+~hook-completion-time** rather than synchronous, with no code
+changes required.
 
 ## Context and Problem Statement
 
@@ -522,10 +528,82 @@ verification didn't see).
 Full records in
 [`docs/claude-code-contract.md` §"Empirically verified behaviors"](../claude-code-contract.md#empirically-verified-behaviors).
 
+## Hook timing model: eventually-consistent attribution (amended 2026-05-14)
+
+A fourth empirical claim — not flagged in the original
+"Empirical-test debt" because it was implicit rather than
+declared — was contradicted by `maury verify-cc-hook-timing`
+on 2026-05-13. The schema in §6 and the concurrency analysis
+in §7 originally assumed — without saying so — that
+`PostToolUse log_tool_use` completes before Claude Code
+proceeds to the next tool call or surfaces the rendered effect
+to the user. **That assumption does not hold.** Per
+[`cc-contract:hook-execution-timing`](../claude-code-contract.md#cc-contracthook-execution-timing)
+(verified 2026-05-13 on claude 2.1.141 / macOS 14.5),
+Claude Code's hook execution model is **ordered fire-and-forget**:
+hooks fire in declaration order but Claude Code does NOT wait for
+hook N to finish before firing hook N+1, and exit code 2 does NOT
+short-circuit subsequent hooks. **Neither** of the two documented
+readings — the
+[Agent SDK hooks reference][cc-agent-hooks] ("parallel") nor the
+[hooks guide][cc-hooks] ("sequential, short-circuit on exit 2") —
+matches this empirical reading; the contradiction is tracked
+upstream in [#57800](https://github.com/anthropics/claude-code/issues/57800).
+
+**Implication for drift attribution.** A `claude-writes.jsonl` line
+for tool call T may not be present on disk at the instant tool call
+T+1 begins. The write is *eventually* there — typically within a
+few hundred milliseconds, bounded by the hook subprocess's wall
+time — but a synchronous read immediately after the tool call can
+miss it.
+
+**Why this is fine for maury's primary consumer.** `maury sync`,
+`maury reconcile`, and `maury status` all run as between-sessions
+operations invoked by the user from a shell. By the time any of
+them open `claude-writes.jsonl` for read, every hook subprocess
+from the prior session has long since exited (the session ended
+before the user's next shell command). The race window is bounded
+by hook-completion-time and does not overlap with maury's read
+points.
+
+**What this changes:**
+
+- No code changes. The `log_tool_use` script's append semantics
+  (POSIX `O_APPEND`, ≤ 4 KB lines) and the consumer-side read
+  semantics (open + parse) are already correct under the
+  eventually-consistent model.
+- No schema changes. The fields locked in §6 (`before_sha`,
+  `after_sha`, `size_delta`, `diff_hint`) remain load-bearing for
+  attribution; the SHA-equality test still uniquely identifies
+  a Claude-write irrespective of write ordering.
+- Drift attribution is now formally **eventually-consistent within
+  ~hook-completion-time** rather than synchronous. Downstream
+  consumers MUST NOT read `claude-writes.jsonl` mid-session and
+  assume it reflects every tool call up to "now"; cross-session
+  reads (maury's normal path) are safe.
+
+**Why not switch to a different observation mechanism.** A `Stop`-
+hook drain at session-end was considered. It would give synchronous
+attribution at the cost of losing intra-session visibility. Maury's
+primary consumers don't need intra-session visibility, so the price
+isn't worth paying. Pinning to a specific CC version is a
+backwards-compatibility trap; waiting for upstream blocks all
+dependent design indefinitely.
+
+The framing is the standard distributed-systems tradeoff: of
+{speed, consistency, fault-tolerance} you pick two. Hook
+execution is already optimizing for speed and fault-tolerance
+(parallelism + no inter-hook coupling); insisting on synchronous
+consistency would require giving up one of those, which is
+Anthropic's decision to make in upstream
+[#57800](https://github.com/anthropics/claude-code/issues/57800),
+not maury's to enforce downstream.
+
 ## Claude Code references
 
-Verified-as-of 2026-05-07 against Anthropic's official Claude
-Code documentation:
+Verified-as-of 2026-05-07 (cc-hooks, cc-sessions) and 2026-05-13
+(cc-agent-hooks, added with the eventually-consistent attribution
+amendment) against Anthropic's official Claude Code documentation:
 
 - [`cc-hooks`][cc-hooks] — hook event names, JSON shape (event →
   matcher group → `{type, command}`), stdin payload structure
@@ -533,10 +611,19 @@ Code documentation:
   `tool_result`).
 - [`cc-sessions`][cc-sessions] — multiple concurrent Claude Code
   sessions on one host are explicitly supported.
+- [`cc-agent-hooks`][cc-agent-hooks] — Agent SDK TypeScript
+  reference; cited in the eventually-consistent attribution
+  amendment for the "parallel" documentation reading that, with
+  the hooks guide's contradictory "sequential, short-circuit on
+  exit 2" reading, is the upstream contradiction
+  ([#57800](https://github.com/anthropics/claude-code/issues/57800))
+  that `maury verify-cc-hook-timing` resolves empirically.
 
 [cc-hooks]: https://code.claude.com/docs/en/hooks
 [cc-sessions]: https://code.claude.com/docs/en/sessions
+[cc-agent-hooks]: https://docs.claude.com/en/api/agent-sdk/typescript
 
 ## Amendment history
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
+- 2026-05-14 — added "Hook timing model: eventually-consistent attribution" section per `maury verify-cc-hook-timing` empirical findings (`cc-contract:hook-execution-timing`). §6/§7's implicit synchronicity assumption was wrong; the amendment formalizes the eventually-consistent model. No code changes required because `maury sync` reads `claude-writes.jsonl` between sessions, not mid-session.

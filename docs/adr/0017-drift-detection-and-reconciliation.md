@@ -144,6 +144,15 @@ size_delta}` — see [ADR-0023](0023-hook-installation-and-tool-resolution.md)
 §6 for the full schema and the stdin-JSON-payload mechanics by
 which the hook script receives data from Claude Code.
 
+> **Timing model.** Per ADR-0023's
+> [eventually-consistent attribution amendment](0023-hook-installation-and-tool-resolution.md#hook-timing-model-eventually-consistent-attribution-amended-2026-05-14)
+> (2026-05-14), the Claude-write log is eventually consistent within
+> ~hook-completion-time, not synchronous. `maury sync` and
+> `maury reconcile` read the log between sessions — at that point
+> every prior hook subprocess has drained — so attribution is
+> reliable for maury's primary consumers. Mid-session consumers
+> must account for the eventual-consistency window.
+
 #### The five reconcile actions for hand-edits
 
 When `maury reconcile` surfaces a hand-edit, the user picks one:
@@ -470,3 +479,4 @@ Code documentation:
 ## Amendment history
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
+- 2026-05-14 — added timing-model callout in "Drift sources and treatment" cross-referencing ADR-0023's eventual-consistency amendment. The Claude-write log is eventually consistent within ~hook-completion-time; safe for `maury sync` / `maury reconcile` (between-sessions reads), unsafe for mid-session consumers. No semantic change to the drift-detection algorithm.
