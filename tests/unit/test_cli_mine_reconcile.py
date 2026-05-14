@@ -196,6 +196,81 @@ def test_findings_as_json_round_trips() -> None:
     assert isinstance(parsed, (list, dict))
 
 
+# ---- cross-ref formatters -----------------------------------------------
+
+
+def test_findings_as_text_with_crossref_summary_groups_by_state() -> None:
+    """When a CrossRefSummary is passed, output groups findings by state
+    with the killer signal (REINFORCED) first."""
+    from maury.cli import _findings_as_text  # local import to keep header tidy
+    from maury.mining.crossref import CrossRefResult, CrossRefSummary
+
+    f_new = _make_finding(text="prefer terse responses")
+    f_reinforced = _make_finding(text="never amend commits")
+    summary = CrossRefSummary.empty()
+    summary.add(
+        f_new,
+        CrossRefResult(
+            state="NEW",
+            claude_md_quote="",
+            rationale="not in claude.md",
+            suggested_action="propose-new",
+        ),
+    )
+    summary.add(
+        f_reinforced,
+        CrossRefResult(
+            state="PRESENT_AND_REINFORCED",
+            claude_md_quote="never amend",
+            rationale="user corrected behavior",
+            suggested_action="investigate-why-not-followed",
+        ),
+    )
+    out = _findings_as_text(
+        findings=[f_new, f_reinforced],
+        windows_processed=4,
+        summary=summary,
+    )
+    # Header counts both states
+    assert "2 finding(s) across 4 window(s)" in out
+    # The REINFORCED bucket appears before NEW (state_order)
+    reinforced_pos = out.find("PRESENT_AND_REINFORCED")
+    new_pos = out.find("NEW (")
+    assert reinforced_pos != -1 and new_pos != -1
+    assert reinforced_pos < new_pos
+    # Both findings + their xref rationales appear
+    assert "never amend commits" in out
+    assert "user corrected behavior" in out
+    assert "propose-new" in out
+    # The quote is included when non-empty
+    assert "matches CLAUDE.md" in out
+
+
+def test_findings_as_json_with_crossref_summary_embeds_xref() -> None:
+    """When summary is passed, each finding's JSON entry includes a
+    `crossref` field with state + rationale + action."""
+    from maury.cli import _findings_as_json
+    from maury.mining.crossref import CrossRefResult, CrossRefSummary
+
+    f = _make_finding(text="prefer ruff over black")
+    summary = CrossRefSummary.empty()
+    summary.add(
+        f,
+        CrossRefResult(
+            state="PRESENT_AND_CLEAR",
+            claude_md_quote="use ruff",
+            rationale="already documented",
+            suggested_action="suppress",
+        ),
+    )
+    out = _findings_as_json([f], summary=summary)
+    payload = json.loads(out)
+    assert isinstance(payload, list)
+    assert payload[0]["crossref"]["state"] == "PRESENT_AND_CLEAR"
+    assert payload[0]["crossref"]["suggested_action"] == "suppress"
+    assert payload[0]["crossref"]["claude_md_quote"] == "use ruff"
+
+
 # ---- reconcile: error paths ---------------------------------------------
 
 
