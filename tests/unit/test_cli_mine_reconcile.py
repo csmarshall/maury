@@ -67,13 +67,29 @@ def _write_minimal_manifest(path: Path) -> tuple[str, str]:
 # ---- mine: error paths --------------------------------------------------
 
 
+def _make_claude_md(tmp_path: Path) -> Path:
+    """Write a minimal CLAUDE.md so Click's `--claude-md` default-path
+    `exists=True` validator passes in CI (where ~/.claude/CLAUDE.md is absent)."""
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# fixture\n")
+    return md
+
+
 def test_mine_project_not_found(tmp_path: Path) -> None:
     projects = tmp_path / "projects"
     projects.mkdir()
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["mine", "--projects-dir", str(projects), "--project", "nonexistent-project"],
+        [
+            "mine",
+            "--projects-dir",
+            str(projects),
+            "--project",
+            "nonexistent-project",
+            "--claude-md",
+            str(_make_claude_md(tmp_path)),
+        ],
     )
     assert result.exit_code != 0
     combined = result.output + (result.stderr or "")
@@ -86,7 +102,10 @@ def test_mine_no_projects_with_messages(tmp_path: Path) -> None:
     projects.mkdir()
     runner = CliRunner()
     # No --project, so it tries to pick busiest; with empty dir, errors
-    result = runner.invoke(main, ["mine", "--projects-dir", str(projects)])
+    result = runner.invoke(
+        main,
+        ["mine", "--projects-dir", str(projects), "--claude-md", str(_make_claude_md(tmp_path))],
+    )
     assert result.exit_code != 0
     combined = result.output + (result.stderr or "")
     assert "no projects with user messages found" in combined
@@ -102,7 +121,15 @@ def test_mine_empty_jsonl_in_project_says_nothing_to_mine(tmp_path: Path) -> Non
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["mine", "--projects-dir", str(projects), "--project", "empty-project"],
+        [
+            "mine",
+            "--projects-dir",
+            str(projects),
+            "--project",
+            "empty-project",
+            "--claude-md",
+            str(_make_claude_md(tmp_path)),
+        ],
     )
     assert result.exit_code == 0, result.output
     assert "nothing to mine" in result.output
