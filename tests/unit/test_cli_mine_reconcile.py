@@ -144,6 +144,139 @@ def test_mine_projects_dir_must_exist(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
+# ---- ADR-0043: incremental mining + cwd-derived default ---------------
+
+
+def test_mine_cwd_override_derives_project(tmp_path: Path) -> None:
+    """`--cwd <path>` derives the project dir via the verified algorithm
+    and uses that dir. If derivation finds a matching dir, mine that one."""
+    from maury.projects import derive_project_dir
+
+    projects = tmp_path / "projects"
+    # Make `tmp_path / "demo"` the "cwd"; pre-create the matching
+    # project dir under projects/ with one empty jsonl so mine reaches
+    # the "nothing to mine" branch.
+    demo_cwd = tmp_path / "demo"
+    demo_cwd.mkdir()
+    derived_name = derive_project_dir(demo_cwd)
+    project = projects / derived_name
+    project.mkdir(parents=True)
+    (project / "session.jsonl").write_text("")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "mine",
+            "--projects-dir",
+            str(projects),
+            "--cwd",
+            str(demo_cwd),
+            "--claude-md",
+            str(_make_claude_md(tmp_path)),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert f"derived from {demo_cwd}" in result.output
+    assert derived_name in result.output
+    assert "nothing to mine" in result.output
+
+
+def test_mine_cwd_no_match_falls_back_to_busiest_real(tmp_path: Path) -> None:
+    """The fallback-to-busiest path with a real (but unmatched) cwd.
+
+    The fallback notice should appear BEFORE `_pick_busiest_project`
+    raises (in this fixture: projects/ has only an empty jsonl, so
+    busiest will fail). What's under test is the notice, not whether
+    the fallback target itself has content.
+    """
+    projects = tmp_path / "projects"
+    busiest = projects / "busiest-project"
+    busiest.mkdir(parents=True)
+    (busiest / "session.jsonl").write_text("")
+
+    other_cwd = tmp_path / "unrelated"
+    other_cwd.mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "mine",
+            "--projects-dir",
+            str(projects),
+            "--cwd",
+            str(other_cwd),
+            "--claude-md",
+            str(_make_claude_md(tmp_path)),
+        ],
+    )
+    # The fallback notice must appear regardless of whether the busiest
+    # fallback subsequently succeeds.
+    combined = result.output + (result.stderr or "")
+    assert "has no project dir" in combined
+    assert "falling back to busiest" in combined
+
+
+def test_mine_since_invalid_date_errors(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    project = projects / "p"
+    project.mkdir(parents=True)
+    (project / "s.jsonl").write_text("")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "mine",
+            "--projects-dir",
+            str(projects),
+            "--project",
+            "p",
+            "--since",
+            "not-a-date",
+            "--claude-md",
+            str(_make_claude_md(tmp_path)),
+        ],
+    )
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr or "")
+    assert "--since" in combined
+
+
+def test_mine_since_no_jsonls_after_cutoff_says_nothing_new(tmp_path: Path) -> None:
+    """When `--since` cuts off all jsonls, the CLI emits 'nothing new'."""
+    import os
+    import time
+
+    projects = tmp_path / "projects"
+    project = projects / "p"
+    project.mkdir(parents=True)
+    f = project / "s.jsonl"
+    f.write_text("")
+    # Force mtime well in the past.
+    past = time.time() - 86400 * 30  # 30 days ago
+    os.utime(f, (past, past))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "mine",
+            "--projects-dir",
+            str(projects),
+            "--project",
+            "p",
+            "--since",
+            "2099-01-01",
+            "--claude-md",
+            str(_make_claude_md(tmp_path)),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "nothing new" in result.output
+
+
 def test_mine_invalid_backend_rejected_by_click(tmp_path: Path) -> None:
     projects = tmp_path / "projects"
     projects.mkdir()

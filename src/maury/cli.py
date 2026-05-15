@@ -48,6 +48,7 @@ from maury.mining import (
     CrossRefResult,
     CrossRefSummary,
     Finding,
+    TranscriptMessage,
     extract_from_messages,
     walk_user_messages,
 )
@@ -1281,6 +1282,39 @@ _DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
         "CLAUDE.md). Only used with --crossref. None = current-only mode."
     ),
 )
+@click.option(
+    "--cwd",
+    "cwd_override",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Derive the project dir name from this path via the verified "
+        "`derive_project_dir()` algorithm (ADR-0043). Overrides the "
+        "no-args 'derive from current cwd' default. Ignored if --project "
+        "is also passed."
+    ),
+)
+@click.option(
+    "--full",
+    "full",
+    is_flag=True,
+    help=(
+        "Ignore the per-project mining watermark and re-mine all "
+        "transcripts. Use when the mining algorithm changes or you "
+        "suspect missed signal. Per ADR-0043."
+    ),
+)
+@click.option(
+    "--since",
+    "since",
+    type=str,
+    default=None,
+    help=(
+        "Mine transcripts modified since this ISO-8601 date (e.g., "
+        "`2026-05-01`). Overrides the watermark for this run only; "
+        "does NOT update the canonical watermark on success. Per ADR-0043."
+    ),
+)
 def mine_cmd(
     projects_dir: Path,
     project_name: str | None,
@@ -1291,6 +1325,9 @@ def mine_cmd(
     crossref_enabled: bool,
     claude_md_path: Path,
     repo_path: Path | None,
+    cwd_override: Path | None,
+    full: bool,
+    since: str | None,
 ) -> None:
     """Mine transcripts for durable preference candidates (Phase 6a + 6c).
 
@@ -1309,23 +1346,39 @@ def mine_cmd(
     # this host's mode-registration; an accidental host-id swap would
     # surface the wrong sessions. The baseline lives at the standard
     # render-target location (`~/.claude/`).
-    _enforce_identity_guard(target_dir=Path.home() / ".claude")
+    target_dir = Path.home() / ".claude"
+    _enforce_identity_guard(target_dir=target_dir)
 
-    # Pick the project if not specified.
-    target_project_dir: Path
-    if project_name:
-        target_project_dir = projects_dir / project_name
-        if not target_project_dir.is_dir():
-            raise click.ClickException(f"project directory not found: {target_project_dir}")
-    else:
-        target_project_dir = _pick_busiest_project(projects_dir)
-        click.echo(f"selected project (busiest): {target_project_dir.name}")
+    # Resolve target project per ADR-0043:
+    #   1. --project <name> → literal lookup
+    #   2. --cwd <path> → derive name from given path
+    #   3. else: derive from Path.cwd(); fall back to busiest if no match
+    target_project_dir = _resolve_mining_project(
+        projects_dir=projects_dir,
+        project_name=project_name,
+        cwd_override=cwd_override,
+    )
 
-    # Walk + filter messages.
-    msgs = list(walk_user_messages(target_project_dir))
+    # Load the watermark and decide the cutoff for incremental mining
+    # (ADR-0043 §"Default behavior: incremental mining"). `--since`
+    # overrides for one run without updating the canonical watermark;
+    # `--full` skips the watermark entirely.
+    cutoff_mtime: float | None = _resolve_mining_cutoff(
+        target_dir=target_dir,
+        project_dir_name=target_project_dir.name,
+        full=full,
+        since=since,
+    )
+
+    # Walk + filter messages, tracking the highest jsonl mtime seen so
+    # we can update the watermark on success.
+    msgs, highest_mtime = _collect_messages_with_watermark(target_project_dir, cutoff_mtime)
     click.echo(f"signal-bearing user messages after noise filter: {len(msgs)}")
     if not msgs:
-        click.echo("nothing to mine.")
+        if cutoff_mtime is not None:
+            click.echo("nothing new to mine since the last watermark.")
+        else:
+            click.echo("nothing to mine.")
         return
 
     # Backend.
@@ -1388,6 +1441,153 @@ def mine_cmd(
         click.echo("warnings:", err=True)
         for w in result.warnings:
             click.echo(f"  {w}", err=True)
+
+    # Update the watermark on success per ADR-0043. Skipped if --since
+    # was used (override does not touch the canonical watermark) or if
+    # we processed no jsonls (highest_mtime is None).
+    if since is None and highest_mtime is not None:
+        _update_mining_watermark(
+            target_dir=target_dir,
+            project_dir_name=target_project_dir.name,
+            highest_mtime=highest_mtime,
+            windows_processed=result.windows_processed,
+            findings_count=len(result.findings),
+        )
+
+
+def _resolve_mining_project(
+    *,
+    projects_dir: Path,
+    project_name: str | None,
+    cwd_override: Path | None,
+) -> Path:
+    """Resolve which project dir to mine per ADR-0043 §"Default behavior."
+
+    Precedence: --project literal > --cwd derivation > Path.cwd()
+    derivation > busiest-project fallback.
+    """
+    from maury.projects import derive_project_dir
+
+    if project_name:
+        target = projects_dir / project_name
+        if not target.is_dir():
+            raise click.ClickException(f"project directory not found: {target}")
+        return target
+
+    derive_source: Path = cwd_override if cwd_override is not None else Path.cwd()
+    derived_name = derive_project_dir(derive_source)
+    derived_dir = projects_dir / derived_name
+    if derived_dir.is_dir():
+        click.echo(f"selected project (derived from {derive_source}): {derived_name}")
+        return derived_dir
+
+    # No project dir for this cwd → fall back to busiest. Print the note
+    # before the call so it's visible whether or not the fallback also
+    # fails (e.g., projects/ has no minable content).
+    click.echo(
+        f"note: cwd {str(derive_source)!r} has no project dir under {projects_dir}; falling back to busiest project"
+    )
+    busiest = _pick_busiest_project(projects_dir)
+    click.echo(f"selected project (busiest): {busiest.name}")
+    return busiest
+
+
+def _resolve_mining_cutoff(
+    *,
+    target_dir: Path,
+    project_dir_name: str,
+    full: bool,
+    since: str | None,
+) -> float | None:
+    """Return the POSIX-mtime cutoff for incremental mining, or None to
+    mine everything.
+
+    --full       -> None (mine all)
+    --since X    -> parse X, return epoch (overrides watermark for one run)
+    watermark    -> use last_jsonl_mtime as cutoff
+    else         -> None (first mine for this project)
+    """
+    from datetime import datetime
+
+    from maury.mining_state import load_or_init_watermark
+
+    if full:
+        return None
+    if since is not None:
+        try:
+            cutoff_dt = datetime.fromisoformat(since)
+        except ValueError as e:
+            raise click.ClickException(f"--since: could not parse {since!r} as ISO-8601 date: {e}") from e
+        return cutoff_dt.timestamp()
+
+    wm = load_or_init_watermark(target_dir)
+    record = wm.record_for(project_dir_name)
+    if record is None:
+        return None
+    try:
+        return datetime.fromisoformat(record.last_jsonl_mtime.rstrip("Z")).timestamp()
+    except ValueError:
+        # Corrupt watermark date — be conservative and re-mine all.
+        return None
+
+
+def _collect_messages_with_watermark(
+    project_dir: Path,
+    cutoff_mtime: float | None,
+) -> tuple[list[TranscriptMessage], float | None]:
+    """Walk JSONLs under `project_dir`, filtering by mtime cutoff.
+
+    Returns the collected messages and the highest mtime seen across the
+    processed JSONLs (None if no JSONLs were processed). Mining writes
+    that mtime as the new watermark on success.
+    """
+    from maury.mining import walk_user_messages_in_file
+
+    msgs: list[TranscriptMessage] = []
+    highest: float | None = None
+    for jsonl in sorted(project_dir.rglob("*.jsonl")):
+        try:
+            mt = jsonl.stat().st_mtime
+        except OSError:
+            continue
+        if cutoff_mtime is not None and mt <= cutoff_mtime:
+            continue
+        msgs.extend(walk_user_messages_in_file(jsonl, project=project_dir.name))
+        if highest is None or mt > highest:
+            highest = mt
+    return msgs, highest
+
+
+def _update_mining_watermark(
+    *,
+    target_dir: Path,
+    project_dir_name: str,
+    highest_mtime: float,
+    windows_processed: int,
+    findings_count: int,
+) -> None:
+    """Update one project's watermark after a successful mining run."""
+    from datetime import UTC, datetime
+
+    from maury.mining_state import (
+        ProjectMiningRecord,
+        load_or_init_watermark,
+        write_watermark,
+    )
+
+    wm = load_or_init_watermark(target_dir)
+    now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    mtime_iso = datetime.fromtimestamp(highest_mtime, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    wm.update(
+        project_dir_name,
+        ProjectMiningRecord(
+            last_mined_at=now_iso,
+            last_jsonl_mtime=mtime_iso,
+            windows_processed=windows_processed,
+            findings_count=findings_count,
+        ),
+    )
+    write_watermark(target_dir, wm)
 
 
 def _pick_busiest_project(projects_dir: Path) -> Path:
