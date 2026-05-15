@@ -390,46 +390,12 @@ def run(
 # =========================================================================
 
 
-def derive_project_dir(cwd: Path) -> str:
-    """Predict the directory name Claude Code creates under `~/.claude/projects/`
-    when invoked with the given working directory.
-
-    Algorithm (empirically verified 2026-05-13 against claude 2.1.140 on macOS;
-    matches the `fh()` source quoted in anthropics/claude-code#54865):
-
-        1. Resolve symlinks on the cwd (`Path.resolve()` ≈ POSIX `realpath`).
-        2. Substitute every non-`[A-Za-z0-9]` character with `-`, matching
-           the JS runtime's regex semantics. The reference `fh()` in cli.js
-           iterates UTF-16 code units (the CLI is Node); this Python port
-           iterates codepoints and special-cases non-BMP codepoints by
-           emitting two hyphens (one per UTF-16 surrogate half). Output is
-           byte-for-byte identical to a literal UTF-16-code-unit iteration
-           for any input we can construct.
-        3. No collapse of consecutive replacements.
-
-    Non-injective. Distinct cwds can produce the same name: `/a/b/c` and
-    `/a-b-c` both yield `-a-b-c`. Consumers walking `~/.claude/projects/`
-    MUST NOT assume one directory uniquely identifies one cwd.
-
-    Non-BMP characters (emoji etc.) are encoded as UTF-16 surrogate pairs;
-    neither surrogate is alphanumeric, so each non-BMP codepoint becomes
-    **two** hyphens (e.g., `🚀` → `--`).
-    """
-    resolved = str(cwd.resolve())
-    out: list[str] = []
-    for ch in resolved:
-        cp = ord(ch)
-        if cp > 0xFFFF:
-            # Non-BMP codepoint → UTF-16 surrogate pair → two hyphens.
-            out.append("--")
-        elif (0x30 <= cp <= 0x39) or (0x41 <= cp <= 0x5A) or (0x61 <= cp <= 0x7A):
-            # ASCII [A-Za-z0-9] — preserved.
-            out.append(ch)
-        else:
-            # Any other BMP character (including non-ASCII letters like 'é',
-            # punctuation, whitespace) — single hyphen.
-            out.append("-")
-    return "".join(out)
+# `derive_project_dir()` was promoted from this verifier-only module to
+# load-bearing production code at `src/maury/projects.py` per ADR-0043
+# (2026-05-15). Re-exported here as part of this module's public API
+# so existing verifier imports still work; the algorithm has a single
+# source of truth in `projects.py`.
+from maury.projects import derive_project_dir as derive_project_dir  # noqa: E402
 
 
 @dataclass(frozen=True)
