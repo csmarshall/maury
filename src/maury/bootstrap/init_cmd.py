@@ -37,7 +37,8 @@ from maury.drift import (
     read_last_render,
     write_last_render,
 )
-from maury.ids import new_host_id
+from maury.host_identity import HostIdentityBaseline, write_baseline
+from maury.ids import host_id_hex_prefix, new_host_id
 from maury.manifest import HOST_ID_FILE, ManifestError, load_manifest
 from maury.render import RenderError, RenderResult, apply_render, render
 from maury.sync import (
@@ -273,6 +274,19 @@ def init(
             ],
         )
         write_last_render(target_dir, new_baseline)
+
+        # 5c. Per ADR-0042, write the host-identity baseline so subsequent
+        # mode-scoped commands can detect accidental hex edits to
+        # `~/.maury-host-id`. The hex prefix is the lookup primitive; the
+        # mode info is audit metadata.
+        identity_baseline = HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex=host_id_hex_prefix(matched_hid),
+            registered_at=_now_iso(),
+            mode_id=profile_id,
+            mode_name_at_bootstrap=manifest.profiles[profile_id].name,
+        )
+        write_baseline(target_dir, identity_baseline)
 
     return InitResult(
         actions=actions,

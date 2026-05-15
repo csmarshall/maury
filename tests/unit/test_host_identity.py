@@ -1,0 +1,253 @@
+"""Tests for `src/maury/host_identity.py` — ADR-0042 baseline + guard."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from maury.host_identity import (
+    SCHEMA_VERSION,
+    HostIdentityBaseline,
+    HostIdentityError,
+    IdentityCheckOutcome,
+    auto_create_baseline_for_upgrade,
+    baseline_path,
+    check_host_identity,
+    format_identity_change_message,
+    read_baseline,
+    write_baseline,
+)
+
+# ---- helpers ------------------------------------------------------------
+
+
+def _make_baseline(host_id_hex: str = "24b2a0aa") -> HostIdentityBaseline:
+    return HostIdentityBaseline(
+        schema_version=SCHEMA_VERSION,
+        host_id_hex=host_id_hex,
+        registered_at="2026-05-14T15:42:11Z",
+        mode_id="mode_3f1a8b2c4d5e6f7081a2b3c4d5e6f708",
+        mode_name_at_bootstrap="home",
+    )
+
+
+def _write_host_id_file(path: Path, host_id: str) -> None:
+    path.write_text(host_id + "\n")
+
+
+# ---- schema + round-trip -----------------------------------------------
+
+
+def test_baseline_json_round_trip(tmp_path: Path) -> None:
+    """write → read produces the same object (modulo trailing whitespace)."""
+    b = _make_baseline()
+    target = tmp_path / "target"
+    write_baseline(target, b)
+    loaded = read_baseline(target)
+    assert loaded == b
+
+
+def test_baseline_path_is_under_maury_state(tmp_path: Path) -> None:
+    """Per ADR-0029 invariant: baseline lives at
+    `<target>/maury-state/host-identity.json`."""
+    bp = baseline_path(tmp_path)
+    assert bp == tmp_path / "maury-state" / "host-identity.json"
+
+
+def test_read_baseline_absent_returns_none(tmp_path: Path) -> None:
+    """A target that's never been initialized has no baseline yet."""
+    assert read_baseline(tmp_path) is None
+
+
+def test_read_baseline_unsupported_schema_version_raises(tmp_path: Path) -> None:
+    bp = baseline_path(tmp_path)
+    bp.parent.mkdir(parents=True)
+    bp.write_text('{"schema_version": 99, "host_id_hex": "x"}')
+    with pytest.raises(HostIdentityError, match="schema_version"):
+        read_baseline(tmp_path)
+
+
+def test_write_baseline_uses_tmp_rename(tmp_path: Path) -> None:
+    """The temp file should be cleaned up after rename (atomic semantics).
+    Per ADR-0029 invariant #4."""
+    b = _make_baseline()
+    write_baseline(tmp_path, b)
+    state_dir = tmp_path / "maury-state"
+    files = list(state_dir.iterdir())
+    assert files == [state_dir / "host-identity.json"]
+
+
+# ---- check_host_identity: happy path -----------------------------------
+
+
+def test_check_returns_ok_when_baseline_matches(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    _write_host_id_file(host_id_file, "host_24b2a0aa_laptop")
+
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    assert result.outcome == IdentityCheckOutcome.OK
+    assert result.current_hex == "24b2a0aa"
+    assert result.baseline_hex == "24b2a0aa"
+    assert result.baseline is not None
+
+
+def test_check_ok_for_legacy_32_hex_host_id(tmp_path: Path) -> None:
+    """Pre-2026-05-14 hosts have `host_<32 hex>` IDs; the hex prefix
+    extraction must work for those too (the full 32 chars become the
+    'prefix' since there's no _<tag>)."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    legacy = "host_" + "a" * 32
+    write_baseline(target, _make_baseline(host_id_hex="a" * 32))
+    _write_host_id_file(host_id_file, legacy)
+
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    assert result.outcome == IdentityCheckOutcome.OK
+
+
+def test_check_tag_only_edit_does_not_trigger_guard(tmp_path: Path) -> None:
+    """The guard checks the 8-hex PREFIX only. Editing the tag (from
+    `_laptop` to `_workstation` for instance) leaves the hex unchanged
+    and must not trigger the abort."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    _write_host_id_file(host_id_file, "host_24b2a0aa_workstation")  # edited tag
+
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    assert result.outcome == IdentityCheckOutcome.OK
+
+
+# ---- check_host_identity: first-run upgrade path ------------------------
+
+
+def test_check_first_run_returns_auto_baseline_outcome(tmp_path: Path) -> None:
+    """No baseline on disk but host_id_file exists → upgrade path."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    _write_host_id_file(host_id_file, "host_24b2a0aa_laptop")
+
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    assert result.outcome == IdentityCheckOutcome.FIRST_RUN_AUTO_BASELINE
+    assert result.current_hex == "24b2a0aa"
+    assert result.baseline_hex is None
+    assert result.baseline is None
+    # No file written yet — caller invokes auto_create_baseline_for_upgrade()
+    assert read_baseline(target) is None
+
+
+# ---- check_host_identity: refused mismatch ------------------------------
+
+
+def test_check_refuses_on_hex_mismatch_by_default(tmp_path: Path) -> None:
+    """Hex differs from baseline → REFUSED, no baseline modification."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    _write_host_id_file(host_id_file, "host_88ff77ee_anything")
+
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    assert result.outcome == IdentityCheckOutcome.CHANGED_REFUSED
+    assert result.current_hex == "88ff77ee"
+    assert result.baseline_hex == "24b2a0aa"
+    # Baseline unchanged on disk
+    assert read_baseline(target) is not None
+    assert read_baseline(target).host_id_hex == "24b2a0aa"  # type: ignore[union-attr]
+
+
+# ---- check_host_identity: acknowledged mismatch -------------------------
+
+
+def test_check_acknowledged_rewrites_baseline(tmp_path: Path) -> None:
+    """`--confirm-identity-change` path: caller passes allow_change=True,
+    baseline gets rewritten with the new hex, outcome is ACKNOWLEDGED."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    _write_host_id_file(host_id_file, "host_88ff77ee_anything")
+
+    result = check_host_identity(
+        target_dir=target,
+        host_id_file=host_id_file,
+        allow_change=True,
+    )
+    assert result.outcome == IdentityCheckOutcome.CHANGED_ACKNOWLEDGED
+    # Baseline now reflects the new hex
+    new_baseline = read_baseline(target)
+    assert new_baseline is not None
+    assert new_baseline.host_id_hex == "88ff77ee"
+    # Original registered_at and mode info preserved (audit trail)
+    assert new_baseline.registered_at == "2026-05-14T15:42:11Z"
+    assert new_baseline.mode_name_at_bootstrap == "home"
+
+
+# ---- check_host_identity: error paths ----------------------------------
+
+
+def test_check_raises_when_host_id_file_missing(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"  # doesn't exist
+    with pytest.raises(HostIdentityError, match="Run `maury init`"):
+        check_host_identity(target_dir=target, host_id_file=host_id_file)
+
+
+# ---- format_identity_change_message ------------------------------------
+
+
+def test_format_change_message_includes_both_hex_values_and_full_id(tmp_path: Path) -> None:
+    """The verbose message must show baseline hex, current hex, full
+    current ID, mode info, and both remediation flags."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    _write_host_id_file(host_id_file, "host_88ff77ee_work-laptop")
+
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    msg = format_identity_change_message(
+        target_dir=target,
+        host_id_file=host_id_file,
+        result=result,
+    )
+    assert "24b2a0aa" in msg
+    assert "88ff77ee" in msg
+    assert "host_88ff77ee_work-laptop" in msg
+    assert "home" in msg  # mode name from baseline
+    assert "--confirm-identity-change" in msg
+    assert "maury init --reset" in msg
+
+
+# ---- auto_create_baseline_for_upgrade ----------------------------------
+
+
+def test_auto_create_baseline_writes_synthetic_record(tmp_path: Path) -> None:
+    """Backwards-compat path for pre-2026-05-14 hosts."""
+    target = tmp_path / "target"
+    baseline = auto_create_baseline_for_upgrade(
+        target_dir=target,
+        current_hex="24b2a0aa",
+        mode_id="mode_3f1a",
+        mode_name="home",
+    )
+    assert baseline.host_id_hex == "24b2a0aa"
+    assert baseline.mode_id == "mode_3f1a"
+    assert baseline.mode_name_at_bootstrap == "home"
+    # Persisted on disk
+    loaded = read_baseline(target)
+    assert loaded == baseline
+
+
+def test_auto_create_baseline_works_without_mode_metadata(tmp_path: Path) -> None:
+    """If the upgrade caller can't determine the mode (manifest absent,
+    etc.), the baseline still works — just with empty audit fields."""
+    target = tmp_path / "target"
+    baseline = auto_create_baseline_for_upgrade(target_dir=target, current_hex="24b2a0aa")
+    assert baseline.mode_id == ""
+    assert baseline.mode_name_at_bootstrap == ""
+    # The load-bearing hex comparison still works
+    host_id_file = tmp_path / ".maury-host-id"
+    _write_host_id_file(host_id_file, "host_24b2a0aa_anything")
+    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    assert result.outcome == IdentityCheckOutcome.OK

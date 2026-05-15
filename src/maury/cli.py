@@ -597,6 +597,19 @@ def _default_tag_from_hostname() -> str:
         "when stdin is not a TTY."
     ),
 )
+@click.option(
+    "--reset",
+    "reset",
+    is_flag=True,
+    help=(
+        "Re-anchor as a fresh registration: delete the existing "
+        "`~/.maury-host-id` and `host-identity.json`, then run the "
+        "normal init flow. Per ADR-0042, this is the deliberate way to "
+        "move this hardware to a different mode-registration. Mutually "
+        "exclusive with the absence of `--tag` if a fresh host_id will "
+        "be generated."
+    ),
+)
 def init_cmd(
     from_dir: Path | None,
     from_tarball: Path | None,
@@ -605,6 +618,7 @@ def init_cmd(
     force: bool,
     non_interactive: bool,
     tag: str | None,
+    reset: bool,
 ) -> None:
     """Initialize maury on a new host (first-run bootstrap)."""
     target_dir = target_dir.expanduser()
@@ -623,6 +637,23 @@ def init_cmd(
     # current value via `current_host_id_file()` so test monkeypatches
     # on `maury.bootstrap.init_cmd.HOST_ID_FILE` take effect.
     from maury.bootstrap.init_cmd import current_host_id_file
+    from maury.host_identity import baseline_path
+
+    if reset:
+        # ADR-0042 §`maury init --reset` flow: blow away both the host-id
+        # file and the identity baseline so a fresh registration runs
+        # cleanly. The user is responsible for ensuring the previous
+        # registration was retired in its mode marker (we can't refuse
+        # here without a manifest in hand — that check belongs in the
+        # full `maury mode deregister` flow, deferred).
+        hid_file = current_host_id_file()
+        if hid_file.exists():
+            click.echo(f"  --reset: removing {hid_file}")
+            hid_file.unlink()
+        bp = baseline_path(target_dir)
+        if bp.exists():
+            click.echo(f"  --reset: removing {bp}")
+            bp.unlink()
 
     needs_new_id = not current_host_id_file().exists()
     resolved_tag = _resolve_init_tag(explicit_tag=tag) if needs_new_id else None

@@ -233,6 +233,57 @@ def test_resolve_init_tag_explicit_value_normalizes(monkeypatch: pytest.MonkeyPa
     assert _resolve_init_tag(explicit_tag="weird name!") == "weird-name-"
 
 
+def test_init_cli_reset_deletes_existing_host_id_and_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--reset` deletes both `~/.maury-host-id` and `host-identity.json`
+    before running the normal init flow. Per ADR-0042's re-anchor path."""
+    from maury.host_identity import HostIdentityBaseline, baseline_path, write_baseline
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    host_id_file = tmp_path / ".maury-host-id"
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+
+    # Pre-populate both files (simulating a host that's already anchored).
+    host_id_file.write_text("host_aaaaaaaa_old-laptop\n")
+    target = tmp_path / "out"
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="aaaaaaaa",
+            registered_at="2026-01-01T00:00:00Z",
+            mode_id="mode_old",
+            mode_name_at_bootstrap="old",
+        ),
+    )
+    assert baseline_path(target).exists()
+
+    # Repo with a *different* hid so result after reset is "not registered".
+    repo = _make_minimal_repo(tmp_path, hostname="other-host")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "init",
+            "--from-dir",
+            str(repo),
+            "--target",
+            str(target),
+            "--reset",
+            "--tag",
+            "new-laptop",
+        ],
+    )
+    assert result.exit_code == 2, result.output  # not registered after reset
+    # The host_id_file was rewritten with a *different* hex (fresh UUID + new tag).
+    new_id = host_id_file.read_text().strip()
+    assert new_id.endswith("_new-laptop")
+    assert not new_id.startswith("host_aaaaaaaa")
+    # Baseline was deleted (and not re-created since unregistered).
+    assert not baseline_path(target).exists()
+    # Reset messages surfaced.
+    assert "--reset: removing" in result.output
+
+
 def test_resolve_init_tag_explicit_empty_value_errors() -> None:
     """An explicitly-passed empty/all-special tag should ClickException
     rather than silently fall back to interactive prompt."""

@@ -133,6 +133,54 @@ def test_init_renders_to_target_when_host_id_matches_manifest(tmp_path: Path) ->
     assert (target / "CLAUDE.md").is_file()
 
 
+def test_init_writes_host_identity_baseline_on_success(tmp_path: Path) -> None:
+    """Per ADR-0042: successful init writes the identity baseline alongside
+    last-render.json so future mode-scoped commands can detect hex edits."""
+    from maury.host_identity import read_baseline
+    from maury.ids import host_id_hex_prefix
+
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.host_registered is True
+
+    baseline = read_baseline(target)
+    assert baseline is not None
+    # Hex prefix of the registered host_id is what got recorded.
+    registered_hid = host_id_file.read_text().strip()
+    assert baseline.host_id_hex == host_id_hex_prefix(registered_hid)
+    # Audit metadata populated.
+    assert baseline.mode_id  # non-empty (some profile_id)
+    assert baseline.mode_name_at_bootstrap == "home"
+    assert baseline.registered_at  # ISO timestamp
+
+
+def test_init_dry_run_does_not_write_baseline(tmp_path: Path) -> None:
+    """Dry-run must skip the baseline write (don't pollute state with a
+    hypothetical registration)."""
+    from maury.host_identity import baseline_path
+
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
+    init(source_dir=repo, target_dir=target, host_id_file=host_id_file, dry_run=True)
+    assert not baseline_path(target).exists()
+
+
+def test_init_unregistered_does_not_write_baseline(tmp_path: Path) -> None:
+    """When host_id isn't in the manifest, no baseline gets written —
+    there's no mode-registration to anchor against."""
+    from maury.host_identity import baseline_path
+
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+    # NOT pre-writing the host-id file from the manifest's hid.
+    repo = _make_minimal_repo(tmp_path)
+    init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert not baseline_path(target).exists()
+
+
 def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
