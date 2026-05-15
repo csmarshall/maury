@@ -336,6 +336,187 @@ def test_sync_no_host_id_no_hostname_match_exits_1(tmp_path: Path, monkeypatch: 
     assert "Run `maury init`" in combined
 
 
+# ---- ADR-0042 host-identity guard --------------------------------------
+
+
+def test_sync_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When `~/.maury-host-id` hex differs from the baseline, sync aborts
+    with the verbose change message and exit 1."""
+    from maury.host_identity import HostIdentityBaseline, write_baseline
+
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_88ff77ee_new\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+
+    target = tmp_path / "out"
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="24b2a0aa",  # different hex → REFUSED
+            registered_at="2026-05-14T15:42:11Z",
+            mode_id="mode_home",
+            mode_name_at_bootstrap="home",
+        ),
+    )
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "sync",
+            "--manifest-file",
+            str(mpath),
+            "--target",
+            str(target),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--check",
+        ],
+    )
+    assert result.exit_code == 1
+    combined = result.output + (result.stderr or "")
+    assert "host identity changed" in combined
+    assert "24b2a0aa" in combined  # baseline hex
+    assert "88ff77ee" in combined  # current hex
+    assert "--confirm-identity-change" in combined
+    assert "maury init --reset" in combined
+
+
+def test_sync_confirm_identity_change_acks_and_rewrites_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--confirm-identity-change` lets sync proceed past the guard and
+    rewrites the baseline with the current hex."""
+    from maury.host_identity import HostIdentityBaseline, read_baseline, write_baseline
+    from maury.sync import SyncError
+
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_88ff77ee_new\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+
+    target = tmp_path / "out"
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="24b2a0aa",
+            registered_at="2026-05-14T15:42:11Z",
+            mode_id="mode_home",
+            mode_name_at_bootstrap="home",
+        ),
+    )
+
+    # Make sync's downstream identity flow fail predictably so we just
+    # exercise the guard wiring (not a full sync). Either:
+    # - the manifest exists but host isn't in it → SyncError
+    # - we patch _identify_host to raise something
+    def fake_identify_host(*_a: object, **_kw: object) -> tuple[str, object]:
+        raise SyncError("post-guard SyncError (test stub)")
+
+    monkeypatch.setattr("maury.sync._identify_host", fake_identify_host)
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "sync",
+            "--manifest-file",
+            str(mpath),
+            "--target",
+            str(target),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--check",
+            "--confirm-identity-change",
+        ],
+    )
+    # The acknowledgement message should appear in output before the
+    # SyncError stub fails the operation.
+    assert "--confirm-identity-change accepted" in result.output
+    # Baseline got rewritten with the new hex.
+    new_baseline = read_baseline(target)
+    assert new_baseline is not None
+    assert new_baseline.host_id_hex == "88ff77ee"
+
+
+def test_sync_first_run_auto_baseline_on_upgrade(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pre-2026-05-14 host has `~/.maury-host-id` but no baseline. Sync
+    silently establishes the baseline and proceeds."""
+    from maury.host_identity import baseline_path, read_baseline
+    from maury.sync import SyncError
+
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_24b2a0aa_laptop\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+
+    target = tmp_path / "out"
+    # No baseline pre-written.
+    assert not baseline_path(target).exists()
+
+    # Stub _identify_host so we don't go through full sync.
+    def fake_identify_host(*_a: object, **_kw: object) -> tuple[str, object]:
+        raise SyncError("post-guard SyncError (test stub)")
+
+    monkeypatch.setattr("maury.sync._identify_host", fake_identify_host)
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "sync",
+            "--manifest-file",
+            str(mpath),
+            "--target",
+            str(target),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--check",
+        ],
+    )
+    # Auto-baseline note printed.
+    assert "established host-identity baseline" in result.output
+    # Baseline file now exists with the current hex.
+    baseline = read_baseline(target)
+    assert baseline is not None
+    assert baseline.host_id_hex == "24b2a0aa"
+
+
+def test_sync_no_host_id_file_skips_guard_silently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When `~/.maury-host-id` doesn't exist, the guard returns silently
+    (downstream code surfaces the 'no host id' error its own way)."""
+    host_id_file = tmp_path / ".maury-host-id"
+    # Not creating the file.
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath, hostname="will-not-match")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "sync",
+            "--manifest-file",
+            str(mpath),
+            "--target",
+            str(tmp_path / "out"),
+            "--repos-root",
+            str(tmp_path / "repos"),
+            "--check",
+        ],
+    )
+    # Exit code is whatever downstream returns; the point is the guard
+    # didn't fire (no host-identity-changed text).
+    combined = result.output + (result.stderr or "")
+    assert "host identity changed" not in combined
+
+
 # ---- target / repos-root home expansion --------------------------------
 
 

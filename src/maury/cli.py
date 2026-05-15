@@ -26,6 +26,13 @@ from maury.empirical_tests import (
     run_project_dir_harness,
 )
 from maury.empirical_tests import run as run_empirical
+from maury.host_identity import (
+    HostIdentityError,
+    IdentityCheckOutcome,
+    auto_create_baseline_for_upgrade,
+    check_host_identity,
+    format_identity_change_message,
+)
 from maury.ids import normalize_tag
 from maury.ids import short as short_id
 from maury.llm import BackendUnavailableError, get_backend
@@ -550,6 +557,76 @@ def _default_tag_from_hostname() -> str:
         return "host"
 
 
+def _enforce_identity_guard(*, target_dir: Path, allow_change: bool = False) -> None:
+    """Run ADR-0042's sync-time host-identity guard before any mode-scoped op.
+
+    Called by `sync`, `reconcile`, `mine` — every command that operates
+    against the host's mode-registration. Branches on the
+    `IdentityCheckResult`:
+
+    - **OK**: silent; return.
+    - **FIRST_RUN_AUTO_BASELINE**: pre-2026-05-14 upgrade path. Auto-
+      write a synthetic baseline (best-effort metadata; empty mode
+      fields are tolerable since the load-bearing hex still works) and
+      print a one-line note so the user sees the transition.
+    - **CHANGED_REFUSED**: print the verbose abort message and exit 1.
+      The message describes both remediation paths
+      (`--confirm-identity-change` and `maury init --reset`).
+    - **CHANGED_ACKNOWLEDGED**: only when `allow_change=True`; print a
+      one-line acknowledgement note and continue.
+
+    Silently returns if `~/.maury-host-id` doesn't exist — that's the
+    "user hasn't run init yet" case, which the downstream operation
+    will surface with its own error.
+    """
+    from maury.bootstrap.init_cmd import current_host_id_file
+
+    host_id_file = current_host_id_file()
+    if not host_id_file.is_file():
+        return  # downstream ops will surface "no host id" their own way
+
+    try:
+        result = check_host_identity(
+            target_dir=target_dir,
+            host_id_file=host_id_file,
+            allow_change=allow_change,
+        )
+    except HostIdentityError as e:
+        raise click.ClickException(str(e)) from e
+
+    if result.outcome == IdentityCheckOutcome.OK:
+        return
+    if result.outcome == IdentityCheckOutcome.FIRST_RUN_AUTO_BASELINE:
+        # Per ADR-0042 §"Backwards compatibility": silently establish a
+        # baseline so subsequent runs are guarded. Mode metadata is
+        # left empty here; `maury init --reset` would populate it.
+        auto_create_baseline_for_upgrade(
+            target_dir=target_dir,
+            current_hex=result.current_hex,
+        )
+        click.echo(
+            f"  note: established host-identity baseline at {target_dir}/maury-state/host-identity.json "
+            f"(first run after 2026-05-14 ADR-0042 upgrade)"
+        )
+        return
+    if result.outcome == IdentityCheckOutcome.CHANGED_REFUSED:
+        click.echo(
+            format_identity_change_message(
+                target_dir=target_dir,
+                host_id_file=host_id_file,
+                result=result,
+            ),
+            err=True,
+        )
+        sys.exit(1)
+    if result.outcome == IdentityCheckOutcome.CHANGED_ACKNOWLEDGED:
+        click.echo(
+            f"  note: --confirm-identity-change accepted; baseline updated to "
+            f"host_id_hex={result.current_hex} (was {result.baseline_hex})"
+        )
+        return
+
+
 @main.command("init")
 @click.option(
     "--from-dir",
@@ -736,6 +813,9 @@ def reconcile_cmd(
     if not mpath.exists():
         raise click.ClickException(f"manifest file not found: {mpath}")
 
+    # ADR-0042 identity guard before any mode-scoped reconciliation.
+    _enforce_identity_guard(target_dir=target_dir)
+
     # Read baseline; refuse if absent (no baseline = no drift to reconcile).
     last = read_last_render(target_dir)
     if last is None:
@@ -878,6 +958,18 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
     is_flag=True,
     help="Refuse on any drift, exit 1. Cron/CI safe.",
 )
+@click.option(
+    "--confirm-identity-change",
+    "confirm_identity_change",
+    is_flag=True,
+    help=(
+        "Acknowledge a detected change to `~/.maury-host-id` and rewrite "
+        "the identity baseline at `~/.claude/maury-state/host-identity.json`. "
+        "Per ADR-0042: use when (a) you deliberately edited the host-id file "
+        "or (b) restored it from a different host. For mode re-anchoring, "
+        "use `maury init --reset` instead."
+    ),
+)
 def sync_cmd(
     manifest_file: Path | None,
     target_dir: Path,
@@ -885,6 +977,7 @@ def sync_cmd(
     check: bool,
     force: bool,
     non_interactive: bool,
+    confirm_identity_change: bool,
 ) -> None:
     """Pull all reachable repos, render, and apply.
 
@@ -924,6 +1017,12 @@ def sync_cmd(
     if non_interactive:
         click.echo("      --non-interactive (refuse on drift)")
     click.echo("")
+
+    # ADR-0042 host-identity guard. Runs before any mode-scoped work so a
+    # hex-edited `~/.maury-host-id` can't silently swap this host into a
+    # different mode-registration. `--confirm-identity-change` lets the
+    # user opt past the guard if the edit was deliberate.
+    _enforce_identity_guard(target_dir=target_dir, allow_change=confirm_identity_change)
 
     try:
         result = run_sync(
@@ -1206,6 +1305,12 @@ def mine_cmd(
     By default, picks the project with the most user messages. Pass
     --project to target a specific one. Pass --max-windows to cap cost.
     """
+    # ADR-0042 identity guard. Mining reads transcript history scoped to
+    # this host's mode-registration; an accidental host-id swap would
+    # surface the wrong sessions. The baseline lives at the standard
+    # render-target location (`~/.claude/`).
+    _enforce_identity_guard(target_dir=Path.home() / ".claude")
+
     # Pick the project if not specified.
     target_project_dir: Path
     if project_name:
