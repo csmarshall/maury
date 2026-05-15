@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import socket
 import tarfile
 from pathlib import Path
 
@@ -15,8 +14,21 @@ from maury.ids import new_host_id, new_profile_id
 # ---- helpers ------------------------------------------------------------
 
 
-def _make_minimal_repo(tmp_path: Path, *, hostname: str = "synthetic-host") -> Path:
-    """Create a minimal valid maury repo at tmp_path/repo."""
+def _make_minimal_repo(
+    tmp_path: Path,
+    *,
+    hostname: str = "synthetic-host",
+    host_id_file: Path | None = None,
+) -> Path:
+    """Create a minimal valid maury repo at tmp_path/repo.
+
+    If `host_id_file` is provided, pre-writes the manifest's host_id
+    to it so `init()` can self-identify against the manifest. Per
+    ADR-0039 step 8 (post-2026-05-14), init no longer falls back to
+    hostname matching — the host's identity comes only from the local
+    `~/.maury-host-id` file. Tests that want the "host is registered"
+    precondition must pre-write the file with the manifest's hid.
+    """
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "CLAUDE.md").write_text("# base\n")
@@ -37,6 +49,9 @@ def _make_minimal_repo(tmp_path: Path, *, hostname: str = "synthetic-host") -> P
     }
     (repo / ".meta").mkdir()
     (repo / ".meta" / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    if host_id_file is not None:
+        host_id_file.parent.mkdir(parents=True, exist_ok=True)
+        host_id_file.write_text(hid + "\n")
     return repo
 
 
@@ -77,7 +92,10 @@ def test_init_missing_manifest_raises(tmp_path: Path) -> None:
 
 
 def test_init_writes_host_id_file_when_missing(tmp_path: Path) -> None:
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    """Fresh init generates and writes a host_id. The new ID will not be
+    in the manifest (curator hasn't added it yet), so host_registered=False
+    is expected — that's the host-bootstrap flow from ADR-0039 step 8."""
+    repo = _make_minimal_repo(tmp_path)
     host_id_file = tmp_path / ".maury-host-id"
     result = init(
         source_dir=repo,
@@ -87,10 +105,13 @@ def test_init_writes_host_id_file_when_missing(tmp_path: Path) -> None:
     assert host_id_file.is_file()
     assert host_id_file.read_text().strip().startswith("host_")
     assert result.host_id_created is True
+    # Fresh ID isn't in the manifest yet → not registered.
+    assert result.host_registered is False
+    assert "not yet registered" in result.message
 
 
 def test_init_reuses_existing_host_id_file(tmp_path: Path) -> None:
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path)
     host_id_file = tmp_path / ".maury-host-id"
     existing = "host_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     host_id_file.write_text(existing + "\n")
@@ -99,11 +120,13 @@ def test_init_reuses_existing_host_id_file(tmp_path: Path) -> None:
     assert result.host_id_created is False
 
 
-def test_init_renders_to_target_when_host_resolved_by_hostname(tmp_path: Path) -> None:
-    """Manifest hostname matches socket.gethostname() -> render proceeds."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+def test_init_renders_to_target_when_host_id_matches_manifest(tmp_path: Path) -> None:
+    """Per ADR-0039 step 8: when ~/.maury-host-id contains a UUID present
+    in the manifest, render proceeds. The fixture pre-writes the file with
+    the manifest's hid to set up that precondition."""
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
+    repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
     result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
     assert result.host_registered is True
     assert result.rendered is True
@@ -111,9 +134,9 @@ def test_init_renders_to_target_when_host_resolved_by_hostname(tmp_path: Path) -
 
 
 def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
+    repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
     result = init(
         source_dir=repo,
         target_dir=target,
@@ -122,23 +145,28 @@ def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     )
     assert result.host_registered is True
     assert not (target / "CLAUDE.md").exists()
-    # host id file also not created in dry-run
-    assert not host_id_file.is_file()
 
 
 # ---- unregistered host (returns clear message; doesn't raise) ----------
 
 
 def test_init_unregistered_host_returns_friendly_message(tmp_path: Path) -> None:
-    """Hostname not in manifest -> result.host_registered=False with guidance."""
-    repo = _make_minimal_repo(tmp_path, hostname="some-other-host")
+    """Per ADR-0039 step 8 (host-bootstrap flow): when the locally-generated
+    UUID isn't in the manifest, init returns host_registered=False with a
+    structured 'add this entry' message — never silently falls back to
+    hostname matching."""
+    repo = _make_minimal_repo(tmp_path)
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
     result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
     assert result.host_registered is False
     assert result.rendered is False
-    assert "not registered" in result.message
-    assert "some-other-host" in result.message
+    assert "not yet registered" in result.message
+    # Message includes the locally-generated host id verbatim so the user
+    # can copy-paste it into their manifest entry.
+    new_hid = host_id_file.read_text().strip()
+    assert new_hid in result.message
+    assert "Add the following entry" in result.message
     assert not (target / "CLAUDE.md").exists()
 
 
@@ -146,7 +174,7 @@ def test_init_unregistered_host_returns_friendly_message(tmp_path: Path) -> None
 
 
 def test_init_from_tarball_extracts_and_renders(tmp_path: Path) -> None:
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     # Pack the repo into a tarball with a single top-level dir
     tarball = tmp_path / "maury-base.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
@@ -180,7 +208,7 @@ def test_init_unknown_drift_mode_raises(tmp_path: Path) -> None:
 
 def test_init_clean_target_writes_last_render(tmp_path: Path) -> None:
     """A successful init persists last-render.json so future syncs can detect drift."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
     result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
@@ -195,7 +223,7 @@ def test_init_clean_target_writes_last_render(tmp_path: Path) -> None:
 
 def test_init_dry_run_does_not_write_last_render(tmp_path: Path) -> None:
     """--check leaves no maury-state behind."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
     init(
@@ -209,7 +237,7 @@ def test_init_dry_run_does_not_write_last_render(tmp_path: Path) -> None:
 
 def test_init_default_mode_refuses_pre_existing_collision(tmp_path: Path) -> None:
     """Bootstrap case: target dir already has a CLAUDE.md → refuse by default."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("user's pre-existing notes\n")
@@ -227,7 +255,7 @@ def test_init_default_mode_refuses_pre_existing_collision(tmp_path: Path) -> Non
 
 def test_init_force_mode_overwrites_pre_existing_collision(tmp_path: Path) -> None:
     """--force clobbers pre-existing content with a loud warning."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("hand-edited\n")
@@ -250,7 +278,7 @@ def test_init_force_mode_overwrites_pre_existing_collision(tmp_path: Path) -> No
 
 def test_init_non_interactive_mode_refuses_pre_existing_collision(tmp_path: Path) -> None:
     """--non-interactive refuses with a cron/CI-friendly error."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("pre-existing\n")
@@ -274,7 +302,7 @@ def test_init_byte_identical_pre_existing_is_not_a_collision(tmp_path: Path) -> 
     a fresh target dir without the maury-state baseline, then run init
     again. The bootstrap branch should see no collisions.
     """
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     # First render produces the canonical content.
     seed_target = tmp_path / "seed-out"
     init(
@@ -305,7 +333,7 @@ def test_init_byte_identical_pre_existing_is_not_a_collision(tmp_path: Path) -> 
 
 def test_init_re_init_clean_proceeds(tmp_path: Path) -> None:
     """Second init after a clean first init: no drift, proceeds normally."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
     init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
@@ -317,7 +345,7 @@ def test_init_re_init_clean_proceeds(tmp_path: Path) -> None:
 
 def test_init_re_init_default_refuses_on_drift(tmp_path: Path) -> None:
     """Second init after user hand-edited a maury-rendered file: refuse."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
     init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
@@ -334,7 +362,7 @@ def test_init_re_init_default_refuses_on_drift(tmp_path: Path) -> None:
 
 def test_init_re_init_force_clobbers_drift(tmp_path: Path) -> None:
     """--force on re-init drift: clobber with warning, baseline updated."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     host_id_file = tmp_path / ".maury-host-id"
     init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
@@ -353,7 +381,7 @@ def test_init_re_init_force_clobbers_drift(tmp_path: Path) -> None:
 
 def test_init_dry_run_still_reports_collision(tmp_path: Path) -> None:
     """--check + pre-existing content: report the would-be refusal, write nothing."""
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, host_id_file=tmp_path / ".maury-host-id")
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("pre-existing\n")

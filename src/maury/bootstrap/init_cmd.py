@@ -1,11 +1,15 @@
 """`maury init` — first-run bootstrap on a new host.
 
-Per ADR-0018. v1 minimum:
-  1. Self-identify: generate ~/.maury-host-id if not present.
+Per ADR-0018 + ADR-0039 step 8 (host-bootstrap, not curator-bootstrap):
+  1. Self-identify: generate `~/.maury-host-id` if not present. The
+     locally-generated UUID is canonical — hostname is no longer
+     consulted for resolution (per the 2026-05-14 ADR-0039 amendment).
   2. Ingest the base repo: from a local directory (--from-dir) or
      tarball (--from-tarball). Git clone deferred to a later sub-phase.
   3. Read the manifest from the ingested repo.
-  4. Look up this host: by ID file, then by hostname fallback.
+  4. Look up this host's locally-generated ID in the manifest. If
+     present, render. If absent, return host_registered=False with a
+     message guiding the user to add the manifest entry.
   5. Drift preflight (per ADR-0017 + Tenet 1): refuse to clobber
      pre-existing content the user might have hand-edited.
   6. Render base + profile chain + host overlay into the target dir.
@@ -13,13 +17,13 @@ Per ADR-0018. v1 minimum:
 
 Future sub-phases:
   - Git URL clone with SSH key generation
-  - New-host registration (when manifest doesn't contain the host)
+  - ADR-0042 host-identity baseline (`host-identity.json`) written
+    alongside `~/.maury-host-id`
   - Deploy-key bootstrap for additional repos
 """
 
 from __future__ import annotations
 
-import socket
 import tarfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -44,6 +48,18 @@ from maury.sync import (
 )
 
 _DRIFT_MODES = {DRIFT_MODE_DEFAULT, DRIFT_MODE_FORCE, DRIFT_MODE_NON_INTERACTIVE}
+
+
+def current_host_id_file() -> Path:
+    """Return the active host-id file path.
+
+    Module-level `HOST_ID_FILE` is captured at import time and used as
+    the default for `init()`'s parameter. Callers that need to query
+    its *current* value at call time (e.g., to honor test monkeypatches
+    on this module's `HOST_ID_FILE` attribute) should call this helper
+    rather than capturing the attribute themselves.
+    """
+    return HOST_ID_FILE
 
 
 @dataclass(frozen=True)
@@ -73,9 +89,10 @@ def init(
     source_dir: Path | None = None,
     source_tarball: Path | None = None,
     target_dir: Path,
-    host_id_file: Path = HOST_ID_FILE,
+    host_id_file: Path | None = None,
     dry_run: bool = False,
     drift_mode: str = DRIFT_MODE_DEFAULT,
+    tag: str | None = None,
 ) -> InitResult:
     """Run the init flow against an already-ingested or to-be-ingested repo.
 
@@ -95,6 +112,13 @@ def init(
     if (source_dir is None) == (source_tarball is None):
         raise InitError("provide exactly one of --from-dir or --from-tarball")
 
+    # Defer the HOST_ID_FILE module lookup until call time so test
+    # monkeypatches on `maury.bootstrap.init_cmd.HOST_ID_FILE` take
+    # effect. Default-arg binding would freeze the path at definition
+    # time and miss the patch.
+    if host_id_file is None:
+        host_id_file = HOST_ID_FILE
+
     actions: list[str] = []
 
     # 1. Ingest the repo.
@@ -110,13 +134,13 @@ def init(
         repo = _extract_tarball(source_tarball)
         actions.append(f"extracted {source_tarball} -> {repo}")
 
-    # 2. Self-identify.
+    # 2. Self-identify (ADR-0039 step 8 + ADR-0015's tagged-ID amendment).
     if host_id_file.exists():
         host_id_value = host_id_file.read_text(encoding="utf-8").strip()
         actions.append(f"using existing host id from {host_id_file}: {host_id_value}")
         host_id_created = False
     else:
-        host_id_value = new_host_id()
+        host_id_value = new_host_id(tag=tag)
         if not dry_run:
             host_id_file.parent.mkdir(parents=True, exist_ok=True)
             host_id_file.write_text(host_id_value + "\n", encoding="utf-8")
@@ -132,36 +156,35 @@ def init(
     except ManifestError as e:
         raise InitError(f"manifest at {manifest_path} failed to load: {e}") from e
 
-    # 4. Resolve which host entry applies.
-    matched_hid: str | None = None
-    matched_via: str = ""
-    if host_id_value in manifest.hosts:
-        matched_hid = host_id_value
-        matched_via = "host-id-file"
-    else:
-        # Hostname fallback (with .local stripping).
-        hostname = socket.gethostname()
-        matched_hid = manifest.host_id_by_name(hostname)
-        if matched_hid:
-            matched_via = f"hostname({hostname!r})"
-
-    if matched_hid is None:
-        # New-host registration not yet implemented in v1. Surface a
-        # clear message describing what to do next.
+    # 4. Resolve which host entry applies. Per ADR-0039 step 8: the
+    # locally-generated UUID is canonical; hostname is NOT consulted as
+    # a fallback. If this host's UUID isn't in the manifest, it's
+    # because the curator (or the user themselves as their own curator)
+    # hasn't yet added it. We return a structured "add this entry"
+    # message rather than silently matching by hostname.
+    if host_id_value not in manifest.hosts:
         return InitResult(
             actions=actions,
             host_id_created=host_id_created,
             host_registered=False,
             rendered=False,
             message=(
-                f"this host (id={host_id_value}, hostname={socket.gethostname()!r}) "
-                f"is not registered in the manifest yet. "
-                f"Available hosts: {sorted(s.name for s in manifest.hosts.values())}. "
-                f"Have a curator add this host to the manifest, then re-run `maury init`."
+                f"this host's id ({host_id_value}) is not yet registered in the manifest.\n"
+                f"\n"
+                f"Add the following entry to the manifest's `hosts` map, commit, and push:\n"
+                f"\n"
+                f'  "{host_id_value}": {{\n'
+                f'    "name": "<display label>",\n'
+                f'    "profile": "<profile_id_or_name>",\n'
+                f'    "repos": {{ "base": {{ "url": "<git-url>", "mode": "rw" }} }}\n'
+                f"  }}\n"
+                f"\n"
+                f"Currently registered hosts: {sorted(s.name for s in manifest.hosts.values())}\n"
+                f"Then re-run `maury init`."
             ),
         )
-
-    actions.append(f"identified as host {manifest.hosts[matched_hid].name!r} via {matched_via}")
+    matched_hid = host_id_value
+    actions.append(f"identified as host {manifest.hosts[matched_hid].name!r} via host-id-file")
     profile_id = manifest.hosts[matched_hid].profile
 
     # 5. Render.

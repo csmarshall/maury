@@ -8,9 +8,10 @@ exit codes.
 from __future__ import annotations
 
 import json
-import socket
+import re
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -18,7 +19,24 @@ from maury.cli import main
 from maury.ids import new_host_id, new_profile_id
 
 
-def _make_minimal_repo(tmp_path: Path, *, hostname: str) -> Path:
+def _make_minimal_repo(
+    tmp_path: Path,
+    *,
+    hostname: str = "synthetic-host",
+    monkeypatch: pytest.MonkeyPatch | None = None,
+) -> Path:
+    """Create a fixture base repo + pre-write the host-id file.
+
+    Per ADR-0039 step 8 (post-2026-05-14), init no longer falls back to
+    hostname matching; identity comes only from `~/.maury-host-id`.
+
+    `HOST_ID_FILE` is captured at module import time as `Path.home() /
+    ".maury-host-id"`, so `monkeypatch.setenv("HOME", ...)` after import
+    doesn't redirect it. To confine init's reads to tmp_path, the test
+    must monkeypatch `maury.bootstrap.init_cmd.HOST_ID_FILE` directly.
+    Pass `monkeypatch=monkeypatch` and this helper does that + writes the
+    manifest's hid into the redirected location.
+    """
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "CLAUDE.md").write_text("# base\n")
@@ -37,12 +55,16 @@ def _make_minimal_repo(tmp_path: Path, *, hostname: str) -> Path:
     }
     (repo / ".meta").mkdir()
     (repo / ".meta" / "manifest.json").write_text(json.dumps(manifest))
+    if monkeypatch is not None:
+        host_id_file = tmp_path / ".maury-host-id"
+        host_id_file.write_text(hid + "\n")
+        monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     return repo
 
 
 def test_init_cli_force_and_non_interactive_mutually_exclusive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))  # confine ~/.maury-host-id
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, monkeypatch=monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         main,
@@ -64,7 +86,7 @@ def test_init_cli_default_refuses_on_pre_existing_collision_exits_1(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, monkeypatch=monkeypatch)
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("pre-existing\n")
@@ -81,7 +103,7 @@ def test_init_cli_default_refuses_on_pre_existing_collision_exits_1(
 
 def test_init_cli_force_overwrites_pre_existing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, monkeypatch=monkeypatch)
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("hand-edited\n")
@@ -97,7 +119,7 @@ def test_init_cli_force_overwrites_pre_existing(tmp_path: Path, monkeypatch: pyt
 
 def test_init_cli_non_interactive_refuses_with_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, monkeypatch=monkeypatch)
     target = tmp_path / "out"
     target.mkdir()
     (target / "CLAUDE.md").write_text("pre-existing\n")
@@ -119,7 +141,7 @@ def test_init_cli_non_interactive_refuses_with_exit_1(tmp_path: Path, monkeypatc
 
 def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    repo = _make_minimal_repo(tmp_path, hostname=socket.gethostname())
+    repo = _make_minimal_repo(tmp_path, monkeypatch=monkeypatch)
     target = tmp_path / "out"
     runner = CliRunner()
     result = runner.invoke(
@@ -128,6 +150,96 @@ def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path: Path, monk
     )
     assert result.exit_code == 0, result.output
     assert (target / "maury-state" / "last-render.json").is_file()
+
+
+# ---- --tag flag + interactive prompt (ADR-0039 §"Tag UX at bootstrap") --
+
+
+def test_init_cli_tag_flag_produces_tagged_host_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--tag laptop` on a fresh host produces a `host_<8 hex>_laptop` ID."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    host_id_file = tmp_path / ".maury-host-id"
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    # Repo with a *different* hid in manifest so result is "not registered"
+    # but the host-id file gets written with the tagged form.
+    repo = _make_minimal_repo(tmp_path, hostname="other-host")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["init", "--from-dir", str(repo), "--target", str(tmp_path / "out"), "--tag", "laptop"],
+    )
+    # Exit 2 (not registered) is expected on a fresh host; the test cares
+    # about the format of the written host_id file.
+    assert result.exit_code == 2, result.output
+    written = host_id_file.read_text().strip()
+    assert re.match(r"^host_[0-9a-f]{8}_laptop$", written), written
+
+
+def test_init_cli_tag_flag_normalizes_and_notifies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A lossy `--tag` value gets normalized; the CLI surfaces the change."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    host_id_file = tmp_path / ".maury-host-id"
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    repo = _make_minimal_repo(tmp_path, hostname="other-host")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["init", "--from-dir", str(repo), "--target", str(tmp_path / "out"), "--tag", "XADAM___"],
+    )
+    assert "normalized to 'xadam---'" in result.output, result.output
+    written = host_id_file.read_text().strip()
+    assert written.endswith("_xadam---"), written
+
+
+def test_init_cli_no_tag_in_non_tty_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CliRunner gives a non-TTY stdin. Without `--tag` and without an
+    existing host-id file, init must refuse rather than silently default."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    host_id_file = tmp_path / ".maury-host-id"
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    repo = _make_minimal_repo(tmp_path, hostname="other-host")
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["init", "--from-dir", str(repo), "--target", str(tmp_path / "out")],
+    )
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr or "")
+    assert "stdin is not a TTY" in combined or "non-interactive" in combined
+
+
+def test_init_cli_existing_host_id_file_skips_tag_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When `~/.maury-host-id` exists, the tag prompt is irrelevant —
+    init reads the existing file and uses it as-is. Non-TTY without
+    `--tag` should NOT error in this case."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    repo = _make_minimal_repo(tmp_path, monkeypatch=monkeypatch)
+    target = tmp_path / "out"
+    runner = CliRunner()
+    # No --tag, no input on stdin — would error if tag-prompt fired.
+    result = runner.invoke(main, ["init", "--from-dir", str(repo), "--target", str(target)])
+    assert result.exit_code == 0, result.output
+
+
+# ---- _resolve_init_tag helper-function tests ---------------------------
+
+
+def test_resolve_init_tag_explicit_value_normalizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maury.cli import _resolve_init_tag
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    # Lossy input: should still return the normalized form (no error).
+    assert _resolve_init_tag(explicit_tag="LAPTOP") == "laptop"
+    assert _resolve_init_tag(explicit_tag="weird name!") == "weird-name-"
+
+
+def test_resolve_init_tag_explicit_empty_value_errors() -> None:
+    """An explicitly-passed empty/all-special tag should ClickException
+    rather than silently fall back to interactive prompt."""
+    from maury.cli import _resolve_init_tag
+
+    with pytest.raises(click.ClickException):
+        _resolve_init_tag(explicit_tag="")  # normalize_tag raises ValueError
 
 
 # ---- help-text default rendering ---------------------------------------

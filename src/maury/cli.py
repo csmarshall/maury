@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import sys
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from maury.empirical_tests import (
     run_project_dir_harness,
 )
 from maury.empirical_tests import run as run_empirical
+from maury.ids import normalize_tag
 from maury.ids import short as short_id
 from maury.llm import BackendUnavailableError, get_backend
 from maury.manifest import (
@@ -480,6 +482,74 @@ def bootstrap_host_cmd(
 # ---- init (the user's first command on a new host, per ADR-0018) -------
 
 
+def _resolve_init_tag(*, explicit_tag: str | None) -> str | None:
+    """Resolve the host-tag for `maury init` per ADR-0039 §"Tag UX at bootstrap".
+
+    Returns None to fall back to the legacy 32-hex format (no tag). This
+    happens only when the user passes `--tag ""` explicitly or future
+    flags opt out — currently the function always produces a tag.
+
+    Three paths:
+      1. `--tag <value>` passed: normalize and use it. If normalization
+         is lossy, echo the result so the user sees what got written.
+      2. Interactive TTY without `--tag`: prompt with
+         `socket.gethostname()` normalized as the default; one preview-
+         and-confirm loop if the user types a custom value that needed
+         lossy normalization.
+      3. Non-interactive stdin without `--tag`: ClickException — bootstrap
+         is meant to be deliberate, not silently auto-defaulted.
+    """
+    default_tag = _default_tag_from_hostname()
+
+    if explicit_tag is not None:
+        try:
+            normalized = normalize_tag(explicit_tag)
+        except ValueError as e:
+            raise click.ClickException(str(e)) from e
+        if normalized != explicit_tag:
+            click.echo(f"note: tag {explicit_tag!r} normalized to {normalized!r} per ADR-0015 grammar")
+        return normalized
+
+    if not sys.stdin.isatty():
+        raise click.ClickException(
+            "no --tag provided and stdin is not a TTY. Pass `--tag <value>` "
+            "explicitly; init refuses to silently auto-default in non-interactive mode."
+        )
+
+    candidate = default_tag
+    while True:
+        raw = click.prompt(
+            f"Tag this host registration (RFC 1123 DNS-label grammar; default: {candidate})",
+            default=candidate,
+            show_default=False,
+        )
+        try:
+            normalized = normalize_tag(raw)
+        except ValueError as e:
+            click.echo(f"  ✗ {e}; try again")
+            continue
+        if normalized == raw:
+            return normalized
+        click.echo(f"  normalized to {normalized!r}")
+        if click.confirm("  accept this tag?", default=True):
+            return normalized
+        # Loop with the normalized form as the new default so the user
+        # can edit from a clean starting point.
+        candidate = normalized
+
+
+def _default_tag_from_hostname() -> str:
+    """Return a sensible default tag for init's interactive prompt.
+
+    Runs the current hostname through `normalize_tag()`. Falls back to
+    `"host"` if the hostname normalizes to empty (e.g., it's all
+    non-ASCII glyphs)."""
+    try:
+        return normalize_tag(socket.gethostname())
+    except ValueError:
+        return "host"
+
+
 @main.command("init")
 @click.option(
     "--from-dir",
@@ -514,6 +584,19 @@ def bootstrap_host_cmd(
     is_flag=True,
     help="Refuse on any pre-existing content collision, exit 1. Cron/CI safe.",
 )
+@click.option(
+    "--tag",
+    "tag",
+    type=str,
+    default=None,
+    help=(
+        "Cosmetic suffix on the host id (`host_<hex>_<tag>`). Per ADR-0015, "
+        "this is purely a label — never parsed for lookup. Grammar: "
+        "`[a-z0-9-]{1,32}` (RFC 1123 DNS labels). If omitted, init prompts "
+        "interactively with the current hostname as the default; required "
+        "when stdin is not a TTY."
+    ),
+)
 def init_cmd(
     from_dir: Path | None,
     from_tarball: Path | None,
@@ -521,6 +604,7 @@ def init_cmd(
     dry_run: bool,
     force: bool,
     non_interactive: bool,
+    tag: str | None,
 ) -> None:
     """Initialize maury on a new host (first-run bootstrap)."""
     target_dir = target_dir.expanduser()
@@ -534,6 +618,15 @@ def init_cmd(
     if force and non_interactive:
         raise click.ClickException("--force and --non-interactive are mutually exclusive.")
 
+    # Tag is only needed if init will actually generate a new host_id
+    # (i.e., `~/.maury-host-id` doesn't already exist). Resolve the
+    # current value via `current_host_id_file()` so test monkeypatches
+    # on `maury.bootstrap.init_cmd.HOST_ID_FILE` take effect.
+    from maury.bootstrap.init_cmd import current_host_id_file
+
+    needs_new_id = not current_host_id_file().exists()
+    resolved_tag = _resolve_init_tag(explicit_tag=tag) if needs_new_id else None
+
     drift_mode = "force" if force else ("non-interactive" if non_interactive else "default")
 
     try:
@@ -543,6 +636,7 @@ def init_cmd(
             target_dir=target_dir,
             dry_run=dry_run,
             drift_mode=drift_mode,
+            tag=resolved_tag,
         )
     except InitError as e:
         raise click.ClickException(str(e)) from e
