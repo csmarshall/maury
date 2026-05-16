@@ -764,10 +764,493 @@ def init_cmd(
         sys.exit(2)  # distinct exit so scripts can detect "host not registered yet"
 
 
-@main.command()
-def status() -> None:
-    """Show reachable repos and sync state."""
-    raise click.ClickException("not yet implemented")
+@main.command("status")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory whose maury-state to report.",
+)
+@click.option(
+    "--repos-root",
+    "repos_root",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.config/maury/repos",
+    show_default=True,
+    help="Where local clones live. Each repo nickname becomes a subdir.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+def status_cmd(
+    manifest_file: Path | None,
+    target_dir: Path,
+    repos_root: Path,
+    output_format: str,
+) -> None:
+    """Diagnostic snapshot of this host's maury state.
+
+    Reports — in order — host identity (id + tag + name + mode),
+    identity-baseline freshness, last-render summary, current drift
+    counts, and mining watermarks. Sections degrade gracefully: any
+    missing state file is reported as `(not initialized)` rather than
+    aborting.
+
+    Per ADR-0042 separation: `status` REPORTS identity mismatches
+    (with a ⚠️ marker), it does NOT enforce. The mode-scoped commands
+    (sync, reconcile, mine) enforce; `status` is the diagnostic
+    counterpart you reach for when you suspect something's off.
+    """
+    target_dir = target_dir.expanduser()
+    repos_root = repos_root.expanduser()
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    report = _build_status_report(
+        target_dir=target_dir,
+        manifest_path=mpath,
+        repos_root=repos_root,
+    )
+    if output_format == "json":
+        click.echo(json.dumps(report, indent=2, sort_keys=False, default=str))
+    else:
+        click.echo(_render_status_text(report))
+
+
+def _build_status_report(
+    *,
+    target_dir: Path,
+    manifest_path: Path,
+    repos_root: Path,
+) -> dict[str, object]:
+    """Aggregate every status section into a single dict for rendering.
+
+    Each section's value is either a populated dict (data present) or
+    a dict with `{"present": False, "note": "..."}` (graceful
+    degradation). Callers render the same shape for both text and JSON
+    output so they stay in sync.
+    """
+    return {
+        "host_identity": _section_host_identity(manifest_path=manifest_path),
+        "identity_baseline": _section_identity_baseline(target_dir=target_dir),
+        "repos": _section_repos(manifest_path=manifest_path, repos_root=repos_root),
+        "last_render": _section_last_render(target_dir=target_dir),
+        "drift": _section_drift(target_dir=target_dir),
+        "mining_watermarks": _section_mining_watermarks(target_dir=target_dir),
+    }
+
+
+def _section_host_identity(*, manifest_path: Path) -> dict[str, object]:
+    """Read `~/.maury-host-id` and resolve against the manifest."""
+    from maury.bootstrap.init_cmd import current_host_id_file
+    from maury.ids import host_id_hex_prefix, split_host_id
+
+    host_id_file = current_host_id_file()
+    if not host_id_file.is_file():
+        return {"present": False, "note": "no ~/.maury-host-id (run `maury init`)"}
+
+    host_id = host_id_file.read_text(encoding="utf-8").strip()
+    try:
+        hex_part, tag = split_host_id(host_id)
+    except ValueError as e:
+        return {
+            "present": True,
+            "host_id": host_id,
+            "note": f"malformed host id: {e}",
+        }
+
+    section: dict[str, object] = {
+        "present": True,
+        "host_id": host_id,
+        "short": short_id(host_id),
+        "hex_prefix": hex_part,
+        "tag": tag,
+        "host_id_file": str(host_id_file),
+    }
+
+    # Try to look up the host in the manifest.
+    if not manifest_path.is_file():
+        section["note"] = "manifest file not found; can't resolve name/mode"
+        return section
+    try:
+        manifest = load_manifest(manifest_path)
+    except ManifestError as e:
+        section["note"] = f"manifest failed to load: {e}"
+        return section
+    section["manifest_file"] = str(manifest_path)
+    if host_id not in manifest.hosts:
+        section["registered"] = False
+        section["note"] = "host id not in manifest (run `maury init` against this repo)"
+        # Best-effort: search for prefix-match in case it's a renamed-tag form.
+        for hid in manifest.hosts:
+            if host_id_hex_prefix(hid) == hex_part:
+                section["manifest_hex_match"] = hid
+                section["note"] = (
+                    f"host id not in manifest by full match; hex prefix matches {hid!r} — "
+                    f"tag may have drifted after edit"
+                )
+                break
+        return section
+
+    host_spec = manifest.hosts[host_id]
+    section["registered"] = True
+    section["name"] = host_spec.name
+    mode_id = host_spec.profile
+    section["mode_id"] = mode_id
+    mode_spec = manifest.profiles.get(mode_id)
+    section["mode_name"] = mode_spec.name if mode_spec else "<unknown>"
+    return section
+
+
+def _section_identity_baseline(*, target_dir: Path) -> dict[str, object]:
+    """Compare current `~/.maury-host-id` against the baseline."""
+    from maury.bootstrap.init_cmd import current_host_id_file
+    from maury.host_identity import baseline_path, read_baseline
+    from maury.ids import host_id_hex_prefix
+
+    bp = baseline_path(target_dir)
+    if not bp.is_file():
+        return {
+            "present": False,
+            "note": "no baseline (pre-2026-05-14 upgrade; will be created on next sync)",
+            "path": str(bp),
+        }
+
+    try:
+        baseline = read_baseline(target_dir)
+    except Exception as e:
+        return {"present": False, "note": f"baseline read error: {e}", "path": str(bp)}
+    assert baseline is not None
+
+    section: dict[str, object] = {
+        "present": True,
+        "path": str(bp),
+        "baseline_hex": baseline.host_id_hex,
+        "mode_id": baseline.mode_id,
+        "mode_name_at_bootstrap": baseline.mode_name_at_bootstrap,
+        "registered_at": baseline.registered_at,
+    }
+
+    host_id_file = current_host_id_file()
+    if not host_id_file.is_file():
+        section["current_hex"] = None
+        section["status"] = "no current host-id file"
+        return section
+
+    current_id = host_id_file.read_text(encoding="utf-8").strip()
+    try:
+        current_hex = host_id_hex_prefix(current_id)
+    except ValueError:
+        section["status"] = "current host id is malformed"
+        return section
+
+    section["current_hex"] = current_hex
+    if baseline.host_id_hex == current_hex:
+        section["status"] = "match"
+    else:
+        section["status"] = "mismatch"
+        section["remediation"] = (
+            "run `maury sync --confirm-identity-change` if the edit was deliberate, "
+            "or `maury init --reset` to re-anchor as a fresh registration"
+        )
+    return section
+
+
+def _section_repos(*, manifest_path: Path, repos_root: Path) -> dict[str, object]:
+    """For each repo declared in this host's manifest entry, show
+    remote URL, access mode, local-clone path, and git status if cloned."""
+    from maury.bootstrap.init_cmd import current_host_id_file
+
+    host_id_file = current_host_id_file()
+    if not host_id_file.is_file():
+        return {"present": False, "note": "no host id (run `maury init`)"}
+    host_id = host_id_file.read_text(encoding="utf-8").strip()
+
+    if not manifest_path.is_file():
+        return {"present": False, "note": f"manifest file not found at {manifest_path}"}
+    try:
+        manifest = load_manifest(manifest_path)
+    except ManifestError as e:
+        return {"present": False, "note": f"manifest failed to load: {e}"}
+
+    if host_id not in manifest.hosts:
+        return {"present": False, "note": "this host not registered in manifest"}
+
+    host_spec = manifest.hosts[host_id]
+    repos: dict[str, object] = {}
+    for nickname, spec in host_spec.repos.items():
+        clone_path = repos_root / nickname
+        entry: dict[str, object] = {
+            "url": spec.url,
+            "mode": spec.mode.value if hasattr(spec.mode, "value") else str(spec.mode),
+            "backend": spec.backend,
+            "clone_path": str(clone_path),
+            "cloned": False,
+        }
+        if clone_path.is_dir() and (clone_path / ".git").exists():
+            entry["cloned"] = True
+            entry.update(_git_status_snapshot(clone_path))
+        repos[nickname] = entry
+    return {
+        "present": True,
+        "repos_root": str(repos_root),
+        "repos": repos,
+    }
+
+
+def _git_status_snapshot(repo_path: Path) -> dict[str, object]:
+    """Capture branch + dirty flag + ahead/behind for a local clone.
+
+    Defensive: any git error becomes an `error` field rather than an
+    exception. Each git call is timeout-capped (5s) so a hung repo
+    never blocks `maury status`.
+    """
+    import subprocess
+
+    def run(args: list[str]) -> tuple[int, str, str]:
+        try:
+            r = subprocess.run(args, cwd=repo_path, capture_output=True, text=True, timeout=5)
+            return r.returncode, r.stdout, r.stderr
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            return 1, "", str(e)
+
+    snapshot: dict[str, object] = {}
+
+    rc, out, err = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    if rc == 0:
+        snapshot["branch"] = out.strip()
+    else:
+        snapshot["error"] = f"git rev-parse failed: {err.strip()[:120]}"
+        return snapshot
+
+    rc, out, _ = run(["git", "status", "--porcelain"])
+    if rc == 0:
+        dirty_lines = [ln for ln in out.splitlines() if ln.strip()]
+        snapshot["dirty"] = bool(dirty_lines)
+        snapshot["dirty_count"] = len(dirty_lines)
+
+    # Upstream tracking: behind/ahead counts. The `@{u}` ref errors if
+    # the branch isn't tracking; that's not a real failure, just no data.
+    rc, out, _ = run(["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"])
+    if rc == 0 and out.strip():
+        parts = out.strip().split()
+        if len(parts) == 2:
+            try:
+                snapshot["behind"] = int(parts[0])
+                snapshot["ahead"] = int(parts[1])
+            except ValueError:
+                pass
+
+    return snapshot
+
+
+def _section_last_render(*, target_dir: Path) -> dict[str, object]:
+    """Summarize last-render.json."""
+    last = read_last_render(target_dir)
+    if last is None:
+        return {
+            "present": False,
+            "note": "not yet rendered (run `maury sync` or `maury init`)",
+        }
+    return {
+        "present": True,
+        "rendered_at": last.rendered_at,
+        "host_id": last.host_id,
+        "profile_id": last.profile_id,
+        "file_count": len(last.files),
+    }
+
+
+def _section_drift(*, target_dir: Path) -> dict[str, object]:
+    """Walk the target dir against last-render and report drift counts."""
+    last = read_last_render(target_dir)
+    if last is None:
+        return {"present": False, "note": "no baseline (run `maury sync` first)"}
+    try:
+        report = detect_drift(
+            target_dir=target_dir,
+            last=last,
+            untracked_scan_dirs=DRIFT_SCAN_DIRS,
+        )
+    except Exception as e:
+        return {"present": False, "note": f"drift scan failed: {e}"}
+    counts = report.summary_counts()
+    return {
+        "present": True,
+        "modified": counts["modified"],
+        "missing": counts["missing"],
+        "untracked": counts["untracked"],
+        "clean": not report.has_drift(),
+    }
+
+
+def _section_mining_watermarks(*, target_dir: Path) -> dict[str, object]:
+    """Per-project mining watermark summary."""
+    from maury.mining_state import MINING_ALGORITHM_VERSION, read_watermark
+
+    wm = read_watermark(target_dir)
+    if wm is None:
+        return {
+            "present": False,
+            "note": "not yet mined (run `maury mine`)",
+        }
+    return {
+        "present": True,
+        "algorithm_version": wm.mining_algorithm_version,
+        "algorithm_version_current": MINING_ALGORITHM_VERSION,
+        "stale": wm.is_stale(),
+        "projects": {
+            name: {
+                "last_mined_at": rec.last_mined_at,
+                "last_jsonl_mtime": rec.last_jsonl_mtime,
+                "windows_processed": rec.windows_processed,
+                "findings_count": rec.findings_count,
+            }
+            for name, rec in wm.projects.items()
+        },
+    }
+
+
+def _render_status_text(report: dict[str, object]) -> str:
+    """Render the status report as human-readable text. Mirrors the
+    JSON shape section-for-section so the two stay in sync."""
+    lines: list[str] = []
+
+    def section(title: str) -> None:
+        lines.append("")
+        lines.append(f"== {title} ==")
+
+    # ---- host identity ----
+    section("host identity")
+    h = report["host_identity"]
+    assert isinstance(h, dict)
+    if not h.get("present"):
+        lines.append(f"  {h.get('note', 'unknown')}")
+    else:
+        lines.append(f"  id:    {h.get('host_id')}")
+        lines.append(f"  short: {h.get('short')}")
+        if h.get("tag"):
+            lines.append(f"  tag:   {h.get('tag')}")
+        if h.get("registered"):
+            lines.append(f"  name:  {h.get('name')}")
+            lines.append(f"  mode:  {h.get('mode_name')} ({short_id(str(h.get('mode_id', '')))})")
+        else:
+            lines.append(f"  ⚠️  {h.get('note', '')}")
+
+    # ---- identity baseline ----
+    section("identity baseline (ADR-0042)")
+    b = report["identity_baseline"]
+    assert isinstance(b, dict)
+    if not b.get("present"):
+        lines.append(f"  {b.get('note', 'unknown')}")
+    else:
+        lines.append(f"  baseline hex:        {b.get('baseline_hex')}")
+        lines.append(f"  current hex:         {b.get('current_hex')}")
+        lines.append(f"  mode at bootstrap:   {b.get('mode_name_at_bootstrap')}")
+        lines.append(f"  registered at:       {b.get('registered_at')}")
+        status_val = b.get("status")
+        if status_val == "match":
+            lines.append("  status:              ✓ match")
+        else:
+            lines.append(f"  status:              ⚠️  {status_val}")
+            if b.get("remediation"):
+                lines.append(f"  remediation:         {b.get('remediation')}")
+
+    # ---- repos ----
+    section("repos")
+    rs = report["repos"]
+    assert isinstance(rs, dict)
+    if not rs.get("present"):
+        lines.append(f"  {rs.get('note', 'unknown')}")
+    else:
+        lines.append(f"  repos-root: {rs.get('repos_root')}")
+        repos_map = rs.get("repos", {})
+        assert isinstance(repos_map, dict)
+        if not repos_map:
+            lines.append("  (no repos declared for this host)")
+        for nickname, entry in repos_map.items():
+            assert isinstance(entry, dict)
+            lines.append(
+                f"  • {nickname:<12} url={entry.get('url')} mode={entry.get('mode')} backend={entry.get('backend')}"
+            )
+            if not entry.get("cloned"):
+                lines.append("    clone: (not cloned — run `maury sync`)")
+                continue
+            line_parts = [f"branch={entry.get('branch')}"]
+            if "ahead" in entry or "behind" in entry:
+                line_parts.append(f"ahead={entry.get('ahead', 0)}")
+                line_parts.append(f"behind={entry.get('behind', 0)}")
+            if entry.get("dirty"):
+                line_parts.append(f"⚠️ dirty ({entry.get('dirty_count')} files)")
+            elif entry.get("dirty") is False:
+                line_parts.append("✓ clean")
+            if entry.get("error"):
+                line_parts.append(f"error={entry.get('error')}")
+            lines.append("    " + "  ".join(line_parts))
+
+    # ---- last render ----
+    section("last render (ADR-0017)")
+    r = report["last_render"]
+    assert isinstance(r, dict)
+    if not r.get("present"):
+        lines.append(f"  {r.get('note', 'unknown')}")
+    else:
+        lines.append(f"  rendered at:  {r.get('rendered_at')}")
+        lines.append(f"  files:        {r.get('file_count')}")
+        lines.append(f"  host id:      {short_id(str(r.get('host_id', '')))}")
+        lines.append(f"  mode id:      {short_id(str(r.get('profile_id', '')))}")
+
+    # ---- drift ----
+    section("drift")
+    d = report["drift"]
+    assert isinstance(d, dict)
+    if not d.get("present"):
+        lines.append(f"  {d.get('note', 'unknown')}")
+    elif d.get("clean"):
+        lines.append("  ✓ clean (no drift)")
+    else:
+        lines.append(f"  modified={d.get('modified')} missing={d.get('missing')} untracked={d.get('untracked')}")
+        lines.append("  (run `maury reconcile` to address drift)")
+
+    # ---- mining watermarks ----
+    section("mining watermarks (ADR-0043)")
+    m = report["mining_watermarks"]
+    assert isinstance(m, dict)
+    if not m.get("present"):
+        lines.append(f"  {m.get('note', 'unknown')}")
+    else:
+        algo_v = m.get("algorithm_version")
+        cur_v = m.get("algorithm_version_current")
+        lines.append(f"  algorithm version: {algo_v} (current: {cur_v})")
+        if m.get("stale"):
+            lines.append("  ⚠️  watermarks stale — next mine will re-process everything")
+        projects = m.get("projects", {})
+        assert isinstance(projects, dict)
+        if not projects:
+            lines.append("  (no projects mined yet)")
+        else:
+            lines.append("  projects:")
+            for name, rec in projects.items():
+                short_name = name[:48] + "…" if len(name) > 49 else name
+                lines.append(
+                    f"    {short_name:<50} "
+                    f"mined={rec['last_mined_at']} "
+                    f"findings={rec['findings_count']} "
+                    f"windows={rec['windows_processed']}"
+                )
+
+    return "\n".join(lines).lstrip("\n")
 
 
 @main.command("reconcile")

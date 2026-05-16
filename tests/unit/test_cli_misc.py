@@ -219,14 +219,9 @@ def test_init_invalid_source_dir_yields_click_exception(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
-# ---- status stub -------------------------------------------------------
-
-
-def test_status_command_is_unimplemented() -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["status"])
-    assert result.exit_code != 0
-    assert "not yet implemented" in result.output
+# `maury status` was previously a stub raising "not yet implemented";
+# implemented as a real command 2026-05-16. Coverage now lives in
+# `test_cli_status.py`. The stub-presence assertion is retired.
 
 
 def test_rules_validate_with_manifest_resolves_profile_set(tmp_path: Path) -> None:
