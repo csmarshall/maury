@@ -1,4 +1,17 @@
 {
   "alwaysThinkingEnabled": true,
-  "theme": "dark"
+  "theme": "dark",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.claude/bin/claude-maury-pending\" # maury-managed"
+          }
+        ]
+      }
+    ]
+  }
 }

@@ -1,0 +1,46 @@
+#!/bin/sh
+# claude-maury-pending — Stop-hook notification of pending captures.
+#
+# Per ADR-0013 §5 (active in-session capture, item 5): after each
+# assistant turn, surface any pending captures sitting in
+# `~/.claude/maury-staging/captures.jsonl` so the user knows to run
+# `maury review` and doesn't accumulate an unreviewed backlog.
+#
+# Behavior:
+#   - If the staging file doesn't exist or is empty → exit 0, no output.
+#   - If non-empty → print one line to stderr with the count.
+#
+# Stderr (not stdout) per the convention that hook output appearing in
+# the user's terminal is informational; stdout from a Stop hook can
+# interleave with assistant output in some Claude Code UIs.
+#
+# Compatibility: POSIX shell only — `~/.claude/projects/` deployment
+# spans macOS / Linux / FreeBSD. No bashisms.
+#
+# Installation: rendered into `~/.claude/bin/` by `maury render`
+# alongside the `Stop` hook entry in `~/.claude/settings.json`.
+
+set -u
+
+staging="${HOME}/.claude/maury-staging/captures.jsonl"
+
+# Fast path: missing or empty file → nothing to report.
+if [ ! -s "$staging" ]; then
+    exit 0
+fi
+
+# Each line in the JSONL is one capture. `wc -l` prints a number
+# prefixed by whitespace on some systems; strip it with `tr -d ' '`.
+n=$(wc -l < "$staging" 2>/dev/null | tr -d ' ')
+
+# Defensive: if `wc` failed or produced something non-numeric, bail
+# silently rather than emit garbage to the user's terminal.
+case "${n:-0}" in
+    ''|*[!0-9]*) exit 0 ;;
+esac
+
+if [ "$n" -eq 0 ]; then
+    exit 0
+fi
+
+printf '📌 maury: %s capture(s) pending. Run `maury review` to inspect.\n' "$n" >&2
