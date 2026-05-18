@@ -15,6 +15,7 @@ from maury.active_sessions import (
     DEFAULT_MAX_AGE,
 )
 from maury.active_sessions import prune as prune_active_sessions
+from maury.agency import AgencyInitError, init_agency
 from maury.bootstrap import BootstrapHostError, InitError
 from maury.bootstrap import bootstrap_host as run_bootstrap_host
 from maury.bootstrap import init as run_init
@@ -308,6 +309,59 @@ def agency() -> None:
 def agency_validate(manifest_file: Path | None) -> None:
     """Validate the agency (manifest schema + cross-references)."""
     _run_manifest_validate(manifest_file)
+
+
+@agency.command("init")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=".",
+    show_default=True,
+    help="Where the base repo will live (the agency's root).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Re-initialize even if .meta/maury-marker.json exists. Generates a new agency_id; severs all existing host registrations.",
+)
+@click.option(
+    "--no-git-init",
+    "no_git_init",
+    is_flag=True,
+    help="Don't run `git init` or commit. Useful when target is already a git repo or for offline scaffolding.",
+)
+def agency_init(target_dir: Path, force: bool, no_git_init: bool) -> None:
+    """Initialize a new agency: generate agency_id, write base marker, commit.
+
+    Per ADR-0039 + ADR-0050 + ADR-0051. Idempotent without --force; refuses
+    if a marker already exists.
+
+    After this completes, the curator typically creates mode repos (each
+    with its own marker carrying the same agency_id) and registers them
+    as sublayers of the base.
+    """
+    target_dir = target_dir.expanduser().resolve()
+    try:
+        summary = init_agency(
+            target_dir=target_dir,
+            force=force,
+            git_init=not no_git_init,
+        )
+    except AgencyInitError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo(f"initialized agency: {summary.agency_id}")
+    click.echo(f"  marker: {summary.marker_path}")
+    if summary.git_initialized:
+        if summary.git_commit_sha:
+            click.echo(f"  commit: {summary.git_commit_sha[:12]} (chore(maury): initialize agency)")
+        else:
+            click.echo("  commit: skipped (nothing to commit)")
+    else:
+        click.echo("  git init: skipped (--no-git-init)")
+    if summary.force_used:
+        click.echo("  ⚠️ --force used: any existing host registrations referencing the prior agency_id are now severed.")
 
 
 @main.group()
