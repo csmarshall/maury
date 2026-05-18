@@ -253,23 +253,15 @@ def rules_validate(
     click.echo(f"OK: {len(ruleset)} rules valid.")
 
 
-# ---- manifest subgroup ---------------------------------------------------
+# ---- manifest + agency subgroups -----------------------------------------
+#
+# `maury agency validate` is the canonical name per ADR-0040; the older
+# `maury manifest validate` continues to work as a deprecation alias that
+# prints a one-line notice to stderr and delegates to the same handler.
 
 
-@main.group()
-def manifest() -> None:
-    """Inspect and validate the manifest (profiles + hosts + repos registry)."""
-
-
-@manifest.command("validate")
-@click.option(
-    "--manifest-file",
-    "manifest_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    envvar=DEFAULT_MANIFEST_ENV,
-)
-def manifest_validate(manifest_file: Path | None) -> None:
-    """Parse the manifest and cross-check profile/host references."""
+def _run_manifest_validate(manifest_file: Path | None) -> None:
+    """Shared body for `manifest validate` and `agency validate`."""
     path = manifest_file or DEFAULT_MANIFEST_PATH
     if not path.exists():
         raise click.ClickException(f"manifest file not found: {path}")
@@ -283,6 +275,46 @@ def manifest_validate(manifest_file: Path | None) -> None:
             click.echo(f"error: {err}", err=True)
         sys.exit(1)
     click.echo(f"OK: {len(m.profiles)} profile(s), {len(m.hosts)} host(s).")
+
+
+@main.group()
+def agency() -> None:
+    """Inspect and validate the agency (the canonical command surface)."""
+
+
+@agency.command("validate")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+)
+def agency_validate(manifest_file: Path | None) -> None:
+    """Validate the agency (manifest schema + cross-references)."""
+    _run_manifest_validate(manifest_file)
+
+
+@main.group()
+def manifest() -> None:
+    """Inspect and validate the manifest (legacy alias of `agency`)."""
+
+
+@manifest.command("validate")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+)
+def manifest_validate(manifest_file: Path | None) -> None:
+    """Deprecated alias of `maury agency validate` (per ADR-0040)."""
+    click.echo(
+        "notice: `maury manifest validate` is the deprecated alias of "
+        "`maury agency validate` (per ADR-0040). Both work today; the "
+        "alias will be removed in a future release.",
+        err=True,
+    )
+    _run_manifest_validate(manifest_file)
 
 
 @manifest.command("show")

@@ -60,7 +60,10 @@ jobs:
       - name: "smoke - maury rules validate"
         run: uv run maury rules validate --rules-file base-template/.meta/rules.yaml --manifest-file base-template/.meta/manifest.json
 
-      - name: "smoke - maury manifest validate"
+      - name: "smoke - maury agency validate (canonical)"
+        run: uv run maury agency validate --manifest-file base-template/.meta/manifest.json
+
+      - name: "smoke - maury manifest validate (deprecation alias)"
         run: uv run maury manifest validate --manifest-file base-template/.meta/manifest.json
 
       - name: "smoke - maury probe"
