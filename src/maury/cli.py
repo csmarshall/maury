@@ -10,6 +10,11 @@ from pathlib import Path
 import click
 
 from maury import __version__
+from maury.active_sessions import (
+    ACTIVE_SESSIONS_REL_PATH,
+    DEFAULT_MAX_AGE,
+)
+from maury.active_sessions import prune as prune_active_sessions
 from maury.bootstrap import BootstrapHostError, InitError
 from maury.bootstrap import bootstrap_host as run_bootstrap_host
 from maury.bootstrap import init as run_init
@@ -3045,3 +3050,66 @@ def verify_cc_contract(
     else:
         click.echo(format_cc_contract_report_text(report))
     sys.exit(1 if report.has_drift() else 0)
+
+
+# ---- sessions group ------------------------------------------------------
+
+
+@main.group()
+def sessions() -> None:
+    """Manage the active-sessions.jsonl log."""
+
+
+@sessions.command("prune")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory containing maury-state/active-sessions.jsonl.",
+)
+@click.option(
+    "--max-age-hours",
+    "max_age_hours",
+    type=float,
+    default=DEFAULT_MAX_AGE.total_seconds() / 3600.0,
+    show_default=True,
+    help="Prune sessions whose session_end is older than this many hours.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be pruned without modifying the log.",
+)
+def sessions_prune(target_dir: Path, max_age_hours: float, dry_run: bool) -> None:
+    """Clean up stale session_end entries in active-sessions.jsonl.
+
+    Removes events for sessions whose session_end is older than
+    --max-age-hours. Sessions without a session_end are NEVER pruned
+    (they may still be running). Per ADR-0025's separation: cleanup is
+    opt-in, never a side effect of a safety check.
+    """
+    from datetime import timedelta
+
+    target_dir = target_dir.expanduser()
+    log_path = target_dir / ACTIVE_SESSIONS_REL_PATH
+    max_age = timedelta(hours=max_age_hours)
+
+    if not log_path.is_file():
+        click.echo(f"clean: no active-sessions.jsonl at {log_path}.")
+        return
+
+    result = prune_active_sessions(log_path, max_age=max_age, dry_run=dry_run)
+
+    verb = "would prune" if dry_run else "pruned"
+    click.echo(
+        f"{verb} {len(result.pruned_session_ids)} session(s); "
+        f"kept {len(result.kept_session_ids)}; "
+        f"lines {result.lines_in} → {result.lines_out}"
+    )
+    if result.skipped_unparseable:
+        click.echo(f"  (skipped {result.skipped_unparseable} unparseable line(s) — kept verbatim in log)")
+    if result.pruned_session_ids:
+        for sid in result.pruned_session_ids:
+            click.echo(f"  - {sid}")
