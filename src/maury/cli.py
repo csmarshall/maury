@@ -1611,6 +1611,14 @@ def render_cmd(
 ) -> None:
     """Render base + profile chain + host overlay into the target directory."""
     target_dir = target_dir.expanduser()
+
+    # ADR-0042 identity guard. Render writes mode-scoped content to the
+    # target dir; a hex-edited `~/.maury-host-id` would silently render
+    # the wrong mode's content. Note that `render --check` (dry-run)
+    # still guards — the same risk applies to "what would I render?"
+    # queries against a swapped identity.
+    _enforce_identity_guard(target_dir=target_dir)
+
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
     if not mpath.exists():
         raise click.ClickException(f"manifest file not found: {mpath}")
@@ -2208,6 +2216,13 @@ def doctor(claude_md: Path, output_format: str, fail_on: str) -> None:
 
     Rubric source: https://code.claude.com/docs/en/best-practices
     """
+    # ADR-0042 identity guard. Doctor evaluates content scoped to this
+    # host's mode-registration; if the host_id was edited, the content
+    # under `~/.claude/` may belong to a different mode and a "clean"
+    # doctor result would be misleading. Guard against the default
+    # target (`~/.claude/`).
+    _enforce_identity_guard(target_dir=Path.home() / ".claude")
+
     text = claude_md.read_text(encoding="utf-8")
     findings = run_all(text, source_path=str(claude_md))
 

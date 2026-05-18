@@ -4,6 +4,14 @@ Render engine + doctor rubric internals are covered in
 `test_render.py`, `test_settings_merge.py`, and `test_doctor.py`.
 These tests cover only the CLI wiring: flag parsing, host/profile
 resolution, error paths, exit codes, output format selection.
+
+ADR-0042's identity guard fires in `render` and `doctor` against
+the default `~/.claude/` target. These tests don't exercise that
+guard (test_cli_sync.py + a few cases at the bottom of this file
+do); the autouse fixture below points `maury.bootstrap.init_cmd.
+HOST_ID_FILE` at a tmp file that doesn't exist, so the guard
+silently returns without writing a baseline into the test's
+target dir.
 """
 
 from __future__ import annotations
@@ -16,6 +24,18 @@ from click.testing import CliRunner
 
 from maury.cli import main
 from maury.ids import new_host_id, new_profile_id
+
+
+@pytest.fixture(autouse=True)
+def _disable_identity_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirect the host-id file to a nonexistent path so the identity
+    guard returns silently for every test in this file. Per-test
+    overrides (the guard-firing tests at the bottom of this file)
+    re-patch the attribute explicitly."""
+    monkeypatch.setattr(
+        "maury.bootstrap.init_cmd.HOST_ID_FILE",
+        tmp_path / ".no-such-host-id",
+    )
 
 
 def _write_minimal_repo(tmp_path: Path, *, hostname: str = "test-host") -> tuple[Path, str, str]:
@@ -297,3 +317,81 @@ def test_doctor_missing_file_errors(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["doctor", "--file", str(tmp_path / "nonexistent.md")])
     assert result.exit_code != 0
+
+
+# ---- ADR-0042 identity guard wiring (render + doctor) ------------------
+
+
+def test_render_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hex-edited `~/.maury-host-id` must trip the guard before
+    render's manifest load. render writes mode-scoped content; we
+    can't allow the wrong mode to render onto the target."""
+    from maury.host_identity import HostIdentityBaseline, write_baseline
+
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_88ff77ee_swapped\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="24b2a0aa",  # different — guard trips
+            registered_at="2026-05-14T15:42:11Z",
+            mode_id="mode_home",
+            mode_name_at_bootstrap="home",
+        ),
+    )
+
+    repo, _, _ = _write_minimal_repo(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "render",
+            "--manifest-file",
+            str(repo / ".meta" / "manifest.json"),
+            "--host",
+            "test-host",
+            "--target",
+            str(target),
+            "--check",
+        ],
+    )
+    assert result.exit_code == 1
+    combined = result.output + (result.stderr or "")
+    assert "host identity changed" in combined
+    assert "24b2a0aa" in combined
+    assert "88ff77ee" in combined
+
+
+def test_doctor_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same guard fires for `maury doctor` — doctor's findings are
+    mode-scoped (the rubric runs against the host's active CLAUDE.md),
+    so an identity swap would make the report misleading."""
+    from maury.host_identity import HostIdentityBaseline, write_baseline
+
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_88ff77ee_swapped\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    # The doctor guard checks against the default target Path.home() /
+    # ".claude" rather than a flag, so we patch HOME too.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_baseline(
+        tmp_path / ".claude",
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="24b2a0aa",
+            registered_at="2026-05-14T15:42:11Z",
+            mode_id="mode_home",
+            mode_name_at_bootstrap="home",
+        ),
+    )
+
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# header\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--file", str(md)])
+    assert result.exit_code == 1
+    combined = result.output + (result.stderr or "")
+    assert "host identity changed" in combined
