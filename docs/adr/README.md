@@ -38,7 +38,10 @@ flowchart TD
     A0003 --> A0015[0015 Surrogate keys]
     A0015 --> A0037[0037 Layer taxonomy + agency]
     A0037 --> A0039a[0039 Bootstrap + host lifecycle]
-    A0039a --> A0040a[0040 Render pipeline]
+    A0039a --> A0040a[0040 Render pipeline umbrella]
+    A0040a --> A0046[0046 Source file naming]
+    A0040a --> A0047[0047 Render target surfaces]
+    A0040a --> A0048[0048 LLM condensation]
     A0040a --> A0018a[0018 Bootstrap UX]
 
     P2 --> A0005[0005 Local-only mining]
@@ -69,7 +72,7 @@ flowchart TD
     A0010 --> A0007[0007 Python + uv]
     A0007 --> A0018b[0018 Bootstrap UX]
     A0018b --> A0039b[0039 Bootstrap flow]
-    A0039b --> A0040b[0040 Render pipeline]
+    A0039b --> A0040b[0040 Render pipeline umbrella]
     A0040b --> A0028[0028 Offline behavior]
     A0028 --> A0030[0030 Schema migrations]
     A0030 --> A0031[0031 Self-update]
@@ -125,7 +128,10 @@ manifest, render order. **Start here.**
 | [`0015`](0015-surrogate-keys-for-hosts-and-profiles.md) | `host_<hex>` and `mode_<hex>` IDs (rename-safe identity) |
 | [`0037`](0037-layer-taxonomy-and-repo-discovery.md) | Three layer types (base/mode/rules), agency concept, distributed manifest, render order — **the structural foundation** |
 | [`0039`](0039-bootstrap-and-host-lifecycle.md) | Agency init, mode-scoped host identity, bootstrap flow |
-| [`0040`](0040-render-pipeline.md) | Source file naming, full render target surface, LLM condensation — **what maury reads and writes** |
+| [`0040`](0040-render-pipeline.md) | Render pipeline umbrella — **what maury reads, writes, and condenses** |
+| ↳ [`0046`](0046-source-file-naming.md) | Source file naming inside a layer repo (flat dotted-name tagging) |
+| ↳ [`0047`](0047-render-target-surfaces.md) | Render target surfaces (CLAUDE.md, rules, skills, agents, settings.json, .mcp.json), routing principle, agent routing guidance |
+| ↳ [`0048`](0048-llm-condensation.md) | LLM condensation pass, precept preservation as a structural invariant, `--raw` escape hatch |
 | [`0018`](0018-minimum-bootstrap-ux.md) | First-host onboarding flow (`maury init --from-dir` / `--from-tarball`) |
 
 Companion docs: [`concepts.md`](../concepts.md) (the canonical
@@ -193,7 +199,7 @@ The lifecycle of a maury installation.
 | [`0007`](0007-python-with-uv.md) | Python + `uv` for tooling; works on FreeBSD too |
 | [`0018`](0018-minimum-bootstrap-ux.md) | First-host onboarding; air-gap path via `--from-tarball` |
 | [`0039`](0039-bootstrap-and-host-lifecycle.md) | Eight-step bootstrap flow, mode change process, sync traversal scope |
-| [`0040`](0040-render-pipeline.md) | `maury sync` behavior, `maury agency validate`, LLM condensation pass |
+| [`0040`](0040-render-pipeline.md) | `maury sync` behavior, `maury agency validate`, render-pipeline umbrella over [`0046`](0046-source-file-naming.md)/[`0047`](0047-render-target-surfaces.md)/[`0048`](0048-llm-condensation.md) |
 | [`0028`](0028-offline-behavior.md) | Per-command offline policy; opportunistic detection (no pre-probe) |
 | [`0030`](0030-manifest-schema-migrations.md) | Per-version upgrade scripts; refuse newer-than-supported manifests |
 | [`0031`](0031-self-update-path.md) | Delegate self-upgrade to pipx; soft stale-version warning |
@@ -263,12 +269,15 @@ status).
 - [`0037`](0037-layer-taxonomy-and-repo-discovery.md) — Layer taxonomy (base/mode/rules), repo marker file, render order, distributed manifest
 - [`0038`](0038-precept-acquisition-model.md) — Rules/precept acquisition, advisory lifecycle, semver versioning, `maury repo init`
 - [`0039`](0039-bootstrap-and-host-lifecycle.md) — Bootstrap flow, mode-scoped host identity, agency init, mode change process
-- [`0040`](0040-render-pipeline.md) — Render pipeline: source file naming, full target surface, LLM condensation, agent routing guidance, `maury agency validate`
+- [`0040`](0040-render-pipeline.md) — Render pipeline umbrella; `maury agency validate`; cross-cutting concerns over the three sub-ADRs below
 - [`0041`](0041-per-mode-anthropic-credentials.md) — Per-mode Anthropic credentials and the LLM trust boundary (operational discipline for mode isolation across mining + LLM calls)
 - [`0042`](0042-host-identity-guard.md) — Host-identity guard at sync time (hex-change detection + `--confirm-identity-change`)
 - [`0043`](0043-incremental-mining.md) — Per-project mining watermark with `derive_project_dir()` algorithm
 - [`0044`](0044-strict-transcript-parser-and-schema-lock.md) — Strict transcript parser + JSON Schema lock (phased rollout)
 - [`0045`](0045-cross-trust-boundary-promotion.md) — Cross-trust-boundary promotion (mechanics + graph constraint); **supersedes 0009 + 0027**
+- [`0046`](0046-source-file-naming.md) — Source file naming inside a layer repo; sub-ADR of [`0040`](0040-render-pipeline.md)
+- [`0047`](0047-render-target-surfaces.md) — Render target surfaces, routing principle, agent routing guidance; sub-ADR of [`0040`](0040-render-pipeline.md)
+- [`0048`](0048-llm-condensation.md) — LLM condensation pass, precept preservation; sub-ADR of [`0040`](0040-render-pipeline.md)
 
 ---
 

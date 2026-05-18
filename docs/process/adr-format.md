@@ -27,7 +27,7 @@ details as flowing prose with subsections).
 ## Required sections (in this order)
 
 1. **Title** — `# ADR-NNNN: Title`
-2. **Status / Date / (optional Amended / Supersedes / Superseded)**
+2. **Status / Date / (optional Amended / Supersedes / Superseded / Sub-ADR of)**
 3. **Related tenets** — at least one. Bidirectional with `tenets.md`.
 4. **Context and Problem Statement** — free-form prose.
 5. **Decision Drivers** — bullet list of the forces shaping the
@@ -55,6 +55,7 @@ details as flowing prose with subsections).
 | `## More Information` (optional) | Replaced by maury's three custom sections (Build-order, Followups, Claude Code references) which serve the same role with project-specific structure |
 | (no equivalent) | **`## Related tenets`** — maury cross-references its 11 tenets explicitly |
 | (no equivalent) | **`**Amended:**`** field — mini-changelog convention for in-place amendments |
+| (no equivalent) | **Umbrella + sub-ADR pattern** — a large design may be split into an umbrella ADR (cross-cutting concerns) and one or more sub-ADRs (each owning one layer). Sub-ADRs carry a `**Sub-ADR of:** [ADR-NNNN](...)` field after the Date line; the umbrella's `Status` carries an `(umbrella; details split into sub-ADRs DATE)` suffix. Example: [ADR-0040](../adr/0040-render-pipeline.md) umbrella with [ADR-0046](../adr/0046-source-file-naming.md) / [ADR-0047](../adr/0047-render-target-surfaces.md) / [ADR-0048](../adr/0048-llm-condensation.md) sub-ADRs. |
 
 ## Differences from Nygard's original
 
