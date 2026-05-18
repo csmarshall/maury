@@ -22,11 +22,12 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury render` | ✅ shipped | Compose base + mode chain + rules sublayers + host-tagged sections → target dir. Standalone of `init`/`sync`. |
 | `maury sync` | 🟡 partially shipped | v0 slice: clones/pulls each repo in the host's manifest, renders, applies. **Drift detection not yet wired** ([ADR-0017](adr/0017-drift-detection-and-reconciliation.md) Phase 5.x); running on a real `~/.claude/` is hazardous until that lands. The `--check` flag is the safe way to inspect today. |
 | `maury rules trace` | ✅ shipped | Dry-run any text against the ruleset; shows which rule matched. |
-| `maury manifest validate` | ✅ shipped | Validate manifest schema. |
+| `maury manifest validate` | ✅ shipped | Validate manifest schema. Will be renamed to `maury agency validate` per [ADR-0040](adr/0040-render-pipeline.md); the current name remains the working alias. |
 | `maury manifest show` | ✅ shipped | Display manifest contents. |
 | `maury manifest resolve` | ⏳ planned | Interactive merge of concurrent manifest edits. Per [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md). |
 | `maury manifest upgrade-v1-to-v2` | ⏳ planned | One-shot manifest schema migration. Per [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md). |
-| `maury doctor` | ✅ shipped | Evaluate `~/.claude/CLAUDE.md` against the Anthropic best-practices rubric. Per [ADR-0011](adr/0011-anthropic-rubric-integration.md). |
+| `maury status` | ✅ shipped | Diagnostic snapshot of this host's maury state — host identity, identity baseline (ADR-0042), repos + git status, last render, drift counts, mining watermarks. JSON or text. Per the 2026-05-16 build. |
+| `maury doctor` | ✅ shipped | Evaluate `~/.claude/CLAUDE.md` against the Anthropic best-practices rubric, plus system-health rules (`baseline-missing`, `watermark-stale`) added 2026-05-18 per the two-pronged design call. Per [ADR-0011](adr/0011-anthropic-rubric-integration.md) + [ADR-0042](adr/0042-host-identity-guard.md) + [ADR-0043](adr/0043-incremental-mining.md). |
 | `maury mine` | 🟡 partially shipped | Transcript walker, LLM extractor, four-state crossref classification all shipped. **Run-branch generation per [ADR-0022](adr/0022-branch-per-mining-run.md) not yet wired** — current mining produces in-memory findings; the branch-with-commits flow is Phase 6 finalization. |
 | `maury review <run-id>` | ⏳ planned | Walk a mining run's commits with cherry-pick UI. Phase 7 per [ADR-0022](adr/0022-branch-per-mining-run.md). |
 | `maury promote --from --to` | ⏳ planned | Cross-repo promotion via curator. Phase 9 per [ADR-0009](adr/0009-promotion-only-cross-boundary.md). |
@@ -36,10 +37,11 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury verify-cc-contract` | ⏳ planned | Re-fetch cited Claude Code docs and diff against `docs/claude-code-snapshots/`. Drift detection for upstream documentation changes. |
 | `maury verify-cc-hooks` | ✅ shipped | Empirically verify the three load-bearing Claude Code hook behaviors (comment stripping, subprocess env, file-IO permissions) by spinning up an isolated workspace and invoking `claude -p` against it. Used 2026-05-07 to close out ADR-0023's "Empirical-test debt." |
 | `maury verify-cc-projects-dir` | ✅ shipped | Empirically verify the algorithm Claude Code uses to derive `~/.claude/projects/<X>/` from the cwd. Runs `claude -p` against a 14-case corpus (ASCII, punctuation, BMP non-ASCII, non-BMP emoji, plus a collision pair) and asserts `derive_project_dir()` predictions match observation. Promoted `cc-contract:project-directory-derivation` from ❓ to 🧪 on 2026-05-13. Cross-referenced against [anthropics/claude-code#54865](https://github.com/anthropics/claude-code/issues/54865). |
-| `maury verify-cc-hook-timing` | ✅ shipped | Empirically verify hook execution ordering, synchronicity, short-circuit-on-exit-2, and default-timeout behavior. Two probes: a combined four-hook ordering test + a sleep-bounded timeout test. Promoted `cc-contract:hook-execution-timing` from ❓ to 🧪 on 2026-05-13. Findings ("ordered fire-and-forget" — neither pure-parallel nor pure-sequential) contradict both upstream documented readings; resolves [anthropics/claude-code#57800](https://github.com/anthropics/claude-code/issues/57800)'s contradiction empirically. ADR-0023 design implications flagged in session-state.md. |
+| `maury verify-cc-hook-timing` | ✅ shipped | Empirically verify hook execution ordering, synchronicity, short-circuit-on-exit-2, and default-timeout behavior. Two probes: a combined four-hook ordering test + a sleep-bounded timeout test. Promoted `cc-contract:hook-execution-timing` from ❓ to 🧪 on 2026-05-13. Findings ("ordered fire-and-forget" — neither pure-parallel nor pure-sequential) contradict both upstream documented readings; resolves [anthropics/claude-code#57800](https://github.com/anthropics/claude-code/issues/57800)'s contradiction empirically. ADR-0023 amended 2026-05-14 to formalize eventually-consistent attribution. |
+| `maury verify-cc-transcript-schema` | ✅ shipped | Empirically verify the transcript JSONL line schema (fields maury's mining parser consumes — `type`, `message.role`, `message.content`, `sessionId`, `timestamp`). Pure analyzer + real-claude harness; reports two predicates (`all_lines_have_core_fields`, `message_bearing_lines_have_message_fields`). Promoted `cc-contract:transcript-jsonl-stability` from ❓ to 🧪 on 2026-05-18; the ❓ section is now empty. Per [ADR-0044](adr/0044-strict-transcript-parser-and-schema-lock.md). |
 | `maury subscribe <url>` | ⏳ planned (v1.1+) | Subscribe to a published profile (gap K). Per planned gap-K ADRs. |
 | `maury agency init` | ⏳ planned | Bootstrap a new agency: generate `agency_id` UUID, create the first `base` repo with the right marker. Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). |
-| `maury agency validate` | ⏳ planned | Validate marker-file integrity, sublayer-graph cycles, host-mode mismatches across an agency. Per [ADR-0040](adr/0040-render-pipeline.md). |
+| `maury agency validate` | ⏳ planned (rename of `manifest validate`) | When the marker-file schema replaces the v2 manifest, `maury agency validate` becomes the canonical command and `maury manifest validate` becomes a deprecation alias. Will also check marker-file integrity, sublayer-graph cycles, host-mode mismatches across an agency. Per [ADR-0040](adr/0040-render-pipeline.md). |
 | `maury mode bootstrap` | ⏳ planned | Register the current host into a specified mode (counterpart to deregister). Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). |
 | `maury mode deregister` | ⏳ planned | Retire the host's current mode registration (counterpart to bootstrap). Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). Mode change is two operations: deregister then bootstrap, never a single atomic switch. |
 | `maury repo init` | ⏳ planned | Initialize a new `rules` repo with marker + semver baseline + post-commit tagging hook. Per [ADR-0038](adr/0038-precept-acquisition-model.md). |
@@ -59,7 +61,11 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | Sync workflow (clone/pull/render/apply) | ✅ shipped | Phase 5 v0. Drift detection is Phase 5.x and not yet wired. |
 | `maury doctor` evaluator | ✅ shipped | Phase 2.5. |
 | Mining: transcript walk + LLM extraction + four-state crossref | ✅ shipped | Phase 6 a/b/c. Run-branch wiring (Phase 6 finalization) pending. |
-| Drift detection (`last-render.json` + reconcile) | ⏳ planned (Phase 5.x.a) | Module written on disk (`src/maury/drift.py`) but uncommitted; needs tests + CLI integration. |
+| Drift detection (`last-render.json` + reconcile) | 🟡 partially shipped | `src/maury/drift.py` module shipped; sync and reconcile commands integrate it; `maury reconcile`'s interactive prompter is the remaining piece (Phase 5.x.a). |
+| Host-identity guard | ✅ shipped | `host-identity.json` baseline + sync-time hex-check + `--confirm-identity-change` flag + `--reset` flag. Per [ADR-0042](adr/0042-host-identity-guard.md). 2026-05-15. |
+| Incremental mining | ✅ shipped | Per-project mtime watermarks (`last-mine.json`) + `--cwd`/`--full`/`--since` flags + cwd-derived default project. Per [ADR-0043](adr/0043-incremental-mining.md). 2026-05-15. |
+| `claude-maury-pending` Stop hook | ✅ shipped | Notifies user of pending captures at end of each turn. Per [ADR-0013 §5](adr/0013-active-in-session-capture.md). 2026-05-18. |
+| Pre-commit hook for `check-doc-links.py` | ✅ shipped | `.pre-commit-config.yaml`; contributors enable via `pip install pre-commit && pre-commit install`. 2026-05-18. |
 | Manifest merge tool + `maury manifest resolve` | ⏳ planned (Phase 5.x.b) | Per [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md). |
 | Active-session detection + profile switch | ⏳ planned (Phase 5.x.c) | Per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | Active in-session capture (Claude- + user-initiated) | ⏳ planned (v1 maury-status skill; v1.1 full pipeline) | Per [ADR-0013 amendment](adr/0013-active-in-session-capture.md). |
@@ -79,7 +85,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 |---|---|
 | README.md | ✅ shipped |
 | docs/tenets.md | ✅ shipped |
-| docs/concepts.md | ✅ shipped (nine core concepts + theoretical foundations) |
+| docs/concepts.md | ✅ shipped (ten core concepts + theoretical foundations; §10 drift+reconcile added 2026-05-18) |
 | docs/glossary.md | ✅ shipped (alphabetical quick-lookup, lifted out of concepts.md 2026-05-13) |
 | docs/elevator-pitch.md | ✅ shipped (two-minute flyby) |
 | docs/quickstart.md | ✅ shipped (≈5-minute try-without-committing walkthrough against `base-template/`) |
@@ -87,11 +93,13 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | docs/parallel-efforts.md | ✅ shipped (comparison vs. jean-claude / claude-diary / ccms / chezmoi / Anthropic-native; snapshot 2026-05-13) |
 | docs/workflow.md | ✅ shipped (4 user-journey diagrams, mermaid) |
 | docs/operations.md | ✅ shipped (8 per-command flowcharts, mermaid) |
-| docs/claude-code-contract.md | ✅ shipped (9 documented + 4 empirically verified + 2 assumed-but-unverified entries) |
+| docs/claude-code-contract.md | ✅ shipped (9 documented + 5 empirically verified + 0 assumed-but-unverified entries; ❓ section emptied 2026-05-18) |
 | docs/claude-code-snapshots/ | ✅ shipped (8 HTML snapshots, MANIFEST with sha256) |
+| docs/faq.md | ✅ shipped (9 evaluator-facing questions, each linked to the owning ADR) |
 | docs/adr/ (0001-0025) | ✅ shipped |
 | ADRs 0026 (mode-aware mining), 0027 (cross-mode promotion via shared root), 0028 (offline behavior), 0029 (maury-state layout contract), 0030 (manifest schema migrations), 0031 (self-update), 0032 (backup + DR), 0033 (`pr` repo mode), 0034 (published/subscribed profiles — use-case framing; mechanics superseded by 0037/0038) | ✅ shipped |
 | ADRs 0035 (audit log), 0036 (open-standards alignment), 0037 (layer taxonomy + repo discovery), 0038 (precept acquisition model), 0039 (bootstrap + host lifecycle), 0040 (render pipeline), 0041 (per-mode Anthropic credentials) | ✅ shipped |
+| ADRs 0042 (host-identity guard), 0043 (incremental mining), 0044 (strict transcript parser + schema lock — drafted proactively before drift) | ✅ shipped |
 | docs/patterns/team-upstream.md (gap K) | ✅ shipped |
 | docs/patterns/solo-dev.md | ✅ shipped (single-user mirror of team-upstream.md; recipe for the workstation+laptop+server case) |
 

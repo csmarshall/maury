@@ -22,6 +22,15 @@ For per-command operational detail (what happens *inside* each
 
 ## 1. Install + first-run bootstrap (per host)
 
+> **Schema-gap note.** The diagram below mixes shipping behavior with
+> target behavior. Today's CLI reads `.meta/manifest.json` (v2-flat
+> schema); the target schema is the distributed marker file
+> `.meta/maury-marker.json` per ADR-0030 + ADR-0037. The host-id
+> resolution shown reflects ADR-0039 step 8 (post-2026-05-14): the
+> locally-generated `~/.maury-host-id` is canonical; hostname fallback
+> is gone. Pre-2026-05-14 hosts still using the hostname-fallback
+> behavior have been migrated.
+
 ```mermaid
 flowchart TD
     Fresh([fresh host]) --> Pipx[install pipx<br/>per ADR-0018]
@@ -33,7 +42,7 @@ flowchart TD
     UV --> Avail
     Avail --> Init[maury init --from-dir REPO<br/>or --from-tarball for offline / air-gap]
     Init --> HostID[~/.maury-host-id created]
-    HostID --> Read[maury reads .meta/maury-marker.json<br/>identifies host: id-file or hostname fallback<br/>walks base + mode chain + sublayers<br/>renders to ~/.claude/]
+    HostID --> Read[maury reads .meta/manifest.json today<br/>marker-file .meta/maury-marker.json is the target schema per ADR-0030 + ADR-0037<br/>identifies host: id-file only post-2026-05-14 per ADR-0039 step 8<br/>walks base + mode chain + sublayers<br/>renders to ~/.claude/]
     Read --> Populated[~/.claude/ populated]
     Populated --> Reg{host<br/>registered?}
     Reg -->|yes| Assigned[render with host's assigned mode]

@@ -44,10 +44,15 @@ The risk mode-switching introduces is real and specific:
 Claude Code's session boundary is otherwise clean. Per [Claude
 Code's "How Claude Code works" documentation][cc-how-it-works] and
 the [memory documentation][cc-memory], a fresh `claude` invocation
-reads `~/.claude/CLAUDE.md`, `~/.claude/memory/MEMORY.md`,
-`settings.json`, hooks, agents, and skills at startup, and "each
-new session starts with a fresh context window, without the
-conversation history from previous sessions." Per [the sessions
+reads `~/.claude/CLAUDE.md`, `settings.json`, hooks, agents, skills,
+and auto-memory at startup, and "each new session starts with a
+fresh context window, without the conversation history from
+previous sessions." (Auto-memory lives at
+`~/.claude/projects/<project>/memory/` per the 2026-05-13
+correction in
+[`cc-contract:past-transcripts-not-auto-loaded`](../claude-code-contract.md#cc-contractpast-transcripts-not-auto-loaded);
+older versions of this ADR cited the obsolete
+`~/.claude/memory/MEMORY.md` path.) Per [the sessions
 documentation][cc-sessions], past transcripts at
 `~/.claude/projects/<project>/<session-id>.jsonl` are data-at-rest
 and are **not** auto-loaded into a new session unless the user

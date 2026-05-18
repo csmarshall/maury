@@ -118,9 +118,11 @@ diff stays scannable.
   conversational ancestor.
 - [`docs/adr/0000-template.md`](../adr/0000-template.md) — the
   template every new ADR copies from.
-- [`CLAUDE.local.md`](../../CLAUDE.local.md) (gitignored) — project
-  rules including the doc-review checklist that enforces this
-  format.
+- Maintainer-side project rules + doc-review checklist that
+  enforces this format live alongside the repo in maintainer
+  notes (not in the public repo). The discipline materializes
+  in the doc-review agent prompts the maintainer spawns on every
+  ADR-touching commit.
 
 [madr]: https://adr.github.io/madr/
 [nygard]: https://www.cognitect.com/blog/2011/11/15/documenting-architecture-decisions

@@ -183,7 +183,7 @@ For everything else:
   `base-template/` seed. **Start here if you want to see maury
   do something concrete before reading the design docs.**
 - [`docs/concepts.md`](docs/concepts.md) — canonical definitions
-  (nine core concepts + theoretical foundations). The depth
+  (ten core concepts + theoretical foundations). The depth
   source when the elevator pitch leaves you wanting more.
 - [`docs/glossary.md`](docs/glossary.md) — quick-lookup glossary
   of every term maury uses, each linked to its longer explanation.

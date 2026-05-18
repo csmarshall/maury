@@ -201,7 +201,7 @@ a maury-side JSON Schema describing the verified transcript
 shape, a strict parser that validates each line against it,
 and a compatibility list pinning known-good Claude Code
 versions. Phased rollout — strict mode is opt-in via
-`--strict` in v1.1, then default in v1.2 once shadow-mode
+`--strict` in v1, then default in v1.1+ once shadow-mode
 data justifies the flip.
 
 Re-run the verifier after every Claude Code minor-version

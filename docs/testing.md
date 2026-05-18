@@ -53,8 +53,8 @@ A phase is not "complete" until:
 1. All new code is covered per the module-level expectations above.
 2. `uv run pytest tests/unit/ -v` passes 100%.
 3. The phase's CLI commands have been smoke-tested manually (and ideally via CliRunner).
-4. The session-state.md test count reflects the new total.
-5. (Once we have CI) the CI run is green.
+4. The CI run (per `.github/workflows/ci.yml`) is green on the
+   pushed commit.
 
 ## Test code is product code
 

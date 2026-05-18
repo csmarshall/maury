@@ -250,6 +250,7 @@ but you bootstrap from your existing base repo:
 
 ```sh
 # On the new laptop:
+# (URL is the canonical source until namespace transfer; expect it to move.)
 git clone https://github.com/csmarshall/maury.git
 cd maury && uv sync
 

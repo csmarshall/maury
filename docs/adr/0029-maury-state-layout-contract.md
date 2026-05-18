@@ -171,10 +171,14 @@ For clarity by negative space:
   [`cc-contract:past-transcripts-not-auto-loaded`](../claude-code-contract.md#cc-contractpast-transcripts-not-auto-loaded).
   Maury reads these but doesn't write into the `projects/`
   tree.
-- **Auto-memory** — `~/.claude/memory/MEMORY.md` per
-  [`cc-contract:startup-files-loaded`](../claude-code-contract.md#cc-contractstartup-files-loaded).
-  Loaded by Claude Code at session start; rendered by maury
-  like CLAUDE.md.
+- **Auto-memory** — per the 2026-05-13 correction in
+  [`cc-contract:past-transcripts-not-auto-loaded`](../claude-code-contract.md#cc-contractpast-transcripts-not-auto-loaded),
+  Claude Code's auto-memory lives at
+  `~/.claude/projects/<project>/memory/`, not the previously-assumed
+  `~/.claude/memory/MEMORY.md`. Loaded by Claude Code at session
+  start within the matching project; not rendered by maury today
+  (maury's render output is `~/.claude/`-rooted; the project-scoped
+  memory dir is read-only from maury's perspective).
 - **The `~/.maury-host-id` file** — lives at user `$HOME`, not
   under `~/.claude/`, per [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)
   and [ADR-0018](0018-minimum-bootstrap-ux.md). Identity, not

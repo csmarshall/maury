@@ -48,13 +48,16 @@ flowchart TD
     A0020 --> A0022[0022 Branch-per-mining-run]
     A0022 --> A0026[0026 Mode-aware mining]
     A0026 --> A0027a[0027 Cross-context promotion]
+    A0027a --> A0043[0043 Incremental mining]
+    A0043 --> A0044[0044 Strict transcript parser]
 
     P3 --> A0017[0017 Drift detection]
     A0017 --> A0023[0023 Hooks lifecycle]
     A0023 --> A0024[0024 Manifest concurrency]
     A0024 --> A0025[0025 Mode switching]
     A0025 --> A0029[0029 maury-state layout]
-    A0029 --> A0035[0035 Audit log]
+    A0029 --> A0042[0042 Host-identity guard]
+    A0042 --> A0035[0035 Audit log]
 
     P4 --> A0009[0009 Promotion-only flow]
     A0009 --> A0016[0016 Pluggable backends]
@@ -136,7 +139,7 @@ The mining → proposal → review pipeline.
 | [`0027`](0027-cross-context-promotion-via-shared-root.md) | Promotion graph IS the inheritance graph; only ancestor-direction promotion |
 | [`0041`](0041-per-mode-anthropic-credentials.md) | Mining crosses a network boundary; mode trust contract gains a third (operational) piece: per-mode Anthropic credentials |
 | [`0043`](0043-incremental-mining.md) | Per-project mining watermark; `derive_project_dir()` promoted to load-bearing production code |
-| [`0044`](0044-strict-transcript-parser-and-schema-lock.md) | Strict transcript parser + JSON Schema lock; phased rollout (`--strict` opt-in in v1.1, default in v1.2) |
+| [`0044`](0044-strict-transcript-parser-and-schema-lock.md) | Strict transcript parser + JSON Schema lock; phased rollout (`--strict` opt-in in v1, default in v1.1+) |
 
 Superseded breadcrumb: [`0021`](0021-promotion-changelog.md)
 (do not implement).

@@ -734,6 +734,48 @@ regardless of `repo_mode` (because rendering only reads); the
 contribution flow and advisory firing depend entirely on
 `repo_mode`.
 
+### 10. Drift and reconcile
+
+> *Drift is "the file on disk doesn't match what maury last
+> rendered." Reconcile is the act of choosing what to do about it.*
+
+`~/.claude/CLAUDE.md` (and everything else maury renders) is a
+**derived artifact** — generated from base + mode chain + rules
+sublayers + host overlay. Maury records what it just wrote in
+[`last-render.json`](glossary.md) (path + sha256 per file). Three
+things can diverge from that record between syncs:
+
+- **Modified** — the file is still there but its sha256 differs.
+  Probably a hand-edit; possibly an external tool wrote to it.
+- **Missing** — `last-render.json` says it was there, on disk it
+  isn't. Probably a delete; possibly a path got renamed.
+- **Untracked** — a file appeared under a managed directory
+  (`agents/`, `skills/`, `bin/`, etc.) that wasn't in the last
+  render. New content from somewhere, possibly Claude-write.
+
+These three together are **drift**. `maury status` reports counts
+of each. `maury sync` refuses on drift by default (Tenet 1: never
+silently overwrite user intent), pointing the user at one of three
+flows from [ADR-0017](adr/0017-drift-detection-and-reconciliation.md):
+`--force` (clobber and continue), `--non-interactive` (refuse and
+exit), or run **`maury reconcile`** to resolve interactively.
+
+**Reconcile** is the menu (per ADR-0017's five reconcile actions
+for hand-edits): for each drifted path, choose **adopt** (capture
+as a proposal for review), **adapt** (capture but normalize through
+the rubric first), **mark-managed** (tell maury "stop rendering this
+on this host"), **revert** (restore to last-rendered; the hand-edit
+is lost, with an audit-log entry), or **skip-once** (leave as-is
+for this sync; will resurface as drift next time). A second
+shorter menu exists for Claude-write drift (when the
+`claude-writes.jsonl` log per [ADR-0023 §6](adr/0023-hook-installation-and-tool-resolution.md)
+attributes the change to a `Write`/`Edit`/`MultiEdit` tool call).
+
+The split between *detecting* drift (mechanical, deterministic via
+sha256) and *reconciling* it (judgment, with the user as arbiter
+per Tenet 5) is intentional. Detection runs at every sync;
+reconciliation is the explicit response to a detected drift.
+
 ---
 
 ## What maury assumes about its substrate
