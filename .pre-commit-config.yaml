@@ -1,0 +1,42 @@
+# Pre-commit hook configuration for maury.
+#
+# Currently scoped to one hook: `check-doc-links.py`, which catches
+# broken internal markdown links before they land. The hook fires on
+# any `.md` change in a commit. Per CLAUDE.local.md §"Internal-link
+# integrity is the project's responsibility": this is the automated
+# enforcement of the rule.
+#
+# Other quality-bar checks (ruff, mypy, pytest) are intentionally
+# NOT wired here — they're slow enough to slow commits noticeably,
+# and CI catches them. The link-checker is fast (~50ms) and catches
+# a specific class of bug (silent rot from heading-rename slug drift)
+# that's hard to notice without it.
+#
+# Setup for contributors:
+#
+#   pip install pre-commit
+#   pre-commit install
+#
+# To run all hooks manually against all files:
+#
+#   pre-commit run --all-files
+#
+# To bypass for one commit (discouraged): `git commit --no-verify`.
+
+repos:
+  - repo: local
+    hooks:
+      - id: check-doc-links
+        name: check internal markdown link integrity
+        description: >-
+          Walks every .md under docs/ plus README.md, parses inline and
+          reference-style markdown links, and reports any pointing at a
+          missing file or an unresolved heading anchor (GitHub slugifier
+          rules). External http(s)/mailto links are deliberately skipped.
+        entry: python3 scripts/check-doc-links.py
+        language: system
+        # Trigger on any markdown change. The script walks all docs on
+        # every invocation (no per-file mode), so we deliberately don't
+        # pass filenames.
+        files: '\.md$'
+        pass_filenames: false
