@@ -275,6 +275,7 @@ buckets under `~/.claude/projects/`).
 | `maury verify-cc-hooks` | `cc-contract:hook-shell-execution`, `cc-contract:hook-subprocess-path`, `cc-contract:hook-file-io-permissions` | 2026-05-07 (claude 2.1.x, macOS) |
 | `maury verify-cc-projects-dir` | `cc-contract:project-directory-derivation` | 2026-05-13 (claude 2.1.140, macOS) |
 | `maury verify-cc-hook-timing` | `cc-contract:hook-execution-timing` | 2026-05-13 (claude 2.1.141, macOS) |
+| `maury verify-cc-transcript-schema` | `cc-contract:transcript-jsonl-stability` | 2026-05-18 (claude 2.1.142, macOS) |
 
 ### `cc-contract:hook-shell-execution`
 
@@ -487,50 +488,93 @@ this verification didn't see.
 
 ---
 
+### `cc-contract:transcript-jsonl-stability`
+
+**Verified 2026-05-18** (claude 2.1.142, macOS 14.5). Promoted
+from ❓ to 🧪 by `maury verify-cc-transcript-schema`.
+
+**Behavior observed:** Claude Code writes one transcript JSONL
+file per session at
+`~/.claude/projects/<project>/<session-uuid>.jsonl`, where
+`<project>` is the directory name derived from the cwd per
+[`cc-contract:project-directory-derivation`](#cc-contractproject-directory-derivation).
+Lines are heterogeneous — the schema is wider than "one JSON
+object per message." Six distinct `type` values observed in a
+single ten-line transcript:
+
+| `type` value | Has `message`? | Notes |
+|---|---|---|
+| `user` | yes | Mining-consumed. `message.role="user"`, `message.content` is a string OR list-of-text-blocks. |
+| `assistant` | yes | Mining-consumed for cross-reference. `message.role="assistant"`, content is a list-of-text-blocks. |
+| `queue-operation` | no | Housekeeping. Records `enqueue`/`dequeue` operations on Claude Code's internal queue. |
+| `attachment` | no | Carries an `attachment.{type, ...}` field — e.g., `deferred_tools_delta`, `skill_listing`. |
+| `ai-title` | no | Auto-generated session title. |
+| `last-prompt` | no | Caches the most recent user prompt. |
+
+**Core fields present on every line** regardless of type:
+`type`, `sessionId`, `timestamp`. These are the universal floor
+and the verifier's `all_lines_have_core_fields` predicate enforces
+their presence.
+
+**Message-bearing types** (`user`, `assistant`) additionally
+carry `message.{role, content}`. The verifier's
+`message_bearing_lines_have_message_fields` predicate is the
+load-bearing one for maury — failure means the next `maury mine`
+run will break.
+
+**Implication for maury:** Mining is **safe at the current
+schema**. `walk_user_messages_in_file` filters by `type == "user"`
+which cleanly skips the four housekeeping types; the fields it
+consumes from message-bearing lines (`message.role`,
+`message.content`, `sessionId`, `timestamp`) were all present
+in the empirical run.
+
+**Caveat:** "Stable" here means "stable at claude 2.1.142, in
+the specific shape maury reads." Anthropic publishes no schema
+guarantee, so this entry could drop back to ❓ on a future
+Claude Code release that:
+- Renames `type`, `sessionId`, or `timestamp` (would trip the
+  core-fields predicate).
+- Changes the user-message role string, drops `message.role`,
+  or restructures `message.content` (would trip the message-
+  fields predicate or the mining-compatible count).
+- Adds a new housekeeping type that mining shouldn't filter as
+  user (would not be caught by the verifier; mining-time tests
+  would notice noise).
+
+**📌 Tracked upstream:**
+- [anthropics/claude-code #53516](https://github.com/anthropics/claude-code/issues/53516)
+  — *open feature request*. Stable, documented schema for the
+  JSONL line types, filed by the `aims.dashboard` VS Code
+  extension team (whose use case overlaps maury's). Resolution
+  would promote this entry to ✅. Maury commented downstream-
+  voice on 2026-05-13
+  ([comment](https://github.com/anthropics/claude-code/issues/53516#issuecomment-4445681110))
+  enumerating the consumed fields.
+- [anthropics/claude-code #49400](https://github.com/anthropics/claude-code/issues/49400)
+  — *open docs request*. Publish the JSONL session schema —
+  the same ask from a different angle.
+
+**Re-verification:** `maury verify-cc-transcript-schema --format
+json`. Run after any Claude Code minor-version bump that might
+touch transcript output. The verifier costs one `claude -p`
+invocation (subscription quota) + one transient project dir
+under `~/.claude/projects/`.
+
+**Risk level:** Medium. The empirical lock-in means we'll catch
+schema drift the next time we run the verifier. Until then,
+silent drift between maury and a future Claude Code release is
+the failure mode.
+
+---
+
 ## ❓ Assumed but unverified behaviors
 
 These behaviors are NOT documented by Anthropic AND we have not
 empirically tested them. Each entry says what breaks if the
 assumption is wrong.
 
-
-
-### `cc-contract:transcript-jsonl-stability`
-
-**Assumption:** The transcript JSONL line schema (one JSON
-object per message, with documented fields) is stable across
-Claude Code versions, or at least version transitions are
-documented.
-
-**What breaks if wrong:** Mining breaks silently on a CC update.
-A user upgrades Claude Code, runs `maury mine`, and gets an
-error or worse (silently mis-parsed transcripts).
-
-**📌 Tracked upstream:**
-- [anthropics/claude-code #53516](https://github.com/anthropics/claude-code/issues/53516)
-  — *open feature request*. Stable, documented schema for
-  `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl` line types,
-  filed by the `aims.dashboard` VS Code extension team (whose
-  use case overlaps maury's: file-watch transcripts they
-  didn't spawn). Resolution would promote this entry to ✅.
-  Maury added a downstream-voice comment on 2026-05-13
-  ([comment](https://github.com/anthropics/claude-code/issues/53516#issuecomment-4445681110))
-  enumerating the fields the maury mining reader consumes.
-- [anthropics/claude-code #49400](https://github.com/anthropics/claude-code/issues/49400)
-  — *open docs request*. Publish the JSONL session schema —
-  the same ask from a different angle.
-
-**Maury contribution:** add a maury-use-case voice to the
-existing issues (#53516 + #49400) rather than filing a third
-duplicate. More downstream voices = higher upstream priority.
-
-**Fallback:** Pin maury to a tested CC version range; bump
-deliberately. Long-term: ship a maury-side JSON Schema lock
-+ strict parser so a silent CC schema drift fails loud
-instead of silently mis-parsing.
-
-**Risk level:** Medium-long-term. Won't bite us today; will
-absolutely bite us in a year if we don't watch for it.
+*(All previously listed entries have been promoted to 🧪.)*
 
 ---
 
