@@ -84,6 +84,12 @@ from maury.reconcile import (
     reconcile as run_reconcile,
 )
 from maury.render import RenderError, apply_render, render
+from maury.repo_init import (
+    DEFAULT_INITIAL_TAG,
+    DEFAULT_PR_TARGET,
+    RepoInitError,
+    init_repo,
+)
 from maury.rules import (
     RuleParseError,
     classify_fragment,
@@ -3236,3 +3242,126 @@ def uninstall(target_dir: Path, home_dir: Path, skip_confirm: bool) -> None:
     if summary.host_id_removed:
         click.echo(f"deleted {home_dir}/.maury-host-id")
     click.echo("repo clones (if any) were not touched; delete them manually if desired.")
+
+
+# ---- repo group ----------------------------------------------------------
+
+
+@main.group()
+def repo() -> None:
+    """Manage individual rules repos (per ADR-0038)."""
+
+
+@repo.command("init")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=".",
+    show_default=True,
+    help="Path to the rules repo (will be created if absent).",
+)
+@click.option(
+    "--agency-id",
+    "agency_id",
+    required=True,
+    help="UUID of the agency this rules repo belongs to (or is being created by).",
+)
+@click.option(
+    "--owner",
+    "owners",
+    multiple=True,
+    required=True,
+    help="Identity (email/handle) of a PR-reviewing owner. Pass multiple --owner flags for >1.",
+)
+@click.option(
+    "--pr-target",
+    "pr_target",
+    default=DEFAULT_PR_TARGET,
+    show_default=True,
+    help="Where to submit PRs (branch name or fork URL).",
+)
+@click.option(
+    "--pr-standards",
+    "pr_standards",
+    default=None,
+    help="Free-form description of PR requirements.",
+)
+@click.option(
+    "--min-reviewers",
+    "min_reviewers",
+    type=int,
+    default=None,
+    help="Reviewer-count expectation (informational; not enforced by maury).",
+)
+@click.option(
+    "--initial-tag",
+    "initial_tag",
+    default=DEFAULT_INITIAL_TAG,
+    show_default=True,
+    help="Initial semver tag to create. Pass an empty string to skip tagging.",
+)
+@click.option(
+    "--no-git-init",
+    "no_git_init",
+    is_flag=True,
+    help="Don't run `git init`, commit, or tag. Useful for offline scaffolding.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Re-initialize even if .meta/maury-marker.json or .meta/maury-governance.json exist.",
+)
+def repo_init(
+    target_dir: Path,
+    agency_id: str,
+    owners: tuple[str, ...],
+    pr_target: str,
+    pr_standards: str | None,
+    min_reviewers: int | None,
+    initial_tag: str,
+    no_git_init: bool,
+    force: bool,
+) -> None:
+    """Initialize a new rules repo per ADR-0038.
+
+    Writes .meta/maury-governance.json (owners, pr_target) and
+    .meta/maury-marker.json (layer=rules, agency_id), then creates
+    the initial semver tag.
+
+    Idempotent: refuses if either .meta file exists. --force overwrites.
+    """
+    target_dir = target_dir.expanduser().resolve()
+    initial_tag_val: str | None = initial_tag if initial_tag else None
+    try:
+        summary = init_repo(
+            target_dir=target_dir,
+            agency_id=agency_id,
+            owners=list(owners),
+            pr_target=pr_target,
+            pr_standards=pr_standards,
+            min_reviewers=min_reviewers,
+            initial_tag=initial_tag_val,
+            force=force,
+            git_init=not no_git_init,
+        )
+    except RepoInitError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo(f"initialized rules repo against agency {summary.agency_id}")
+    click.echo(
+        f"  governance: {summary.governance_path} (owners: {', '.join(summary.owners)}; pr_target: {summary.pr_target})"
+    )
+    click.echo(f"  marker: {summary.marker_path}")
+    if summary.initial_tag:
+        click.echo(f"  initial tag: {summary.initial_tag}")
+    elif summary.tag_already_existed:
+        click.echo(f"  initial tag: already present ({initial_tag})")
+    elif initial_tag_val is None:
+        click.echo("  initial tag: skipped (--initial-tag was empty)")
+    if summary.git_commit_sha:
+        click.echo(f"  commit: {summary.git_commit_sha[:12]}")
+    elif no_git_init:
+        click.echo("  git init: skipped (--no-git-init)")
+    if summary.force_used:
+        click.echo("  ⚠️ --force used: prior governance/marker overwritten.")
