@@ -45,7 +45,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury mode bootstrap` | ⏳ planned | Register the current host into a specified mode (counterpart to deregister). Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). |
 | `maury mode deregister` | ⏳ planned | Retire the host's current mode registration (counterpart to bootstrap). Per [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md). Mode change is two operations: deregister then bootstrap, never a single atomic switch. |
 | `maury repo init` | ⏳ planned | Initialize a new `rules` repo with marker + semver baseline + post-commit tagging hook. Per [ADR-0038](adr/0038-precept-acquisition-model.md). |
-| `maury uninstall` | ⏳ planned | Strip maury hooks/scripts/state from a host. Per [ADR-0023 §8](adr/0023-hook-installation-and-tool-resolution.md). |
+| `maury uninstall` | ✅ shipped 2026-05-18 | Strips `# maury-managed` hook entries from `settings.json`, deletes `~/.claude/bin/maury-*`, `~/.claude/maury-state/`, and `~/.maury-host-id`. User content (CLAUDE.md, hand-authored hooks, repo clones) left intact. Confirmation prompt unless `--yes`. Per [ADR-0023 §8](adr/0023-hook-installation-and-tool-resolution.md). |
 
 Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ planned for v1 · ⏳ (v1.1+) deferred
 

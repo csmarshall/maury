@@ -92,6 +92,7 @@ from maury.rules import (
 )
 from maury.sync import DRIFT_SCAN_DIRS, RepoSyncResult, SyncError
 from maury.sync import sync as run_sync
+from maury.uninstall import run_uninstall
 
 BANNER = r"""
   ┌──────────────────────────┐
@@ -3113,3 +3114,71 @@ def sessions_prune(target_dir: Path, max_age_hours: float, dry_run: bool) -> Non
     if result.pruned_session_ids:
         for sid in result.pruned_session_ids:
             click.echo(f"  - {sid}")
+
+
+# ---- uninstall command ----------------------------------------------------
+
+
+@main.command("uninstall")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory (typically ~/.claude).",
+)
+@click.option(
+    "--home",
+    "home_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~",
+    show_default=True,
+    help="Home directory containing ~/.maury-host-id (override for tests).",
+)
+@click.option(
+    "--yes",
+    "skip_confirm",
+    is_flag=True,
+    help="Skip the confirmation prompt (for scripting).",
+)
+def uninstall(target_dir: Path, home_dir: Path, skip_confirm: bool) -> None:
+    """Strip maury's footprint from this host (per ADR-0023 §8).
+
+    Removes:
+      1. maury-managed entries from ~/.claude/settings.json (hooks block).
+      2. ~/.claude/bin/maury-* scripts.
+      3. ~/.claude/maury-state/ (last-render.json, watermarks, etc).
+      4. ~/.maury-host-id.
+
+    Leaves alone:
+      - User-authored hooks in settings.json (anything without `# maury-managed`).
+      - User content in ~/.claude/CLAUDE.md / rules / skills / agents.
+      - Repo clones at the configured repos_root (delete manually if desired).
+      - The pip/uv-installed `maury` CLI itself (use `pipx uninstall maury`).
+    """
+    target_dir = target_dir.expanduser()
+    home_dir = home_dir.expanduser()
+
+    if not skip_confirm:
+        click.echo(f"This will strip maury's footprint from {target_dir} and remove {home_dir}/.maury-host-id.")
+        click.echo("User content (CLAUDE.md, hand-authored hooks, repo clones) will be left intact.")
+        if not click.confirm("Proceed?", default=False):
+            click.echo("cancelled.")
+            sys.exit(0)
+
+    summary = run_uninstall(target_dir=target_dir, home_dir=home_dir)
+
+    click.echo(
+        f"removed {summary.settings_hooks_removed} maury-managed hook(s); "
+        f"left {summary.settings_hooks_kept} user hook(s) intact"
+    )
+    if summary.bin_files_removed:
+        click.echo(f"deleted {len(summary.bin_files_removed)} maury script(s) from {target_dir}/bin/")
+    else:
+        click.echo(f"no maury scripts to delete under {target_dir}/bin/")
+    if summary.state_dir_removed:
+        click.echo(f"deleted {target_dir}/maury-state/")
+    if summary.host_id_removed:
+        click.echo(f"deleted {home_dir}/.maury-host-id")
+    click.echo("repo clones (if any) were not touched; delete them manually if desired.")
