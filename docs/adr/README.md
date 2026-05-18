@@ -36,7 +36,10 @@ flowchart TD
     A0002 --> A0019[0019 Inheritance semantics]
     A0019 --> A0003[0003 Per-host deploy keys]
     A0003 --> A0015[0015 Surrogate keys]
-    A0015 --> A0037[0037 Layer taxonomy + agency]
+    A0015 --> A0037[0037 Layer taxonomy + agency umbrella]
+    A0037 --> A0049[0049 Three-layer taxonomy]
+    A0037 --> A0050[0050 Agency identity]
+    A0037 --> A0051[0051 Marker file + distributed manifest]
     A0037 --> A0039a[0039 Bootstrap + host lifecycle]
     A0039a --> A0040a[0040 Render pipeline umbrella]
     A0040a --> A0046[0046 Source file naming]
@@ -126,7 +129,10 @@ manifest, render order. **Start here.**
 | [`0019`](0019-inheritance-semantics-refine-by-default.md) | How layers compose at render time (refinement-by-default, replacement-explicit) |
 | [`0003`](0003-per-host-deploy-keys.md) | Per-host SSH deploy keys as the access-enforcement primitive |
 | [`0015`](0015-surrogate-keys-for-hosts-and-profiles.md) | `host_<hex>` and `mode_<hex>` IDs (rename-safe identity) |
-| [`0037`](0037-layer-taxonomy-and-repo-discovery.md) | Three layer types (base/mode/rules), agency concept, distributed manifest, render order — **the structural foundation** |
+| [`0037`](0037-layer-taxonomy-and-repo-discovery.md) | Layer taxonomy + repo discovery umbrella — **the structural foundation** |
+| ↳ [`0049`](0049-layer-taxonomy.md) | Three-layer taxonomy (base/mode/rules), render order, override advisory |
+| ↳ [`0050`](0050-agency-identity.md) | Agency identity, `agency_id` UUID, membership vs provenance |
+| ↳ [`0051`](0051-marker-file-and-distributed-manifest.md) | `.meta/maury-marker.json`, distributed manifest, discovery contract, CLI surface |
 | [`0039`](0039-bootstrap-and-host-lifecycle.md) | Agency init, mode-scoped host identity, bootstrap flow |
 | [`0040`](0040-render-pipeline.md) | Render pipeline umbrella — **what maury reads, writes, and condenses** |
 | ↳ [`0046`](0046-source-file-naming.md) | Source file naming inside a layer repo (flat dotted-name tagging) |
@@ -266,7 +272,7 @@ status).
 - [`0034`](0034-published-subscribed-profiles.md) — Published/subscribed profiles (gap K part 2)
 - [`0035`](0035-audit-log.md) — Audit log (Phase 10)
 - [`0036`](0036-open-standards-alignment.md) — Cross-vendor open-standards alignment
-- [`0037`](0037-layer-taxonomy-and-repo-discovery.md) — Layer taxonomy (base/mode/rules), repo marker file, render order, distributed manifest
+- [`0037`](0037-layer-taxonomy-and-repo-discovery.md) — Layer taxonomy + repo discovery umbrella; cross-cutting concerns over the three sub-ADRs ([`0049`](0049-layer-taxonomy.md)/[`0050`](0050-agency-identity.md)/[`0051`](0051-marker-file-and-distributed-manifest.md))
 - [`0038`](0038-precept-acquisition-model.md) — Rules/precept acquisition, advisory lifecycle, semver versioning, `maury repo init`
 - [`0039`](0039-bootstrap-and-host-lifecycle.md) — Bootstrap flow, mode-scoped host identity, agency init, mode change process
 - [`0040`](0040-render-pipeline.md) — Render pipeline umbrella; `maury agency validate`; cross-cutting concerns over the three sub-ADRs below
@@ -278,6 +284,9 @@ status).
 - [`0046`](0046-source-file-naming.md) — Source file naming inside a layer repo; sub-ADR of [`0040`](0040-render-pipeline.md)
 - [`0047`](0047-render-target-surfaces.md) — Render target surfaces, routing principle, agent routing guidance; sub-ADR of [`0040`](0040-render-pipeline.md)
 - [`0048`](0048-llm-condensation.md) — LLM condensation pass, precept preservation; sub-ADR of [`0040`](0040-render-pipeline.md)
+- [`0049`](0049-layer-taxonomy.md) — Three-layer taxonomy (base/mode/rules), render order, override advisory; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
+- [`0050`](0050-agency-identity.md) — Agency identity, `agency_id` UUID, membership vs provenance; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
+- [`0051`](0051-marker-file-and-distributed-manifest.md) — `.meta/maury-marker.json`, distributed manifest, discovery contract, CLI surface; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 
 ---
 
