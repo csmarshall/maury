@@ -1177,3 +1177,385 @@ def run_hook_timing_harness(
         claude_stderr_excerpt_combined=stderr1,
         claude_stderr_excerpt_timeout=stderr2,
     )
+
+
+# =========================================================================
+# Transcript JSONL schema verifier (cc-contract:transcript-jsonl-stability)
+# =========================================================================
+#
+# Verifies that Claude Code's transcript JSONL line shape matches the
+# fields maury's mining parser depends on. The parser
+# (`maury.mining.walk_user_messages_in_file`) consumes:
+#
+#   - `type`         must be "user" for user-message events
+#   - `message.role` must be "user"
+#   - `message.content`  string OR list of content blocks with
+#                        `{"type": "text", "text": "..."}`
+#   - `sessionId`    informational (passed through to TranscriptMessage)
+#   - `timestamp`    informational (passed through to TranscriptMessage)
+#
+# Schema rot in any of these breaks mining silently. The verifier
+# spawns `claude -p` against a fresh test cwd, locates the resulting
+# JSONL under `~/.claude/projects/<derived>/`, and checks each line.
+
+
+# Required fields that must be present on every line maury cares about.
+# `message.role` and `message.content` are nested under `message`.
+TRANSCRIPT_REQUIRED_FIELDS = ("type", "message", "sessionId", "timestamp")
+
+# Per-line analyzer field flags. Populated by `analyze_transcript_jsonl`
+# and aggregated into TranscriptSchemaProbeResult.
+_TRANSCRIPT_FIELD_FLAGS = (
+    "type_present",
+    "message_present",
+    "session_id_present",
+    "timestamp_present",
+    "message_role_present",
+    "message_content_present",
+)
+
+
+@dataclass(frozen=True)
+class TranscriptLineAnalysis:
+    """Per-line analysis of one JSONL entry.
+
+    Captures shape facts the verifier reports. `parsed_json` is True
+    iff the line parsed as a JSON object; False for malformed lines
+    or non-object roots.
+    """
+
+    line_number: int  # 1-indexed for human messages
+    parsed_json: bool
+    type_value: str | None  # e.g., "user", "assistant", "system"
+    type_present: bool
+    message_present: bool
+    session_id_present: bool
+    timestamp_present: bool
+    message_role_present: bool
+    message_content_present: bool
+    content_shape: str  # "missing" | "string" | "list-of-text-blocks" | "list-mixed" | "list-empty" | "other"
+    raw_excerpt: str = ""  # first ~120 chars of the line, for forensic display
+
+
+@dataclass(frozen=True)
+class TranscriptSchemaProbeResult:
+    """Aggregate of one JSONL file's analysis.
+
+    `passed` means the probe produced usable measurement data —
+    specifically, that the file existed and at least one line parsed
+    as JSON. Whether the observed schema matches maury's mining
+    assumptions is captured in `findings` for the maintainer.
+    """
+
+    jsonl_path: Path
+    line_count: int
+    parsed_json_count: int
+    by_type: dict[str, int]  # event type → count
+    content_shapes: dict[str, int]  # content_shape → count
+    user_messages_total: int  # lines with type=user
+    user_messages_mining_compatible: int  # lines mining would accept
+    sample_lines: tuple[TranscriptLineAnalysis, ...]  # first ~5 lines for human display
+    passed: bool
+    detail: str
+    findings: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TranscriptSchemaHarnessReport:
+    """Aggregate result for `maury verify-cc-transcript-schema`."""
+
+    workspace: Path
+    claude_present: bool
+    claude_version: str | None
+    probes: tuple[TranscriptSchemaProbeResult, ...]
+    claude_returncode: int | None
+    claude_stderr_excerpt: str
+
+    @property
+    def passed(self) -> bool:
+        """All probes produced usable measurement data."""
+        return self.claude_present and bool(self.probes) and all(p.passed for p in self.probes)
+
+
+def analyze_transcript_jsonl(text: str) -> TranscriptSchemaProbeResult:
+    """Parse one transcript JSONL file's contents and report field-presence
+    statistics. Pure function — no I/O. Real `claude -p` runs happen in
+    `run_transcript_schema_harness`; this helper exists separately so it
+    can be unit-tested without claude installed."""
+    lines = text.splitlines()
+    by_type: dict[str, int] = {}
+    content_shapes: dict[str, int] = {}
+    parsed_json_count = 0
+    user_messages_total = 0
+    user_messages_mining_compatible = 0
+    sample_lines: list[TranscriptLineAnalysis] = []
+
+    for i, raw in enumerate(lines, start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        excerpt = line[:120]
+
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            if len(sample_lines) < 5:
+                sample_lines.append(
+                    TranscriptLineAnalysis(
+                        line_number=i,
+                        parsed_json=False,
+                        type_value=None,
+                        type_present=False,
+                        message_present=False,
+                        session_id_present=False,
+                        timestamp_present=False,
+                        message_role_present=False,
+                        message_content_present=False,
+                        content_shape="missing",
+                        raw_excerpt=excerpt,
+                    )
+                )
+            continue
+        if not isinstance(event, dict):
+            continue
+        parsed_json_count += 1
+
+        type_value = event.get("type")
+        type_str = type_value if isinstance(type_value, str) else None
+        if type_str is not None:
+            by_type[type_str] = by_type.get(type_str, 0) + 1
+
+        msg_obj = event.get("message")
+        msg_dict = msg_obj if isinstance(msg_obj, dict) else {}
+
+        content = msg_dict.get("content")
+        content_shape = _classify_content_shape(content)
+        content_shapes[content_shape] = content_shapes.get(content_shape, 0) + 1
+
+        analysis = TranscriptLineAnalysis(
+            line_number=i,
+            parsed_json=True,
+            type_value=type_str,
+            type_present="type" in event,
+            message_present="message" in event,
+            session_id_present="sessionId" in event,
+            timestamp_present="timestamp" in event,
+            message_role_present="role" in msg_dict,
+            message_content_present="content" in msg_dict,
+            content_shape=content_shape,
+            raw_excerpt=excerpt,
+        )
+        if len(sample_lines) < 5:
+            sample_lines.append(analysis)
+
+        if type_str == "user":
+            user_messages_total += 1
+            role = msg_dict.get("role")
+            # Mining-compatible = same predicate as walk_user_messages_in_file:
+            # type==user, message.role==user, content extractable to non-empty text.
+            content_text = _extract_content_text_for_check(content)
+            if role == "user" and content_text:
+                user_messages_mining_compatible += 1
+
+    # passed = the file existed AND at least one line parsed as JSON.
+    # Interpretation of whether schema MATCHES expectations is in the
+    # findings map (per the same convention as the hook-timing verifier).
+    passed = parsed_json_count > 0
+
+    findings: dict[str, object] = {
+        "by_type": by_type,
+        "content_shapes": content_shapes,
+        "user_messages_total": user_messages_total,
+        "user_messages_mining_compatible": user_messages_mining_compatible,
+        "all_lines_have_required_fields": _all_lines_have_required_fields(sample_lines),
+    }
+
+    detail = (
+        f"{parsed_json_count} JSON line(s); {user_messages_total} user message(s); "
+        f"{user_messages_mining_compatible} mining-compatible"
+    )
+
+    return TranscriptSchemaProbeResult(
+        jsonl_path=Path(""),  # filled in by the harness; pure analyzer doesn't know
+        line_count=len(lines),
+        parsed_json_count=parsed_json_count,
+        by_type=by_type,
+        content_shapes=content_shapes,
+        user_messages_total=user_messages_total,
+        user_messages_mining_compatible=user_messages_mining_compatible,
+        sample_lines=tuple(sample_lines),
+        passed=passed,
+        detail=detail,
+        findings=findings,
+    )
+
+
+def _classify_content_shape(content: object) -> str:
+    """Categorize `message.content` per maury mining's expectations.
+
+    Mirrors `_extract_content_text` in `mining/transcripts.py`. Returns
+    one of: missing, string, list-of-text-blocks, list-mixed,
+    list-empty, other.
+    """
+    if content is None:
+        return "missing"
+    if isinstance(content, str):
+        return "string"
+    if isinstance(content, list):
+        if not content:
+            return "list-empty"
+        text_blocks = sum(1 for b in content if isinstance(b, dict) and b.get("type") == "text")
+        non_text_blocks = sum(1 for b in content if isinstance(b, dict) and b.get("type") != "text")
+        if text_blocks > 0 and non_text_blocks == 0:
+            return "list-of-text-blocks"
+        return "list-mixed"
+    return "other"
+
+
+def _extract_content_text_for_check(content: object) -> str | None:
+    """Mirror of mining/transcripts._extract_content_text — used here
+    only for compatibility checks, deliberately duplicated so the
+    verifier doesn't import mining (kept independent)."""
+    if isinstance(content, str):
+        return content or None
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        joined = "\n".join(p for p in parts if p)
+        return joined or None
+    return None
+
+
+def _all_lines_have_required_fields(samples: list[TranscriptLineAnalysis]) -> bool:
+    """True iff every sampled JSON-parsed line has all of TRANSCRIPT_REQUIRED_FIELDS
+    present. A False here is the load-bearing signal for "schema may have drifted."
+    """
+    return all(
+        s.type_present and s.message_present and s.session_id_present and s.timestamp_present
+        for s in samples
+        if s.parsed_json
+    )
+
+
+def run_transcript_schema_harness(
+    *,
+    workspace: Path | None = None,
+    claude_prompt: str = "Reply with the single word: ok",
+    timeout: float = 60.0,
+    cleanup_workspace: bool = False,
+) -> TranscriptSchemaHarnessReport:
+    """Run the transcript-schema verifier end-to-end.
+
+    Spawns `claude -p <prompt>` in a fresh test cwd, locates the JSONL
+    file Claude Code wrote under `~/.claude/projects/<derived>/`, and
+    analyzes its lines. Returns a TranscriptSchemaHarnessReport per
+    JSONL file produced (typically one).
+
+    Args:
+        workspace: temp cwd for the test run. If None, a fresh tempdir
+            is used. (`cleanup_workspace=False` keeps it for forensics.)
+        claude_prompt: prompt sent to `claude -p`. Trivial — we just
+            need claude to produce a transcript.
+        timeout: seconds to wait for the claude invocation.
+        cleanup_workspace: if True, remove the workspace dir after.
+    """
+    workspace_created = workspace is None
+    workspace = workspace or Path(tempfile.mkdtemp(prefix="maury-transcript-"))
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    version = _claude_version()
+    if version is None:
+        return TranscriptSchemaHarnessReport(
+            workspace=workspace,
+            claude_present=False,
+            claude_version=None,
+            probes=(),
+            claude_returncode=None,
+            claude_stderr_excerpt="claude not on PATH",
+        )
+
+    pre_snapshot = _snapshot_projects_dir()
+    rc: int | None = None
+    stderr_excerpt = ""
+    try:
+        proc = subprocess.run(
+            ["claude", "-p", claude_prompt],
+            cwd=str(workspace.resolve()),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        rc = proc.returncode
+        if proc.stderr:
+            stderr_excerpt = proc.stderr[-400:]
+    except subprocess.TimeoutExpired:
+        rc = None
+        stderr_excerpt = f"claude -p timed out after {timeout}s"
+    except OSError as e:
+        rc = None
+        stderr_excerpt = f"claude invocation OSError: {e}"
+
+    post_snapshot = _snapshot_projects_dir()
+    new_project_dirs = post_snapshot - pre_snapshot
+
+    probes: list[TranscriptSchemaProbeResult] = []
+    pd = _projects_dir()
+    for dir_name in sorted(new_project_dirs):
+        project_path = pd / dir_name
+        if not project_path.is_dir():
+            continue
+        for jsonl in sorted(project_path.rglob("*.jsonl")):
+            try:
+                text = jsonl.read_text(encoding="utf-8")
+            except OSError as e:
+                probes.append(
+                    TranscriptSchemaProbeResult(
+                        jsonl_path=jsonl,
+                        line_count=0,
+                        parsed_json_count=0,
+                        by_type={},
+                        content_shapes={},
+                        user_messages_total=0,
+                        user_messages_mining_compatible=0,
+                        sample_lines=(),
+                        passed=False,
+                        detail=f"could not read JSONL: {e}",
+                        findings={"error": str(e)},
+                    )
+                )
+                continue
+            analysis = analyze_transcript_jsonl(text)
+            # Re-emit with the real path
+            probes.append(
+                TranscriptSchemaProbeResult(
+                    jsonl_path=jsonl,
+                    line_count=analysis.line_count,
+                    parsed_json_count=analysis.parsed_json_count,
+                    by_type=analysis.by_type,
+                    content_shapes=analysis.content_shapes,
+                    user_messages_total=analysis.user_messages_total,
+                    user_messages_mining_compatible=analysis.user_messages_mining_compatible,
+                    sample_lines=analysis.sample_lines,
+                    passed=analysis.passed,
+                    detail=analysis.detail,
+                    findings=analysis.findings,
+                )
+            )
+
+    if cleanup_workspace and workspace_created:
+        with contextlib.suppress(OSError):
+            shutil.rmtree(workspace)
+
+    return TranscriptSchemaHarnessReport(
+        workspace=workspace,
+        claude_present=True,
+        claude_version=version,
+        probes=tuple(probes),
+        claude_returncode=rc,
+        claude_stderr_excerpt=stderr_excerpt,
+    )

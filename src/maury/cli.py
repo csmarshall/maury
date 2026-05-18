@@ -21,9 +21,11 @@ from maury.empirical_tests import (
     HarnessReport,
     HookTimingHarnessReport,
     ProjectDirHarnessReport,
+    TranscriptSchemaHarnessReport,
     claude_present,
     run_hook_timing_harness,
     run_project_dir_harness,
+    run_transcript_schema_harness,
 )
 from maury.empirical_tests import run as run_empirical
 from maury.host_identity import (
@@ -2704,4 +2706,183 @@ def verify_cc_hook_timing(
     )
 
     _print_hook_timing_report(report, output_format)
+    sys.exit(0 if report.passed else 1)
+
+
+# ---- verify-cc-transcript-schema command -------------------------------
+
+
+def _print_transcript_schema_report(report: TranscriptSchemaHarnessReport, output_format: str) -> None:
+    """Pretty-print or JSON-print a TranscriptSchemaHarnessReport.
+
+    Per the verify-cc-hook-timing convention: text mode is for humans
+    skimming the result, JSON mode for `--format json` consumers (CI,
+    scripts) that want every field.
+    """
+    if output_format == "json":
+        payload = {
+            "workspace": str(report.workspace),
+            "claude_present": report.claude_present,
+            "claude_version": report.claude_version,
+            "passed": report.passed,
+            "claude_returncode": report.claude_returncode,
+            "claude_stderr_excerpt": report.claude_stderr_excerpt,
+            "probes": [
+                {
+                    "jsonl_path": str(p.jsonl_path),
+                    "line_count": p.line_count,
+                    "parsed_json_count": p.parsed_json_count,
+                    "by_type": p.by_type,
+                    "content_shapes": p.content_shapes,
+                    "user_messages_total": p.user_messages_total,
+                    "user_messages_mining_compatible": p.user_messages_mining_compatible,
+                    "passed": p.passed,
+                    "detail": p.detail,
+                    "findings": p.findings,
+                    "sample_lines": [
+                        {
+                            "line_number": s.line_number,
+                            "parsed_json": s.parsed_json,
+                            "type_value": s.type_value,
+                            "type_present": s.type_present,
+                            "message_present": s.message_present,
+                            "session_id_present": s.session_id_present,
+                            "timestamp_present": s.timestamp_present,
+                            "message_role_present": s.message_role_present,
+                            "message_content_present": s.message_content_present,
+                            "content_shape": s.content_shape,
+                            "raw_excerpt": s.raw_excerpt,
+                        }
+                        for s in p.sample_lines
+                    ],
+                }
+                for p in report.probes
+            ],
+        }
+        click.echo(json.dumps(payload, indent=2, default=str))
+        return
+
+    if not report.claude_present:
+        click.echo("❌ `claude` not found on PATH.")
+        click.echo("\nThis verifier requires Claude Code installed and authenticated.")
+        return
+
+    click.echo(f"claude version: {report.claude_version}")
+    click.echo(f"workspace:      {report.workspace}")
+    if report.claude_returncode is not None and report.claude_returncode != 0:
+        click.echo(f"⚠️  claude exited with returncode {report.claude_returncode}")
+        if report.claude_stderr_excerpt:
+            click.echo(f"   stderr (last 400 chars): {report.claude_stderr_excerpt}")
+    click.echo()
+
+    if not report.probes:
+        click.echo("(no transcript JSONL files were produced — claude may have failed before writing one)")
+        return
+
+    for p in report.probes:
+        mark = "✅" if p.passed else "❌"
+        click.echo(f"{mark} {p.jsonl_path}")
+        click.echo(f"   {p.detail}")
+        click.echo(f"   by type:        {p.by_type}")
+        click.echo(f"   content shapes: {p.content_shapes}")
+        click.echo(f"   mining-compatible user messages: {p.user_messages_mining_compatible}/{p.user_messages_total}")
+        all_required = p.findings.get("all_lines_have_required_fields")
+        if all_required is True:
+            click.echo("   required fields (type, message, sessionId, timestamp): ✓ present on all sampled lines")
+        else:
+            click.echo("   required fields (type, message, sessionId, timestamp): ⚠️ missing on some lines")
+        click.echo()
+
+    click.echo(
+        "Each probe SUCCEEDS if claude was invoked and the transcript JSONL\n"
+        "file parsed. Whether the observed schema MATCHES maury's mining\n"
+        "expectations is in the per-probe `findings` map. Maintainer reads\n"
+        "findings, decides whether to promote `cc-contract:transcript-jsonl-\n"
+        "stability` from ❓ to 🧪.\n"
+        "\n"
+        "See `cc-contract:transcript-jsonl-stability` in docs/claude-code-\n"
+        "contract.md and anthropics/claude-code#53516, #49400 for the\n"
+        "upstream feature requests this verifier supports."
+    )
+
+
+@main.command("verify-cc-transcript-schema")
+@click.option(
+    "--workspace",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Persist the probe workspace at this path (default: a fresh temp dir, kept for inspection).",
+)
+@click.option(
+    "--prompt",
+    "claude_prompt",
+    type=str,
+    default="Reply with the single word: ok",
+    show_default=True,
+    help="Prompt to send to `claude -p`. Should reliably trigger at least one assistant response so a JSONL gets written.",
+)
+@click.option(
+    "--timeout",
+    type=float,
+    default=60.0,
+    show_default=True,
+    help="Seconds wall-clock cap on the claude -p invocation.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Only check whether `claude` is present on PATH; don't run the harness.",
+)
+def verify_cc_transcript_schema(
+    workspace: Path | None,
+    claude_prompt: str,
+    timeout: float,
+    output_format: str,
+    check_only: bool,
+) -> None:
+    """Verify Claude Code's transcript JSONL line schema empirically.
+
+    Spawns `claude -p <prompt>` in a fresh test cwd, locates the
+    resulting JSONL under `~/.claude/projects/<derived>/`, and
+    analyzes each line against the fields maury's mining parser
+    consumes (`type`, `message.role`, `message.content`, `sessionId`,
+    `timestamp`).
+
+    Probes SUCCEED if claude was invoked and the JSONL file parsed.
+    Whether the schema MATCHES maury's mining expectations is reported
+    in per-probe findings (`by_type`, `content_shapes`,
+    `user_messages_mining_compatible`,
+    `all_lines_have_required_fields`).
+
+    Background: `cc-contract:transcript-jsonl-stability` is still ❓
+    (the third unresolved entry). Two upstream feature requests
+    (anthropics/claude-code#53516, #49400) ask Anthropic to publish a
+    stable, documented schema. Until they ship docs, this verifier is
+    the regression signal — re-run after every Claude Code minor bump
+    that might touch transcript output.
+
+    Exit code: 0 if all probes produced usable data, 1 otherwise.
+    """
+    if check_only:
+        if claude_present():
+            click.echo("✅ `claude` is present on PATH.")
+            sys.exit(0)
+        else:
+            click.echo("❌ `claude` not found on PATH.")
+            sys.exit(1)
+
+    report = run_transcript_schema_harness(
+        workspace=workspace,
+        claude_prompt=claude_prompt,
+        timeout=timeout,
+    )
+
+    _print_transcript_schema_report(report, output_format)
     sys.exit(0 if report.passed else 1)
