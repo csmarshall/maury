@@ -9,6 +9,7 @@ behind not using the classification rule engine for this.
 
 from .checks import all_checks, run_all
 from .report import Finding, Report, Severity, render_json, render_text
+from .system_health import run_system_health_checks
 
 __all__ = [
     "Finding",
@@ -18,4 +19,5 @@ __all__ = [
     "render_json",
     "render_text",
     "run_all",
+    "run_system_health_checks",
 ]

@@ -15,7 +15,13 @@ from maury.bootstrap import bootstrap_host as run_bootstrap_host
 from maury.bootstrap import init as run_init
 from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
-from maury.doctor import Report, render_json, render_text, run_all
+from maury.doctor import (
+    Report,
+    render_json,
+    render_text,
+    run_all,
+    run_system_health_checks,
+)
 from maury.drift import DriftEntry, detect_drift, read_last_render
 from maury.empirical_tests import (
     HarnessReport,
@@ -2214,19 +2220,41 @@ _DEFAULT_CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"
     help="Exit non-zero if findings at this severity or higher are present.",
 )
 def doctor(claude_md: Path, output_format: str, fail_on: str) -> None:
-    """Evaluate a CLAUDE.md against Anthropic's best-practices rubric.
+    """Evaluate a CLAUDE.md against Anthropic's best-practices rubric,
+    plus system-health checks on this host's maury-state.
 
-    Rubric source: https://code.claude.com/docs/en/best-practices
+    Content rules evaluate `--file` against Anthropic's rubric:
+      https://code.claude.com/docs/en/best-practices
+
+    System-health rules (added 2026-05-18) check `~/.claude/maury-state/`
+    for transition states `maury status` also surfaces but that CI
+    pipelines wouldn't otherwise catch — baseline-missing-with-host-id
+    (ADR-0042 pre-amendment upgrade case) and mining-watermark-stale
+    (ADR-0043 algorithm-version bump).
     """
     # ADR-0042 identity guard. Doctor evaluates content scoped to this
     # host's mode-registration; if the host_id was edited, the content
     # under `~/.claude/` may belong to a different mode and a "clean"
     # doctor result would be misleading. Guard against the default
     # target (`~/.claude/`).
-    _enforce_identity_guard(target_dir=Path.home() / ".claude")
+    target_dir = Path.home() / ".claude"
+    _enforce_identity_guard(target_dir=target_dir)
 
     text = claude_md.read_text(encoding="utf-8")
     findings = run_all(text, source_path=str(claude_md))
+
+    # Per the 2026-05-18 doctor expansion (Charles's "both" pick on
+    # the design call): system-health rules contribute to the same
+    # findings list. severity is unified; `--fail-on` aggregates over
+    # content + system-health.
+    from maury.bootstrap.init_cmd import current_host_id_file
+
+    findings.extend(
+        run_system_health_checks(
+            target_dir=target_dir,
+            host_id_file=current_host_id_file(),
+        )
+    )
 
     report = Report(
         source_path=str(claude_md),

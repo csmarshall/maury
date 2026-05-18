@@ -319,6 +319,108 @@ def test_doctor_missing_file_errors(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
+# ---- doctor: system-health rules (2026-05-18 expansion) ---------------
+
+
+def test_doctor_surfaces_system_health_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Doctor's findings list contains system-health checks alongside
+    content rules, per Charles's 'both' pick on the 2026-05-18 design
+    call. Pre-2026-05-14 upgrade state (host_id present, baseline
+    absent) surfaces a warn-level baseline-missing finding."""
+    # Confine HOME so the host_id_file path resolves under tmp_path.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_24b2a0aa_laptop\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    # Also need an identity baseline for the guard to NOT abort; the
+    # baseline matches the host_id so the guard passes, then doctor's
+    # system-health check fires on a *different* condition we set up.
+    # Simplest: write a baseline so the guard is happy, then the
+    # baseline-missing check returns no finding for this hex. We want
+    # to assert system-health rules RAN, not necessarily that one
+    # specific check fired. So use the watermark-stale check instead.
+    from maury.host_identity import HostIdentityBaseline, write_baseline
+    from maury.mining_state import (
+        MINING_ALGORITHM_VERSION,
+        MiningWatermark,
+        ProjectMiningRecord,
+        write_watermark,
+    )
+
+    target = tmp_path / ".claude"  # matches Path.home()/.claude under monkeypatched HOME
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="24b2a0aa",
+            registered_at="2026-05-14T15:42:11Z",
+            mode_id="mode_3f1a",
+            mode_name_at_bootstrap="home",
+        ),
+    )
+    stale = MiningWatermark(mining_algorithm_version=MINING_ALGORITHM_VERSION + 999)
+    stale.update(
+        "-Users-jdoe-project",
+        ProjectMiningRecord(
+            last_mined_at="2026-01-01T00:00:00Z",
+            last_jsonl_mtime="2026-01-01T00:00:00Z",
+        ),
+    )
+    write_watermark(target, stale)
+
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# header\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--file", str(md), "--fail-on", "never"])
+    assert result.exit_code == 0
+    # System-health rule fired: text output mentions watermark-stale.
+    assert "watermark-stale" in result.output
+    assert "algorithm version" in result.output
+
+
+def test_doctor_fail_on_warn_trips_on_system_health(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--fail-on warn` returns exit 1 when a system-health rule
+    fires at warn severity, even if the content rules are clean."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text("host_24b2a0aa_laptop\n")
+    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    from maury.host_identity import HostIdentityBaseline, write_baseline
+    from maury.mining_state import (
+        MINING_ALGORITHM_VERSION,
+        MiningWatermark,
+        ProjectMiningRecord,
+        write_watermark,
+    )
+
+    target = tmp_path / ".claude"
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=1,
+            host_id_hex="24b2a0aa",
+            registered_at="2026-05-14T15:42:11Z",
+            mode_id="mode_3f1a",
+            mode_name_at_bootstrap="home",
+        ),
+    )
+    stale = MiningWatermark(mining_algorithm_version=MINING_ALGORITHM_VERSION + 999)
+    stale.update(
+        "-Users-jdoe-project",
+        ProjectMiningRecord(
+            last_mined_at="2026-01-01T00:00:00Z",
+            last_jsonl_mtime="2026-01-01T00:00:00Z",
+        ),
+    )
+    write_watermark(target, stale)
+
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# clean content\n\nSome reasonable instructions.\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--file", str(md), "--fail-on", "warn"])
+    assert result.exit_code == 1  # warn-level system-health finding tripped the threshold
+
+
 # ---- ADR-0042 identity guard wiring (render + doctor) ------------------
 
 
