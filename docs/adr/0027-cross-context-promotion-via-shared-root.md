@@ -1,9 +1,18 @@
 # ADR-0027: Cross-context promotion via shared inheritance root
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0045](0045-cross-trust-boundary-promotion.md) (2026-05-18)
 **Date:** 2026-05-07
 **Amended:**
   - 2026-05-11 — "profile" and "context" (in the layer-type sense) renamed to "mode" per ADR-0037. Cross-mode promotion mechanics are unchanged.
+
+> **Superseded.** This ADR's graph constraint
+> (`is_valid_promotion_target`, inheritance-edge-only promotion,
+> LCA-suggestion error messages) is now consolidated with
+> [ADR-0009](0009-promotion-only-cross-boundary.md)'s mechanics
+> layer into [ADR-0045: Cross-trust-boundary promotion](0045-cross-trust-boundary-promotion.md).
+> The design described below is preserved as historical record
+> of the graph-constraint layer. Read ADR-0045 for the canonical,
+> currently-accepted decision.
 
 ## Related tenets
 

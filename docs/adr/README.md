@@ -47,8 +47,8 @@ flowchart TD
     A0008 --> A0020[0020 Two mining modes]
     A0020 --> A0022[0022 Branch-per-mining-run]
     A0022 --> A0026[0026 Mode-aware mining]
-    A0026 --> A0027a[0027 Cross-context promotion]
-    A0027a --> A0043[0043 Incremental mining]
+    A0026 --> A0045a[0045 Cross-trust-boundary promotion]
+    A0045a --> A0043[0043 Incremental mining]
     A0043 --> A0044[0044 Strict transcript parser]
 
     P3 --> A0017[0017 Drift detection]
@@ -59,10 +59,9 @@ flowchart TD
     A0029 --> A0042[0042 Host-identity guard]
     A0042 --> A0035[0035 Audit log]
 
-    P4 --> A0009[0009 Promotion-only flow]
-    A0009 --> A0016[0016 Pluggable backends]
-    A0016 --> A0027b[0027 Cross-context promotion]
-    A0027b --> A0033[0033 pr repo mode]
+    P4 --> A0045[0045 Cross-trust-boundary promotion]
+    A0045 --> A0016[0016 Pluggable backends]
+    A0016 --> A0033[0033 pr repo mode]
     A0033 --> A0034[0034 Published/subscribed]
     A0034 --> A0038[0038 Precept acquisition]
 
@@ -85,16 +84,25 @@ flowchart TD
     Note0021["0021 — SUPERSEDED<br/>(do not implement;<br/>design-pivot breadcrumb)"]
     A0022 -.->|design pivot from| Note0021
 
+    Note0009_0027["0009 + 0027 — SUPERSEDED<br/>(consolidated into 0045;<br/>read 0045 instead)"]
+    A0045 -.->|consolidates| Note0009_0027
+
     Note0014["0014 — v1.1 deferred<br/>(host-local secrets)"]
 
     classDef superseded fill:#ffe0b2,stroke:#e65100,color:#333
     classDef deferred fill:#e1f5fe,stroke:#01579b,color:#333
     class Note0021 superseded
+    class Note0009_0027 superseded
     class Note0014 deferred
 ```
 
 > ADR-0021 is preserved as a breadcrumb of the proposal-queue
 > design pivot to ADR-0022; do not implement.
+>
+> ADR-0009 and ADR-0027 are preserved as breadcrumbs of the
+> separate mechanics/graph-constraint layers that
+> [ADR-0045](0045-cross-trust-boundary-promotion.md) now
+> consolidates; read 0045 for the canonical decision.
 >
 > ADR-0014 (host-local secrets) is v1.1-deferred. Design is in
 > place; no implementation in v1.
@@ -136,7 +144,7 @@ The mining → proposal → review pipeline.
 | [`0020`](0020-two-mining-modes-bulk-and-incremental.md) | Bulk + incremental modes; four-state cross-reference taxonomy |
 | [`0022`](0022-branch-per-mining-run.md) | Mining run = branch; finding = commit; rationale in trailers; **supersedes 0021** |
 | [`0026`](0026-profile-aware-mining.md) | Session-to-profile linkage; bucketize findings by source profile |
-| [`0027`](0027-cross-context-promotion-via-shared-root.md) | Promotion graph IS the inheritance graph; only ancestor-direction promotion |
+| [`0045`](0045-cross-trust-boundary-promotion.md) | Cross-trust-boundary promotion — mechanics + inheritance-graph constraint. **Supersedes 0009 and 0027.** |
 | [`0041`](0041-per-mode-anthropic-credentials.md) | Mining crosses a network boundary; mode trust contract gains a third (operational) piece: per-mode Anthropic credentials |
 | [`0043`](0043-incremental-mining.md) | Per-project mining watermark; `derive_project_dir()` promoted to load-bearing production code |
 | [`0044`](0044-strict-transcript-parser-and-schema-lock.md) | Strict transcript parser + JSON Schema lock; phased rollout (`--strict` opt-in in v1, default in v1.1+) |
@@ -166,9 +174,8 @@ team-published rules repos.
 
 | Read | About |
 |---|---|
-| [`0009`](0009-promotion-only-cross-boundary.md) | Cross-trust-boundary promotion mechanics (proposal queue, curator review) |
+| [`0045`](0045-cross-trust-boundary-promotion.md) | Cross-trust-boundary promotion — mechanics (proposal queue, curator review) + inheritance-graph constraint (no lateral cross-mode). **Supersedes 0009 and 0027.** |
 | [`0016`](0016-pluggable-repo-backends.md) | Per-repo backend adapter; git-substrate-only post-amendment |
-| [`0027`](0027-cross-context-promotion-via-shared-root.md) | Inheritance graph constraint on promotion (no lateral cross-mode) |
 | [`0033`](0033-pr-repo-mode.md) | `pr` repo mode — third value alongside `ro`/`rw` |
 | [`0034`](0034-published-subscribed-profiles.md) | Curator publishes; engineers subscribe; contribute back via PR |
 | [`0038`](0038-precept-acquisition-model.md) | Rules acquisition, governance metadata, advisory lifecycle, semver versioning — **the canonical shared-rules reference** |
@@ -225,7 +232,7 @@ status).
 - [`0006`](0006-capability-probe-hook-abstraction.md) — Capability probe + hook abstraction
 - [`0007`](0007-python-with-uv.md) — Python with uv, including FreeBSD
 - [`0008`](0008-claude-diary-reference.md) — Reimplement mining; claude-diary as design reference
-- [`0009`](0009-promotion-only-cross-boundary.md) — Promotion-only flow for cross-boundary updates
+- [`0009`](0009-promotion-only-cross-boundary.md) — **SUPERSEDED by 0045** — Promotion-only flow for cross-boundary updates
 - [`0010`](0010-all-three-pillars-v1.md) — All three pillars in v1
 - [`0011`](0011-anthropic-rubric-integration.md) — Anthropic rubric integration (`maury doctor`)
 - [`0012`](0012-llm-backend.md) — LLM backend (`claude -p` default, SDK opt-in)
@@ -243,7 +250,7 @@ status).
 - [`0024`](0024-manifest-concurrency-inclusive-merge.md) — Manifest concurrency and inclusive structured merge
 - [`0025`](0025-profile-switching-session-safeguards.md) — Profile switching with session-boundary safeguards
 - [`0026`](0026-profile-aware-mining.md) — Profile-aware mining
-- [`0027`](0027-cross-context-promotion-via-shared-root.md) — Cross-context promotion via shared inheritance root
+- [`0027`](0027-cross-context-promotion-via-shared-root.md) — **SUPERSEDED by 0045** — Cross-context promotion via shared inheritance root
 - [`0028`](0028-offline-behavior.md) — Offline behavior
 - [`0029`](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` layout contract
 - [`0030`](0030-manifest-schema-migrations.md) — Manifest schema migrations
@@ -258,6 +265,10 @@ status).
 - [`0039`](0039-bootstrap-and-host-lifecycle.md) — Bootstrap flow, mode-scoped host identity, agency init, mode change process
 - [`0040`](0040-render-pipeline.md) — Render pipeline: source file naming, full target surface, LLM condensation, agent routing guidance, `maury agency validate`
 - [`0041`](0041-per-mode-anthropic-credentials.md) — Per-mode Anthropic credentials and the LLM trust boundary (operational discipline for mode isolation across mining + LLM calls)
+- [`0042`](0042-host-identity-guard.md) — Host-identity guard at sync time (hex-change detection + `--confirm-identity-change`)
+- [`0043`](0043-incremental-mining.md) — Per-project mining watermark with `derive_project_dir()` algorithm
+- [`0044`](0044-strict-transcript-parser-and-schema-lock.md) — Strict transcript parser + JSON Schema lock (phased rollout)
+- [`0045`](0045-cross-trust-boundary-promotion.md) — Cross-trust-boundary promotion (mechanics + graph constraint); **supersedes 0009 + 0027**
 
 ---
 

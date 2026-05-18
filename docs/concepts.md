@@ -516,17 +516,22 @@ A finding in `work:client-acme` CANNOT be promoted directly to
 to go through `work` (the shared parent) or `base` (the shared
 root).
 
-> **What ADR-0009 covers vs. what ADR-0027 adds:**
-> [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
-> establishes the *cross-trust-boundary promotion mechanics* —
-> the proposal queue, curator review, audit trail.
-> [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md)
-> adds the *mode-tree constraint* on top: promotion can only
-> flow along tree edges (or shared-root paths), so lateral
-> cross-mode promotion is forbidden by the graph itself, not
-> just by the curator's discretion. The two compose: ADR-0009
-> says "how" promotion happens; ADR-0027 says "where in the
-> graph it's permitted to happen."
+> **What ADR-0045 covers:**
+> [ADR-0045](adr/0045-cross-trust-boundary-promotion.md)
+> consolidates two layers of the promotion design that previously
+> lived in separate ADRs (now superseded):
+>
+> - **Mechanics** — proposal queue, curator review, audit trail,
+>   no source-host feedback channel (formerly
+>   [ADR-0009](adr/0009-promotion-only-cross-boundary.md)).
+> - **Graph constraint** — promotion follows mode-tree edges only;
+>   lateral cross-mode promotion is forbidden by the graph itself,
+>   not just by curator discretion (formerly
+>   [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md)).
+>
+> The two layers compose: the mechanics say "how" promotion
+> happens, the constraint says "where in the graph it's permitted
+> to happen."
 
 ### 6. Layer (at render time)
 
@@ -795,7 +800,7 @@ level, not at the implementation level:
 | **Content-addressing via SHA** | `last-render.json` records SHA per file (per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md)); `Content-Hash:` trailer is the dedup primitive (per [ADR-0022](adr/0022-branch-per-mining-run.md)); commit SHAs are themselves promotion-lineage references (`Promoted-From: <repo>@<sha>`). |
 | **Three-way merge** | Marker concurrency resolution (per [ADR-0024](adr/0024-manifest-concurrency-inclusive-merge.md)) leans on git's stock 3-way merge as the substrate that the structured-merge tool composes with. |
 | **Distributed model with deploy-key access** | Per-host trust boundaries (per [ADR-0002](adr/0002-repo-per-trust-boundary.md), [ADR-0003](adr/0003-per-host-deploy-keys.md)) — independent push/pull cycles, no central coordinator, server-side enforcement of "this host can read/write these repos." |
-| **Cherry-pick across repos** | Cross-trust-boundary promotion (per [ADR-0009](adr/0009-promotion-only-cross-boundary.md)) is `git cherry-pick` from source repo onto destination repo's branch. |
+| **Cherry-pick across repos** | Cross-trust-boundary promotion (per [ADR-0045](adr/0045-cross-trust-boundary-promotion.md)) is `git cherry-pick` from source repo onto destination repo's branch. |
 | **PR mechanism (via the host's git provider)** | `pr` repo mode (per [ADR-0033](adr/0033-pr-repo-mode.md)) routes contributions through the provider's PR/MR review flow. |
 
 **What "git-compatible" means:** any system that implements the
@@ -920,7 +925,7 @@ If the same pattern should apply to personal projects too:
   - Step 2: a curator host with write access to both
     `mode-work` (read) and `maury-base` (write) cross-promotes
     it. Per
-    [ADR-0009](adr/0009-promotion-only-cross-boundary.md).
+    [ADR-0045](adr/0045-cross-trust-boundary-promotion.md).
 
 ---
 

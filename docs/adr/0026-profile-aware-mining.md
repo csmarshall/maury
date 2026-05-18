@@ -176,9 +176,9 @@ Source-Mode: mode_a3f9...
 Source-Mode-Name: personal
 ```
 
-The promotion review (ADR-0027 — planned) uses these to enforce
-the inheritance-graph constraint on which target profiles are
-valid for the proposal.
+The promotion review ([ADR-0045](0045-cross-trust-boundary-promotion.md)
+— planned) uses these to enforce the inheritance-graph constraint
+on which target modes are valid for the proposal.
 
 ### Cross-host case (multi-host mining)
 
@@ -223,7 +223,7 @@ tag.
   who want to surface findings across profiles (e.g., post-hoc
   realizing "I had a great workflow tip in personal that should
   apply to work too" — surface it, route it through cross-context
-  promotion per ADR-0027).
+  promotion per [ADR-0045](0045-cross-trust-boundary-promotion.md)).
 - **Two new state files:** `session-history.jsonl` (durable) and
   the existing `active-sessions.jsonl` (transient). Naming is
   parallel to make the distinction obvious.

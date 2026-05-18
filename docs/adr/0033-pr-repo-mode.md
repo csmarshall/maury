@@ -151,7 +151,7 @@ step diverges by mode:
 |---|---|
 | `rw` | `git merge` the review branch into main (default), or push and let the user open a PR (optional). |
 | `pr` | **Push the review branch + open a PR via `gh pr create`.** Prints the PR URL for the user to follow. The curator reviews on GitHub and merges there. |
-| `ro` | **Refuse to start.** A `ro`-mode repo accepts no contributions; the run-branch can be reviewed locally but has nowhere to land. Maury surfaces the available paths: cross-boundary promotion (per [ADR-0009](0009-promotion-only-cross-boundary.md)) if applicable, or just discarding the run. |
+| `ro` | **Refuse to start.** A `ro`-mode repo accepts no contributions; the run-branch can be reviewed locally but has nowhere to land. Maury surfaces the available paths: cross-boundary promotion (per [ADR-0045](0045-cross-trust-boundary-promotion.md)) if applicable, or just discarding the run. |
 
 The PR body (auto-generated) includes:
 
@@ -164,9 +164,9 @@ The PR body (auto-generated) includes:
 
 ### Distinction from cross-boundary promotion
 
-[ADR-0009](0009-promotion-only-cross-boundary.md) covers
+[ADR-0045](0045-cross-trust-boundary-promotion.md) covers
 *cross-trust-boundary* promotion — content flowing between
-repos the user has different access on. ADR-0009's mechanism
+repos the user has different access on. ADR-0045's mechanism
 is a curator host with rw on both repos cherry-picking
 across.
 
@@ -174,7 +174,7 @@ across.
 the same trust boundary; it just goes through PR-review
 instead of direct push. The user could (separately) cross-
 promote a PR-merged change to a different trust boundary via
-the ADR-0009 flow.
+the ADR-0045 flow.
 
 The two compose naturally: a finding from a `pr`-mode team
 repo could be promoted to `base` (a different trust
@@ -234,7 +234,7 @@ real changes.
   First user of ADR-0030's per-version-upgrade machinery.
 - **`maury review` gains a per-mode terminal step.** Bounded
   conditional in the review flow; ~30 LOC.
-- **Distinction from ADR-0009 stays clear.** `pr` mode is
+- **Distinction from ADR-0045 stays clear.** `pr` mode is
   intra-trust-boundary; cross-boundary promotion is across
   trust boundaries. The two compose without overlap.
 

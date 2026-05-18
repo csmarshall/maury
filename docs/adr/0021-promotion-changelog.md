@@ -38,7 +38,7 @@ of the design pivot; do not implement.
 ## Context
 
 Today, when a rule is promoted from a profile-scoped repo into base
-(per [ADR-0009](0009-promotion-only-cross-boundary.md)), the only
+(per [ADR-0045](0045-cross-trust-boundary-promotion.md)), the only
 record of *why* is whatever the curator typed at `git commit` time.
 Once the proposal file is deleted post-promotion, the rule sits in
 `CLAUDE.md` or `rules.yaml` with no link back to the conversation
@@ -90,7 +90,7 @@ state, and curator note for matching rules.
 ## Consequences
 
 - **Auditable across repos.** Cross-boundary promotion (work → base
-  per [ADR-0009](0009-promotion-only-cross-boundary.md)) leaves a
+  per [ADR-0045](0045-cross-trust-boundary-promotion.md)) leaves a
   record on both sides — the work repo's audit log records "exported
   as proposal X", the base repo's changelog records "accepted from
   work repo as rule Y". A base rule can be traced back to the

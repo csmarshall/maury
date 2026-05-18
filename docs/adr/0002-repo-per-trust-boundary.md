@@ -95,8 +95,8 @@ For the project owner's likely use:
 
 Per-host deploy keys (per [ADR-0003](0003-per-host-deploy-keys.md))
 provide the per-repo access control; cross-repo content movement
-goes through the promotion flow ([ADR-0009](0009-promotion-only-cross-boundary.md))
-constrained by the inheritance graph ([ADR-0027](0027-cross-context-promotion-via-shared-root.md)).
+goes through the promotion flow constrained by the inheritance
+graph, both specified in [ADR-0045](0045-cross-trust-boundary-promotion.md).
 
 ### Consequences
 

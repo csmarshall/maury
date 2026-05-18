@@ -121,7 +121,7 @@ Maury serves this directly:
 - **Cross-boundary contributions** (a useful insight from a
   client-engagement mode that belongs in the team base) are routed
   via the promotion flow
-  ([ADR-0009](docs/adr/0009-promotion-only-cross-boundary.md)),
+  ([ADR-0045](docs/adr/0045-cross-trust-boundary-promotion.md)),
   not direct pushes — an engineer holding `rw` on their own
   client-engagement repo still has only `ro` or `pr` on the shared
   team base, so the boundary holds.

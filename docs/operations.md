@@ -183,7 +183,7 @@ flowchart TD
 ## `maury promote --from --to`
 
 Cross-repo promotion (e.g., work → base). Curator host has rw on
-both. Per [ADR-0009](adr/0009-promotion-only-cross-boundary.md) +
+both. Per [ADR-0045](adr/0045-cross-trust-boundary-promotion.md) +
 ADR-0022.
 
 ```mermaid

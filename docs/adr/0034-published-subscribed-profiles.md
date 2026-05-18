@@ -174,8 +174,8 @@ produces a finding she thinks belongs in the team profile
 
 1. During `maury review`, sets the `scope_hint` to
    `team-engineering` (her parent profile per
-   [ADR-0027](0027-cross-context-promotion-via-shared-root.md)).
-2. ADR-0027's graph check passes (team-engineering is an
+   [ADR-0045](0045-cross-trust-boundary-promotion.md)).
+2. ADR-0045's graph check passes (team-engineering is an
    ancestor of alice-engineering).
 3. ADR-0033's `pr`-mode terminal step kicks in: maury pushes
    the review branch to the team repo and opens a PR via
@@ -287,7 +287,7 @@ team-policy choice, not maury's responsibility.
   subscribe with friction-low setup (`maury subscribe <url>`).
 - **The inheritance graph extends naturally to subscribed
   profiles.** Engineer's personal profile extends the team
-  profile; ADR-0019 refinement applies; ADR-0027 promotion
+  profile; ADR-0019 refinement applies; ADR-0045 promotion
   graph works the same way.
 - **Multi-user maury is partially in scope** (subscribers +
   curators) but small teams of curators only — large-curator-
@@ -327,7 +327,7 @@ Phase 5+ — depends on:
 
 - [ADR-0033](0033-pr-repo-mode.md)'s `pr` mode shipping
   (manifest schema v3, review-flow conditional).
-- [ADR-0009](0009-promotion-only-cross-boundary.md)'s
+- [ADR-0045](0045-cross-trust-boundary-promotion.md)'s
   cross-boundary promotion (Phase 9) — though for the
   intra-team case (subscribed profile is in the inheritance
   chain), promotion goes via `pr` mode without needing

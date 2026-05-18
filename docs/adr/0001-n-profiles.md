@@ -117,7 +117,7 @@ profile can carry shared defaults that `acme-client` and
 - ❌ **Bad:** Makes "what's active right now?" ambiguous; trust-model
   decisions need a single context to evaluate.
 - ❌ **Bad:** Cross-host promotion (per
-  [ADR-0009](0009-promotion-only-cross-boundary.md)) becomes much
+  [ADR-0045](0045-cross-trust-boundary-promotion.md)) becomes much
   harder to specify when the active context is a set, not a singleton.
 
 </details>

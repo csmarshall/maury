@@ -210,7 +210,7 @@ this), maury caches the set keyed by main's HEAD SHA in
 #### Cross-repo promotion
 
 When the curator host has rw on both source and destination repos
-(per [ADR-0009](0009-promotion-only-cross-boundary.md)):
+(per [ADR-0045](0045-cross-trust-boundary-promotion.md)):
 
 ```
 maury promote --from <source-repo> --to <dest-repo>

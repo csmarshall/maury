@@ -118,7 +118,7 @@ flowchart TD
 
 ---
 
-## 4. Cross-host promotion (the ADR-0009 case)
+## 4. Cross-host promotion (the ADR-0045 case)
 
 ```mermaid
 flowchart TD

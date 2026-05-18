@@ -316,13 +316,13 @@ responsibility.
 - [ADR-0038](../adr/0038-precept-acquisition-model.md) —
   the rules-acquisition model, governance metadata, and
   override-advisory lifecycle.
-- [ADR-0009](../adr/0009-promotion-only-cross-boundary.md) —
-  for the cross-trust-boundary promotion case (when you want
-  to push content from one mode to a different trust
-  boundary, e.g., to base).
-- [ADR-0027](../adr/0027-cross-context-promotion-via-shared-root.md)
-  — for the mode-tree constraint that makes ancestor-only
-  promotion safe.
+- [ADR-0045](../adr/0045-cross-trust-boundary-promotion.md) —
+  for the cross-trust-boundary promotion design (mechanics +
+  graph constraint). Covers when you want to push content
+  from one mode to a different trust boundary (e.g., to base),
+  and the mode-tree constraint that makes ancestor-only
+  promotion safe. Consolidates the formerly-separate ADR-0009
+  (mechanics) and ADR-0027 (graph constraint).
 - [ADR-0019](../adr/0019-inheritance-semantics-refine-by-default.md)
   — for refinement-vs-replacement at render time.
 - [`docs/concepts.md` §9](../concepts.md#9-repo_mode-access-subtype)

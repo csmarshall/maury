@@ -141,8 +141,8 @@ require an `**Amended:**` entry on this ADR.
 | `migration_completed` | This ADR | One-shot marker when the `mode-switches.jsonl` → `audit.jsonl` migration completes (see §"Migration: subsuming `mode-switches.jsonl`" below) | `{migrated_event_count: int, source_file: "...", archive_renamed_to: "..."}` |
 | `mining_run_created` | [ADR-0022](0022-branch-per-mining-run.md), [ADR-0026](0026-profile-aware-mining.md) | When `maury mine` produces a run branch | `{run_id: "...", branch: "...", commit_count: int}` |
 | `review_completed` | [ADR-0022](0022-branch-per-mining-run.md) | When `maury review` finishes | `{run_id: "...", accepted: int, rejected: int, merged_to: "..."}` |
-| `promotion_started` | [ADR-0009](0009-promotion-only-cross-boundary.md) | When `maury promote` begins | `{from_repo: "...", to_repo: "..."}` |
-| `promotion_completed` | [ADR-0009](0009-promotion-only-cross-boundary.md), [ADR-0027](0027-cross-context-promotion-via-shared-root.md) | When promotion succeeds | `{commits_promoted: int, target_pr: "...|null"}` |
+| `promotion_started` | [ADR-0045](0045-cross-trust-boundary-promotion.md) | When `maury promote` begins | `{from_repo: "...", to_repo: "..."}` |
+| `promotion_completed` | [ADR-0045](0045-cross-trust-boundary-promotion.md) | When promotion succeeds | `{commits_promoted: int, target_pr: "...|null"}` |
 | `pr_opened` | [ADR-0033](0033-pr-repo-mode.md) | When `pr`-mode review pushes a PR | `{repo: "...", pr_url: "...", commit_count: int}` |
 | `tool_use_logged` | [ADR-0023](0023-hook-installation-and-tool-resolution.md) | One per Claude Edit/Write/MultiEdit call (mirror of `claude-writes.jsonl`) | `{tool: "...", path: "...", before_sha: "...", after_sha: "..."}` |
 | `subscription_added` | [ADR-0034](0034-published-subscribed-profiles.md) | When `maury subscribe` succeeds | `{repo_url: "...", as_profile: "..."}` |

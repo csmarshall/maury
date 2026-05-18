@@ -1,7 +1,15 @@
 # ADR-0009: Promotion-only flow for cross-boundary updates
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0045](0045-cross-trust-boundary-promotion.md) (2026-05-18)
 **Date:** 2026-05-06
+
+> **Superseded.** This ADR's mechanics (proposal queue, curator
+> review, no source-host feedback) are now consolidated with
+> [ADR-0027](0027-cross-context-promotion-via-shared-root.md)'s
+> graph constraint into [ADR-0045: Cross-trust-boundary promotion](0045-cross-trust-boundary-promotion.md).
+> The design described below is preserved as historical record
+> of the mechanics layer. Read ADR-0045 for the canonical,
+> currently-accepted decision.
 
 ## Related tenets
 

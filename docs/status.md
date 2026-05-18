@@ -30,7 +30,7 @@ This page is the implementation snapshot; ADR-0010 is the plan.
 | `maury doctor` | ✅ shipped | Evaluate `~/.claude/CLAUDE.md` against the Anthropic best-practices rubric, plus system-health rules (`baseline-missing`, `watermark-stale`) added 2026-05-18 per the two-pronged design call. Per [ADR-0011](adr/0011-anthropic-rubric-integration.md) + [ADR-0042](adr/0042-host-identity-guard.md) + [ADR-0043](adr/0043-incremental-mining.md). |
 | `maury mine` | 🟡 partially shipped | Transcript walker, LLM extractor, four-state crossref classification all shipped. **Run-branch generation per [ADR-0022](adr/0022-branch-per-mining-run.md) not yet wired** — current mining produces in-memory findings; the branch-with-commits flow is Phase 6 finalization. |
 | `maury review <run-id>` | ⏳ planned | Walk a mining run's commits with cherry-pick UI. Phase 7 per [ADR-0022](adr/0022-branch-per-mining-run.md). |
-| `maury promote --from --to` | ⏳ planned | Cross-repo promotion via curator. Phase 9 per [ADR-0009](adr/0009-promotion-only-cross-boundary.md). |
+| `maury promote --from --to` | ⏳ planned | Cross-repo promotion via curator. Phase 9 per [ADR-0045](adr/0045-cross-trust-boundary-promotion.md). |
 | `maury mode use <name>` | ⏳ planned | Switch active mode with safeguards. Phase 5.x per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
 | `maury reconcile` | ⏳ planned | Drift menu (5 reconcile actions). Phase 5.x per [ADR-0017](adr/0017-drift-detection-and-reconciliation.md). |
 | `maury sessions prune` | ⏳ planned | Clean up stale `active-sessions.jsonl` entries. Per [ADR-0025](adr/0025-profile-switching-session-safeguards.md). |
@@ -71,7 +71,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | Active in-session capture (Claude- + user-initiated) | ⏳ planned (v1 maury-status skill; v1.1 full pipeline) | Per [ADR-0013 amendment](adr/0013-active-in-session-capture.md). |
 | Proposal queue + review UI | ⏳ planned (Phase 7) | Per [ADR-0022](adr/0022-branch-per-mining-run.md). |
 | Rule synthesis from reclassifications | ⏳ planned (Phase 8) | |
-| Cross-boundary promotion | ⏳ planned (Phase 9) | Per [ADR-0009](adr/0009-promotion-only-cross-boundary.md). |
+| Cross-boundary promotion | ⏳ planned (Phase 9) | Per [ADR-0045](adr/0045-cross-trust-boundary-promotion.md). |
 | Audit log + push-policy enforcement | ⏳ planned (Phase 10) | |
 | Pluggable repo backends beyond git/github | ⏳ deferred (v1.1+) | Schema in v1; additional adapters per-need. Per [ADR-0016](adr/0016-pluggable-repo-backends.md). |
 | Host-local secrets w/ metadata sync | ⏳ deferred (v1.1) | Per [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md). |

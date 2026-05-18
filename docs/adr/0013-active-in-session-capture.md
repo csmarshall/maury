@@ -277,7 +277,7 @@ contribution flow during `maury review`:
 - `pr` — proposal opens a GitHub PR (or equivalent) for curator
   review.
 - `ro` — proposal cannot land directly; maury surfaces the
-  cross-boundary promotion path ([ADR-0009](0009-promotion-only-cross-boundary.md))
+  cross-boundary promotion path ([ADR-0045](0045-cross-trust-boundary-promotion.md))
   instead.
 
 This means a user-pinned capture with `scope_hint: base` from a

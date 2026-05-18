@@ -20,7 +20,7 @@ reversible where possible, and pauses for input when there's ambiguity.
 A tool that helps you raise the boats can't be allowed to sink any of
 them.
 
-*Embodied by: [ADR-0009](adr/0009-promotion-only-cross-boundary.md)
+*Embodied by: [ADR-0045](adr/0045-cross-trust-boundary-promotion.md)
 (no auto-promotion across trust boundaries),
 [ADR-0017](adr/0017-drift-detection-and-reconciliation.md)
 (drift-detect-before-clobber, three-way merge with user arbitration,
@@ -49,7 +49,7 @@ itself. A boundary is real only when violating it requires bytes that
 the offending host literally does not possess.
 
 *Embodied by: [ADR-0002](adr/0002-repo-per-trust-boundary.md) (repo per trust boundary), [ADR-0003](adr/0003-per-host-deploy-keys.md) (per-host
-deploy keys), [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (promotion-only cross-boundary), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md)
+deploy keys), [ADR-0045](adr/0045-cross-trust-boundary-promotion.md) (promotion-only cross-boundary), [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md)
 (defense-in-depth secrets), [ADR-0041](adr/0041-per-mode-anthropic-credentials.md) (per-mode Anthropic credentials operationalizes the LLM trust boundary).
 Operational doc: [`security-model.md`](security-model.md) — what
 attackers can reach, what the user must maintain, what's out of scope.*
@@ -96,7 +96,7 @@ why. The ruleset and audit log together are the institutional memory.
 Anything that lands in synced config can be traced back to its origin.
 
 *Embodied by: [ADR-0004](adr/0004-rule-engine-classification.md) (rules carry `added` and `reason`), [ADR-0008](adr/0008-claude-diary-reference.md)
-(synthesizer records originating fragment), [ADR-0009](adr/0009-promotion-only-cross-boundary.md) (audit on both
+(synthesizer records originating fragment), [ADR-0045](adr/0045-cross-trust-boundary-promotion.md) (audit on both
 sides of promotion), [ADR-0017](adr/0017-drift-detection-and-reconciliation.md) (Claude-write provenance via `claude-writes.jsonl`), [ADR-0035](adr/0035-audit-log.md) (cross-cutting audit log).*
 
 ## 8. Hand-edits are first-class input

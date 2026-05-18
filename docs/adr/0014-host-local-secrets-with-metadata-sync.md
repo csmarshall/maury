@@ -210,7 +210,7 @@ maury service unregister <name>
 The metadata IS sensitive in some environments — knowing "host X has a
 credential for service Y" can leak information. Three knobs:
 
-- **`push_policy: disabled`** (already in ADR-0009) — paranoid hosts
+- **`push_policy: disabled`** (already in [ADR-0045](0045-cross-trust-boundary-promotion.md)) — paranoid hosts
   do not push the metadata manifest, only consume.
 - **Per-credential `private: true`** — flagged credentials are stored
   locally in the manifest but **excluded from git**. The `secrets.json`

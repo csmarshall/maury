@@ -210,7 +210,7 @@ compose three established frameworks. For the detailed mapping see
   for how mode chains compose at render time (and incidentally,
   why content from a child mode cannot leak to a sibling without
   going through their common ancestor first per
-  [ADR-0027](adr/0027-cross-context-promotion-via-shared-root.md)).
+  [ADR-0045](adr/0045-cross-trust-boundary-promotion.md)).
 
 If you're auditing maury against literature, those are the three
 papers/frameworks to compare against. Maury implements a simplified
