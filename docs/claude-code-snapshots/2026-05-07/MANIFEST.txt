@@ -1,6 +1,6 @@
 # Snapshot manifest — 2026-05-07
-
-Each line: <name>  <bytes>  <sha256>  <url>
+#
+# Each line: <name>  <bytes>  <sha256>  <url>
 
 claude-directory              1091402  ff0848dce132c42e27da171e65d8ecaee418b50eeb9aa32640944fe6433fcc7c  https://code.claude.com/docs/en/claude-directory
 cli-reference                 1061565  c2a4b674c03608e10c7c40b37b40124eef50b00e0e8f269098c5d60deba96daf  https://code.claude.com/docs/en/cli-reference

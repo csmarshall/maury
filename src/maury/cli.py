@@ -15,6 +15,16 @@ from maury.bootstrap import bootstrap_host as run_bootstrap_host
 from maury.bootstrap import init as run_init
 from maury.capability import dumps as capabilities_dumps
 from maury.capability import run_probe
+from maury.cc_contract_verify import (
+    default_snapshot_dir,
+    run_contract_verification,
+)
+from maury.cc_contract_verify import (
+    format_report_json as format_cc_contract_report_json,
+)
+from maury.cc_contract_verify import (
+    format_report_text as format_cc_contract_report_text,
+)
 from maury.doctor import (
     Report,
     render_json,
@@ -2955,3 +2965,83 @@ def verify_cc_transcript_schema(
 
     _print_transcript_schema_report(report, output_format)
     sys.exit(0 if report.passed else 1)
+
+
+# ---- verify-cc-contract command ----------------------------------------
+
+
+@main.command("verify-cc-contract")
+@click.option(
+    "--snapshot-dir",
+    "snapshot_dir",
+    type=click.Path(file_okay=False, exists=True, path_type=Path),
+    default=None,
+    help="Snapshot directory to verify against. Defaults to the most-recent dated dir under docs/claude-code-snapshots/.",
+)
+@click.option(
+    "--timeout",
+    "timeout",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="Per-URL fetch timeout in seconds.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Don't fetch; just report which snapshot dir would be verified and which URLs it covers.",
+)
+def verify_cc_contract(
+    snapshot_dir: Path | None,
+    timeout: float,
+    output_format: str,
+    check_only: bool,
+) -> None:
+    """Diff cited Claude Code docs against `docs/claude-code-snapshots/`.
+
+    Re-fetches every URL listed in the snapshot's MANIFEST.txt and
+    compares the bytes' SHA256 against the manifest. Drift signals that
+    Anthropic updated a page maury cites — re-snapshot and re-evaluate
+    every cc-contract entry that depends on the affected URL.
+
+    Exit code: 0 if every URL matches its snapshot, 1 if any drift, fetch
+    error, or missing snapshot file.
+    """
+    if snapshot_dir is None:
+        # Walk up from this file to find the repo root (the dir containing
+        # `docs/claude-code-snapshots/`).
+        repo_root = Path.cwd()
+        snapshot_dir = default_snapshot_dir(repo_root)
+        if snapshot_dir is None:
+            raise click.ClickException(
+                f"No snapshot directory found under {repo_root}/docs/claude-code-snapshots/. "
+                "Pass --snapshot-dir explicitly."
+            )
+
+    if check_only:
+        from maury.cc_contract_verify import parse_manifest
+
+        manifest_path = snapshot_dir / "MANIFEST.txt"
+        try:
+            entries = parse_manifest(manifest_path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(f"snapshot: {snapshot_dir}")
+        click.echo(f"manifest: {manifest_path} ({len(entries)} entries)")
+        for entry in entries:
+            click.echo(f"  • {entry.name:<25} {entry.url}")
+        return
+
+    report = run_contract_verification(snapshot_dir, timeout=timeout)
+    if output_format == "json":
+        click.echo(format_cc_contract_report_json(report))
+    else:
+        click.echo(format_cc_contract_report_text(report))
+    sys.exit(1 if report.has_drift() else 0)
