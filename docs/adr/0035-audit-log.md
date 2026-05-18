@@ -145,8 +145,8 @@ require an `**Amended:**` entry on this ADR.
 | `promotion_completed` | [ADR-0045](0045-cross-trust-boundary-promotion.md) | When promotion succeeds | `{commits_promoted: int, target_pr: "...|null"}` |
 | `pr_opened` | [ADR-0033](0033-pr-repo-mode.md) | When `pr`-mode review pushes a PR | `{repo: "...", pr_url: "...", commit_count: int}` |
 | `tool_use_logged` | [ADR-0023](0023-hook-installation-and-tool-resolution.md) | One per Claude Edit/Write/MultiEdit call (mirror of `claude-writes.jsonl`) | `{tool: "...", path: "...", before_sha: "...", after_sha: "..."}` |
-| `subscription_added` | [ADR-0034](0034-published-subscribed-profiles.md) | When `maury subscribe` succeeds | `{repo_url: "...", as_profile: "..."}` |
-| `subscription_pinned` | [ADR-0034](0034-published-subscribed-profiles.md) | When `--pin` or `subscription update` runs | `{repo: "...", ref: "..."}` |
+| `subscription_added` | [ADR-0038](0038-precept-acquisition-model.md) (mechanics; use-case in [ADR-0034](0034-published-subscribed-profiles.md)) | When a rules sublayer is declared (formerly `maury subscribe`) | `{repo_url: "...", attaches_to: "..."}` |
+| `subscription_pinned` | [ADR-0038](0038-precept-acquisition-model.md) (mechanics; use-case in [ADR-0034](0034-published-subscribed-profiles.md)) | When `--pin` or `subscription update` runs | `{repo: "...", ref: "..."}` |
 | `backup_created` | [ADR-0032](0032-backup-and-disaster-recovery.md) | When `maury backup` finishes | `{tarball_path: "...", bytes: int, includes_transcripts: bool}` |
 | `restore_completed` | [ADR-0032](0032-backup-and-disaster-recovery.md) | When `maury restore` finishes | `{tarball_path: "...", files_restored: int}` |
 | `error` | (any) | When any maury operation surfaces a user-facing error | `{command: "...", error: "...", traceback: "..."}` |

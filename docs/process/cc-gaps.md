@@ -42,6 +42,38 @@ can now:
 
 ---
 
+### GAP-1b: No `PreCompact` hook (fires BEFORE summarization)
+
+**The gap.** `PostCompact` fires *after* the context window has been summarized
+and raw history is already gone. There is no `PreCompact` hook that would fire
+*before* summarization runs — the last moment when raw conversation history is
+still intact and could be persisted by a hook script.
+
+**Maury's workaround.** Assistant-side discipline only — the assistant is
+supposed to proactively write `session-state.md` after meaningful events.
+Works most of the time, fails exactly when context pressure is highest
+because the model is least likely to volunteer overhead at that moment.
+PostCompact (GAP-1) catches "compression just happened" but cannot save the
+detail that compression destroyed.
+
+**What we'd gain.**
+- A deterministic save point at the last moment full transcript is available.
+- The structural answer to "save before the context disappears" that the
+  current discipline only approximates.
+- Pairs with the planned `$CLAUDE_CONTEXT_PERCENT` field in hook stdin
+  (GAP-7) for budget-aware persistence decisions.
+
+**Upstream status.** Filed and discussed at
+[anthropics/claude-code#54580](https://github.com/anthropics/claude-code/issues/54580).
+Maury voiced as a second downstream consumer ([read-side / write-side framing](https://github.com/anthropics/claude-code/issues/54580#issuecomment-4481758459))
+alongside [claude-session-handoff](https://github.com/yacb2/claude-session-handoff).
+The request is also part of the consolidation RFC at
+[anthropics/claude-code#59492](https://github.com/anthropics/claude-code/issues/59492)
+where maury endorsed the three-primitive set (`UserIdle` + `PreCompact` +
+`$CLAUDE_CONTEXT_PERCENT`).
+
+---
+
 ### GAP-2: No `SessionResume` hook (distinct from `SessionStart`)
 
 **The gap.** `SessionStart` fires once per session — but it fires the same way

@@ -22,6 +22,29 @@ For an alphabetical quick-lookup of every term (with cross-refs
 back into this doc and to the relevant ADRs), see
 [`docs/glossary.md`](glossary.md).
 
+## Table of contents
+
+- [The mental model](#the-mental-model)
+  - [Analogy 1 — outfits, lockers, and vending machines](#analogy-1--outfits-lockers-and-vending-machines)
+  - [Analogy 2 — config files with composition](#analogy-2--config-files-with-composition)
+  - [One-line summary of each term](#one-line-summary-of-each-term)
+- [The core concepts](#the-core-concepts)
+  - [1. Agency](#1-agency)
+  - [2. Layer types](#2-layer-types)
+  - [3. Sublayers](#3-sublayers)
+  - [4. Trust boundary](#4-trust-boundary)
+  - [5. Mode tree and inheritance](#5-mode-tree-and-inheritance)
+  - [6. Layer (at render time)](#6-layer-at-render-time)
+  - [7. Active mode](#7-active-mode)
+  - [8. Mode-scoped host identity](#8-mode-scoped-host-identity)
+  - [9. `repo_mode` (access subtype)](#9-repo_mode-access-subtype)
+  - [10. Drift and reconcile](#10-drift-and-reconcile)
+- [What maury assumes about its substrate](#what-maury-assumes-about-its-substrate)
+- [Two terms maury intentionally avoids re-defining](#two-terms-maury-intentionally-avoids-re-defining)
+- [How the concepts compose: a worked example](#how-the-concepts-compose-a-worked-example)
+- [Theoretical foundations](#theoretical-foundations)
+- [Quick glossary](#quick-glossary)
+
 ---
 
 ## The mental model

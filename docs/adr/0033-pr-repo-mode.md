@@ -265,8 +265,14 @@ real changes.
   UI).
 - **`gh` integration for PR creation** — Phase 7.
 - **`maury subscribe <url>`** convenience command for
-  bootstrapping a `pr`-mode repo entry — Phase 4-adjacent.
-  Per [ADR-0034](0034-published-subscribed-profiles.md).
+  bootstrapping a `pr`-mode rules sublayer entry — Phase
+  4-adjacent. Use-case framed in
+  [ADR-0034](0034-published-subscribed-profiles.md);
+  mechanics now in
+  [ADR-0038](0038-precept-acquisition-model.md) (acquisition
+  + advisory lifecycle) and
+  [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md)
+  (rules-sublayer wiring in the marker file).
 
 ## Followups
 

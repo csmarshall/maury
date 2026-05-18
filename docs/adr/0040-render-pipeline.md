@@ -268,17 +268,13 @@ cross-cutting ones:
 
 ## Claude Code references
 
-Detailed Claude Code citations live in the relevant sub-ADRs:
-
-- Loading-semantics claims (CLAUDE.md, rules, skills, agents,
-  settings.json, .mcp.json) live in
-  [ADR-0047](0047-render-target-surfaces.md).
-- No new Claude Code citations belong in
-  [ADR-0046](0046-source-file-naming.md) or
-  [ADR-0048](0048-llm-condensation.md) at this time.
-
-This umbrella ADR makes no Claude Code behavior claims beyond
-referencing those sub-ADR citations.
+This umbrella ADR makes no Claude Code behavior claims of its
+own. Loading-semantics citations (CLAUDE.md, rules, skills,
+agents, settings.json, .mcp.json) live in
+[ADR-0047](0047-render-target-surfaces.md). ADR-0046 (source
+file naming) and ADR-0048 (LLM condensation) deliberately
+carry no Claude Code citations — their decisions are
+maury-internal.
 
 ## Amendment history
 

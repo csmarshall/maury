@@ -153,8 +153,10 @@ profile is consumable by non-Claude-Code agents?
 
 **What we defer (revisit when):**
 
-- If profiles go public (per [ADR-0034](0034-published-subscribed-profiles.md)
-  team-published model), shipping an `AGENTS.md` as a render
+- If rules repos go public (per the team-published-rules
+  use-case in [ADR-0034](0034-published-subscribed-profiles.md);
+  mechanics now in [ADR-0038](0038-precept-acquisition-model.md)),
+  shipping an `AGENTS.md` as a render
   output type alongside CLAUDE.md becomes high-value. Until
   there's user demand for non-Claude-Code rendering, this
   stays deferred.
@@ -345,10 +347,13 @@ Commit Agent Skills now (already aligned), track AGENTS.md + MCP for future use 
   `docs/claude-code-snapshots/` pattern for the Agent Skills
   spec, so spec-drift is detected the same way. Worth doing
   when we register the first skill in the public registry.
-- **Public profile registry** (gap-L per
-  [ADR-0034](0034-published-subscribed-profiles.md)) — when
-  this lands, AGENTS.md as a render output becomes part of
-  the design. Track here so the connection isn't lost.
+- **Public rules registry** (gap-L per the
+  team-publishing use-case in
+  [ADR-0034](0034-published-subscribed-profiles.md);
+  mechanics now in
+  [ADR-0038](0038-precept-acquisition-model.md)) — when this
+  lands, AGENTS.md as a render output becomes part of the
+  design. Track here so the connection isn't lost.
 
 ## Standards references
 

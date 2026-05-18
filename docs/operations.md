@@ -15,6 +15,8 @@ is still legible for diagnosis.
 
 - [`maury init`](#maury-init)
 - [`maury sync`](#maury-sync)
+- [`maury status`](#maury-status)
+- [`maury doctor`](#maury-doctor)
 - [`maury reconcile`](#maury-reconcile)
 - [`maury mine`](#maury-mine)
 - [`maury review <run-id>`](#maury-review-run-id)
@@ -84,6 +86,67 @@ flowchart TD
     Tools --> UpdateState[update last-render.json]
     UpdateState --> Summary([print summary])
 ```
+
+---
+
+## `maury status`
+
+Read-only diagnostic — six sections of state surfaced for the
+operator. No writes, no network. Each section degrades
+gracefully if its inputs are absent.
+
+```mermaid
+flowchart TD
+    Start([maury status]) --> Load[load manifest<br/>--manifest-file flag or default]
+    Load --> Host[Section 1: host identity<br/>~/.maury-host-id + tag]
+    Host --> Baseline[Section 2: identity baseline<br/>host-identity.json status — match / mismatch / missing]
+    Baseline --> Repos[Section 3: repos + git status<br/>per repo: URL, repo_mode, clone path<br/>branch, dirty, ahead/behind]
+    Repos --> LastR[Section 4: last render<br/>last-render.json timestamp + file count]
+    LastR --> Drift[Section 5: drift counts<br/>files changed vs last-render]
+    Drift --> Water[Section 6: mining watermarks<br/>per-project last-mine.json + staleness flag]
+    Water --> Format{format?}
+    Format -->|text default| Text[print sections to stdout<br/>⚠️ markers on degraded sections]
+    Format -->|--format json| JSON[emit single JSON object<br/>with all six sections]
+    Text --> Done([done — exit 0 always])
+    JSON --> Done
+```
+
+Identity-baseline mismatch is **reported** (⚠️) but **not
+enforced**; the host-identity guard in
+[ADR-0042](adr/0042-host-identity-guard.md) fires elsewhere
+(`maury sync` / `mine` / `reconcile` / `render` / `doctor`).
+Status is purely diagnostic per the separation of concerns.
+
+---
+
+## `maury doctor`
+
+Quality + system-health check on the rendered `~/.claude/`
+plus the maury-state contract. Combines the Anthropic
+content-quality rubric (per ADR-0011) with system-health rules
+(per ADR-0042 / ADR-0043).
+
+```mermaid
+flowchart TD
+    Start([maury doctor]) --> Guard[host-identity guard<br/>per ADR-0042<br/>abort on mismatch]
+    Guard -->|ok| Content[content rubric checks<br/>per ADR-0011<br/>CLAUDE.md vs Anthropic best-practices]
+    Content --> SysHealth[system-health checks<br/>baseline-missing — warn<br/>watermark-stale — warn]
+    SysHealth --> Aggregate[aggregate findings<br/>severity: info / warn / error]
+    Aggregate --> Format{format?}
+    Format -->|text default| TextOut[print findings by severity<br/>headline counts at top]
+    Format -->|--format json| JSONOut[emit findings array]
+    TextOut --> FailOn{--fail-on<br/>threshold?}
+    JSONOut --> FailOn
+    FailOn -->|none| Exit0([exit 0])
+    FailOn -->|info & any info+| Exit1([exit 1])
+    FailOn -->|warn & any warn+| Exit1
+    FailOn -->|error & any error| Exit1
+```
+
+The identity guard fires before any other check; an identity
+mismatch aborts before doctor even reads `~/.claude/`. This
+prevents doctor from reporting "findings" against a CLAUDE.md
+rendered for the wrong host.
 
 ---
 

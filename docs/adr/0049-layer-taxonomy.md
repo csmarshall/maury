@@ -219,11 +219,13 @@ required tag conditions on a section is its specificity.
 - Equal specificity ties are resolved by the unified tiebreaker
   rule below.
 
-The exact section-tagging syntax inside `base` and `mode` repos
-is a render-engine concern (per
-[ADR-0046](0046-source-file-naming.md)), not part of the
-layer-taxonomy contract. The taxonomy guarantees only that the
-host's declared `environment_tags` are matched at render time.
+The exact file-naming convention that expresses env-tagged
+content inside `base` and `mode` repos is a render-engine
+concern (per [ADR-0046](0046-source-file-naming.md): flat
+files at the repo root with dotted-name tagging like
+`env.macos.laptop.md`), not part of the layer-taxonomy
+contract. The taxonomy guarantees only that the host's
+declared `environment_tags` are matched at render time.
 
 #### Why no `machine` layer type
 

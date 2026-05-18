@@ -402,9 +402,10 @@ command that operates on these markers) lives in
   the same result regardless of which agency repo it is
   invoked from (graph-traversal output is start-point-
   invariant beyond the base). Tested.
-- The schema migration path from `profile_<hex>` to
-  `mode_<hex>` (per the umbrella ADR-0037's open followup)
-  follows ADR-0030's per-version upgrade machinery.
+- When implemented (per ADR-0037's open followup), the
+  `profile_<hex>` → `mode_<hex>` migration will follow
+  ADR-0030's per-version upgrade machinery; no code path
+  produces the new format yet.
 
 ## Build-order placement
 

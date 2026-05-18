@@ -197,8 +197,9 @@ which layer it lives in:
 - **Reusable behavioral definitions with shared context** →
   `~/.claude/skills/<name>/SKILL.md`. Authored as
   `skills/<name>/SKILL.md` in the layer repo, mirroring the target
-  path verbatim. Skills run in the main session context; agents
-  run isolated. When the distinction matters, prefer agents for
+  path verbatim. Skills run in the main session context (per
+  [cc-skills]); agents run isolated. When the distinction
+  matters, prefer agents for
   task-specific workflows and skills for reusable sub-procedures
   that benefit from seeing session history.
 - **MCP server definitions** → `~/.claude/.mcp.json`. Structured
@@ -215,6 +216,7 @@ confirms support.
 [cc-memory]: https://code.claude.com/docs/en/memory
 [cc-subagents]: https://code.claude.com/docs/en/sub-agents
 [cc-settings]: https://code.claude.com/docs/en/settings
+[cc-skills]: https://code.claude.com/docs/en/skills
 
 ### Agents surface design
 
@@ -442,6 +444,9 @@ When the render engine is implemented (per ADR-0040 umbrella):
   establishes the settings.json schema for hooks, permissions,
   and environment variables; basis for the structured-config
   routing rule.
+- [Claude Code skills][cc-skills] — establishes the
+  `skills/<name>/SKILL.md` layout and the main-session-context
+  execution model that distinguishes skills from agents.
 
 Empirical claims (verify against current release):
 

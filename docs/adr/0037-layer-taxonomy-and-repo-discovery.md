@@ -86,6 +86,13 @@ cannot infer the full agency topology without walking the
 graph; this is the price of locality-of-change and distributed
 authorship.
 
+Details for each layer of the design live in the three
+sub-ADRs — [ADR-0049](0049-layer-taxonomy.md) for the
+taxonomy, [ADR-0050](0050-agency-identity.md) for agency
+identity, and
+[ADR-0051](0051-marker-file-and-distributed-manifest.md) for
+the marker file. This ADR is the umbrella entry point.
+
 ## Context
 
 Maury manages a collection of git repositories that together
