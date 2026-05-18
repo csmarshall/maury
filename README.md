@@ -6,15 +6,24 @@
 </p>
 
 <h1 align="center">
-  <img src="docs/wordmark.svg" alt="maury" height="72">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/wordmark-dark.svg">
+    <img src="docs/wordmark.svg" alt="maury" height="72">
+  </picture>
 </h1>
 
 <p align="center">
-  <img src="docs/tagline.svg" alt="On a mission from Claude." height="28">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/tagline-dark.svg">
+    <img src="docs/tagline.svg" alt="On a mission from Claude." height="28">
+  </picture>
 </p>
 
 <p align="center">
-  <sub><img src="docs/proprietor.svg" alt="Sline & Co. — Talent & Configurations — Est. 1974 — M. Sline, prop." height="14"></sub>
+  <sub><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/proprietor-dark.svg">
+    <img src="docs/proprietor.svg" alt="Sline & Co. — Talent & Configurations — Est. 1974 — M. Sline, prop." height="14">
+  </picture></sub>
 </p>
 
 ---
