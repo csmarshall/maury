@@ -195,12 +195,14 @@ Two failure modes the verifier catches:
   `message.content` restructure → `message_bearing_lines_have_message_fields`
   flips to false; mining will break on next run.
 
-The response if drift is detected is being designed as
-ADR-0044 (not yet drafted; tracked in session-state). The
-likely shape involves pinning maury to a tested Claude
-Code version range and locking the JSONL schema so a
-silent drift fails loud, but the specifics are still being
-worked through.
+The response if drift is detected is designed in
+[ADR-0044](adr/0044-strict-transcript-parser-and-schema-lock.md):
+a maury-side JSON Schema describing the verified transcript
+shape, a strict parser that validates each line against it,
+and a compatibility list pinning known-good Claude Code
+versions. Phased rollout — strict mode is opt-in via
+`--strict` in v1.1, then default in v1.2 once shadow-mode
+data justifies the flip.
 
 Re-run the verifier after every Claude Code minor-version
 bump that might touch transcript output.

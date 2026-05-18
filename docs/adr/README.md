@@ -136,6 +136,7 @@ The mining → proposal → review pipeline.
 | [`0027`](0027-cross-context-promotion-via-shared-root.md) | Promotion graph IS the inheritance graph; only ancestor-direction promotion |
 | [`0041`](0041-per-mode-anthropic-credentials.md) | Mining crosses a network boundary; mode trust contract gains a third (operational) piece: per-mode Anthropic credentials |
 | [`0043`](0043-incremental-mining.md) | Per-project mining watermark; `derive_project_dir()` promoted to load-bearing production code |
+| [`0044`](0044-strict-transcript-parser-and-schema-lock.md) | Strict transcript parser + JSON Schema lock; phased rollout (`--strict` opt-in in v1.1, default in v1.2) |
 
 Superseded breadcrumb: [`0021`](0021-promotion-changelog.md)
 (do not implement).
