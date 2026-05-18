@@ -188,6 +188,9 @@ For everything else:
   maury sits alongside the other tools in this space
   (jean-claude, claude-diary, ccms, chezmoi, Anthropic native).
   Useful if you're comparing.
+- [`docs/faq.md`](docs/faq.md) — answers to the questions
+  evaluators most often ask (dotfile-manager differences,
+  cost of mining, what happens on a hand-edit, etc.).
 - [`docs/patterns/solo-dev.md`](docs/patterns/solo-dev.md) and
   [`docs/patterns/team-upstream.md`](docs/patterns/team-upstream.md)
   — concrete setup recipes for the two main use cases (single-
