@@ -52,7 +52,8 @@ def test_analyze_single_well_formed_user_message() -> None:
     assert result.by_type == {"user": 1}
     assert result.content_shapes == {"string": 1}
     assert result.passed is True
-    assert result.findings["all_lines_have_required_fields"] is True
+    assert result.findings["all_lines_have_core_fields"] is True
+    assert result.findings["message_bearing_lines_have_message_fields"] is True
 
 
 def test_analyze_user_message_with_list_content_blocks() -> None:
@@ -175,12 +176,44 @@ def test_analyze_user_message_with_role_assistant_not_mining_compatible() -> Non
     assert result.user_messages_mining_compatible == 0
 
 
-def test_analyze_missing_required_fields_flagged_in_findings() -> None:
+def test_analyze_missing_core_fields_flagged_in_findings() -> None:
     """A line missing `sessionId` or `timestamp` should flip the
-    `all_lines_have_required_fields` flag to False."""
+    `all_lines_have_core_fields` flag to False."""
     line = json.dumps({"type": "user", "message": {"role": "user", "content": "x"}})  # no sessionId, no timestamp
     result = analyze_transcript_jsonl(line)
-    assert result.findings["all_lines_have_required_fields"] is False
+    assert result.findings["all_lines_have_core_fields"] is False
+
+
+def test_analyze_housekeeping_types_dont_fail_message_predicate() -> None:
+    """The whole point of the per-type split: housekeeping types
+    (queue-operation, attachment, ai-title, last-prompt) legitimately
+    have no `message`. They should NOT fail
+    `message_bearing_lines_have_message_fields`."""
+    lines = [
+        json.dumps({"type": "queue-operation", "operation": "enqueue", "sessionId": "s", "timestamp": "t"}),
+        json.dumps({"type": "attachment", "attachment": {"type": "skill_listing"}, "sessionId": "s", "timestamp": "t"}),
+        json.dumps({"type": "ai-title", "title": "test", "sessionId": "s", "timestamp": "t"}),
+        json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}, "sessionId": "s", "timestamp": "t"}),
+    ]
+    result = analyze_transcript_jsonl("\n".join(lines))
+    # Housekeeping types are present in by_type but don't trigger the
+    # message-field check — only user/assistant do.
+    assert "queue-operation" in result.by_type
+    assert "attachment" in result.by_type
+    assert result.findings["all_lines_have_core_fields"] is True
+    assert result.findings["message_bearing_lines_have_message_fields"] is True
+
+
+def test_analyze_message_bearing_line_missing_role_fails_predicate() -> None:
+    """When a `user` or `assistant` line has `message` but missing
+    `role` or `content`, `message_bearing_lines_have_message_fields`
+    flips to False — mining will break."""
+    lines = [
+        json.dumps({"type": "assistant", "message": {"content": "x"}, "sessionId": "s", "timestamp": "t"}),
+        json.dumps({"type": "user", "message": {"role": "user", "content": "ok"}, "sessionId": "s", "timestamp": "t"}),
+    ]
+    result = analyze_transcript_jsonl("\n".join(lines))
+    assert result.findings["message_bearing_lines_have_message_fields"] is False
 
 
 def test_analyze_sample_lines_captures_first_five() -> None:
@@ -229,7 +262,8 @@ def _make_probe(
     mining_compatible: int = 5,
     by_type: dict[str, int] | None = None,
     shapes: dict[str, int] | None = None,
-    all_required: bool = True,
+    core_ok: bool = True,
+    message_ok: bool = True,
 ) -> TranscriptSchemaProbeResult:
     return TranscriptSchemaProbeResult(
         jsonl_path=jsonl_path,
@@ -242,7 +276,10 @@ def _make_probe(
         sample_lines=(),
         passed=passed,
         detail="passed run",
-        findings={"all_lines_have_required_fields": all_required},
+        findings={
+            "all_lines_have_core_fields": core_ok,
+            "message_bearing_lines_have_message_fields": message_ok,
+        },
     )
 
 
@@ -275,24 +312,47 @@ def test_print_report_text_passing_run(capsys: pytest.CaptureFixture[str]) -> No
     assert "✅" in out
     assert "by type:" in out
     assert "mining-compatible" in out
-    assert "✓ present on all sampled lines" in out
+    # Both predicates pass → both check-mark lines present.
+    assert "core fields (type, sessionId, timestamp) on all lines: ✓" in out
+    assert "message fields (role+content) on user/assistant lines: ✓" in out
 
 
-def test_print_report_text_flags_missing_required_fields(
+def test_print_report_text_flags_missing_core_fields(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """When `all_lines_have_required_fields` is False, the warning fires."""
+    """When `all_lines_have_core_fields` is False, the warning fires."""
     report = TranscriptSchemaHarnessReport(
         workspace=Path("/tmp/ws"),
         claude_present=True,
         claude_version="2.1.141",
-        probes=(_make_probe(all_required=False),),
+        probes=(_make_probe(core_ok=False),),
         claude_returncode=0,
         claude_stderr_excerpt="",
     )
     _print_transcript_schema_report(report, "text")
     out = capsys.readouterr().out
-    assert "⚠️ missing on some lines" in out
+    assert "core fields" in out
+    assert "⚠️" in out
+
+
+def test_print_report_text_flags_missing_message_fields(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """When `message_bearing_lines_have_message_fields` is False, the
+    warning is explicit about mining breaking — that's the load-bearing
+    failure mode."""
+    report = TranscriptSchemaHarnessReport(
+        workspace=Path("/tmp/ws"),
+        claude_present=True,
+        claude_version="2.1.141",
+        probes=(_make_probe(message_ok=False),),
+        claude_returncode=0,
+        claude_stderr_excerpt="",
+    )
+    _print_transcript_schema_report(report, "text")
+    out = capsys.readouterr().out
+    assert "message fields" in out
+    assert "mining WILL break" in out
 
 
 def test_print_report_text_no_probes_means_no_jsonl_produced(

@@ -1199,9 +1199,14 @@ def run_hook_timing_harness(
 # JSONL under `~/.claude/projects/<derived>/`, and checks each line.
 
 
-# Required fields that must be present on every line maury cares about.
-# `message.role` and `message.content` are nested under `message`.
-TRANSCRIPT_REQUIRED_FIELDS = ("type", "message", "sessionId", "timestamp")
+# Core fields present on every transcript line, message-bearing or
+# housekeeping (queue-operation, attachment, ai-title, last-prompt, ...).
+# Empirically verified 2026-05-18 against claude 2.1.142.
+TRANSCRIPT_CORE_FIELDS = ("type", "sessionId", "timestamp")
+
+# Types that additionally have a populated `message.{role, content}` —
+# the message-bearing kinds maury's mining actually consumes.
+TRANSCRIPT_MESSAGE_BEARING_TYPES = ("user", "assistant")
 
 # Per-line analyzer field flags. Populated by `analyze_transcript_jsonl`
 # and aggregated into TranscriptSchemaProbeResult.
@@ -1367,7 +1372,12 @@ def analyze_transcript_jsonl(text: str) -> TranscriptSchemaProbeResult:
         "content_shapes": content_shapes,
         "user_messages_total": user_messages_total,
         "user_messages_mining_compatible": user_messages_mining_compatible,
-        "all_lines_have_required_fields": _all_lines_have_required_fields(sample_lines),
+        # Two narrower predicates per per-type schema discipline:
+        # housekeeping types (queue-operation, attachment, ai-title,
+        # last-prompt) legitimately have no `message`; making
+        # `message`-presence a universal requirement is too strict.
+        "all_lines_have_core_fields": _all_lines_have_core_fields(sample_lines),
+        "message_bearing_lines_have_message_fields": _message_bearing_lines_have_message_fields(sample_lines),
     }
 
     detail = (
@@ -1430,14 +1440,31 @@ def _extract_content_text_for_check(content: object) -> str | None:
     return None
 
 
-def _all_lines_have_required_fields(samples: list[TranscriptLineAnalysis]) -> bool:
-    """True iff every sampled JSON-parsed line has all of TRANSCRIPT_REQUIRED_FIELDS
-    present. A False here is the load-bearing signal for "schema may have drifted."
+def _all_lines_have_core_fields(samples: list[TranscriptLineAnalysis]) -> bool:
+    """True iff every sampled JSON-parsed line has TRANSCRIPT_CORE_FIELDS
+    (`type`, `sessionId`, `timestamp`) present.
+
+    These are the fields observed empirically on every transcript line
+    regardless of type — message-bearing or housekeeping. A False here
+    is the load-bearing "schema may have drifted at the universal
+    level" signal.
+    """
+    return all(s.type_present and s.session_id_present and s.timestamp_present for s in samples if s.parsed_json)
+
+
+def _message_bearing_lines_have_message_fields(samples: list[TranscriptLineAnalysis]) -> bool:
+    """True iff every sampled `type=user`/`type=assistant` line has a
+    populated `message` field with both `role` and `content` keys.
+
+    Maury's mining only consumes message-bearing types, so this is the
+    predicate that actually matters for downstream stability. A False
+    here means the mining-consumed fields drifted; mining will break
+    on the next `maury mine` run.
     """
     return all(
-        s.type_present and s.message_present and s.session_id_present and s.timestamp_present
+        s.message_present and s.message_role_present and s.message_content_present
         for s in samples
-        if s.parsed_json
+        if s.parsed_json and s.type_value in TRANSCRIPT_MESSAGE_BEARING_TYPES
     )
 
 

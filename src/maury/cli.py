@@ -2786,11 +2786,19 @@ def _print_transcript_schema_report(report: TranscriptSchemaHarnessReport, outpu
         click.echo(f"   by type:        {p.by_type}")
         click.echo(f"   content shapes: {p.content_shapes}")
         click.echo(f"   mining-compatible user messages: {p.user_messages_mining_compatible}/{p.user_messages_total}")
-        all_required = p.findings.get("all_lines_have_required_fields")
-        if all_required is True:
-            click.echo("   required fields (type, message, sessionId, timestamp): ✓ present on all sampled lines")
+        core_ok = p.findings.get("all_lines_have_core_fields")
+        if core_ok is True:
+            click.echo("   core fields (type, sessionId, timestamp) on all lines: ✓")
         else:
-            click.echo("   required fields (type, message, sessionId, timestamp): ⚠️ missing on some lines")
+            click.echo("   core fields (type, sessionId, timestamp) on all lines: ⚠️ missing on some")
+        msg_ok = p.findings.get("message_bearing_lines_have_message_fields")
+        if msg_ok is True:
+            click.echo("   message fields (role+content) on user/assistant lines: ✓")
+        else:
+            click.echo(
+                "   message fields (role+content) on user/assistant lines: "
+                "⚠️ missing on some — mining WILL break on next `maury mine` run"
+            )
         click.echo()
 
     click.echo(
@@ -2859,7 +2867,8 @@ def verify_cc_transcript_schema(
     Whether the schema MATCHES maury's mining expectations is reported
     in per-probe findings (`by_type`, `content_shapes`,
     `user_messages_mining_compatible`,
-    `all_lines_have_required_fields`).
+    `all_lines_have_core_fields`,
+    `message_bearing_lines_have_message_fields`).
 
     Background: `cc-contract:transcript-jsonl-stability` is still ❓
     (the third unresolved entry). Two upstream feature requests
