@@ -294,6 +294,22 @@ def init(
         )
         write_baseline(target_dir, identity_baseline)
 
+    # Audit-log: init_completed. Skip on dry-run (no state effects).
+    if not dry_run:
+        import contextlib
+
+        from maury.audit_log import AuditLogError, log
+
+        with contextlib.suppress(AuditLogError):
+            log(
+                target_dir,
+                "init_completed",
+                host_id=matched_hid,
+                source="dir" if source_dir is not None else "tarball",
+                host_registered=True,
+                files_written=len(result.files),
+            )
+
     return InitResult(
         actions=actions,
         host_id_created=host_id_created,

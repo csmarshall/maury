@@ -537,3 +537,44 @@ class TestReconcileOutcome:
             # assertion; the `[misc]` ignore acknowledges mypy would
             # statically catch this (which is exactly what we want).
             o.path = "y"  # type: ignore[misc]
+
+
+# ---- audit-log integration (ADR-0035 `reconcile_action`) ----------------
+
+
+class TestAuditLogIntegration:
+    def test_each_prompt_emits_reconcile_action_event(self, tmp_path: Path) -> None:
+        """Every user choice in reconcile fires one `reconcile_action`
+        audit event with the path and chosen action."""
+        from maury.audit_log import read_events
+
+        # Two drift entries → two prompts → two audit events.
+        report = DriftReport(
+            entries=[
+                _drift_entry("a.md", DriftKind.MODIFIED),
+                _drift_entry("b.md", DriftKind.MODIFIED),
+            ],
+            has_last_render=True,
+        )
+        rendered = _make_render_result(("a.md", b"a"), ("b.md", b"b"))
+        prompter = _scripted_prompter(
+            {
+                "a.md": ReconcileAction.SKIP_ONCE,
+                "b.md": ReconcileAction.SKIP_ONCE,
+            }
+        )
+
+        reconcile(
+            drift_report=report,
+            target_dir=tmp_path,
+            rendered=rendered,
+            prompter=prompter,
+            session_id="sess-abc",
+        )
+
+        events = list(reversed(list(read_events(tmp_path))))
+        kinds = [e.event for e in events]
+        assert kinds == ["reconcile_action", "reconcile_action"]
+        assert {e.details["path"] for e in events} == {"a.md", "b.md"}
+        assert all(e.details["action"] == "skip-once" for e in events)
+        assert all(e.session_id == "sess-abc" for e in events)

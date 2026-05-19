@@ -257,6 +257,22 @@ def reconcile(
         elif outcome.action == ReconcileAction.SKIP_ONCE:
             summary.paths_skipped += 1
 
+        # Audit-log: reconcile_action per ADR-0035. One event per user
+        # choice; best-effort so a log failure doesn't kill the run.
+        import contextlib
+
+        from maury.audit_log import AuditLogError
+        from maury.audit_log import log as audit_log
+
+        with contextlib.suppress(AuditLogError):
+            audit_log(
+                target_dir,
+                "reconcile_action",
+                session_id=session_id or None,
+                path=str(entry.path),
+                action=outcome.action.value,
+            )
+
     return summary
 
 

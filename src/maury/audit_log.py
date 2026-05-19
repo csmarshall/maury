@@ -2,13 +2,26 @@
 
 Append-only host-local event log at `~/.claude/maury-state/audit.jsonl`.
 One event per line, ≤4 KB to preserve POSIX `O_APPEND` atomicity per
-[`cc-contract:concurrent-sessions`](../docs/claude-code-contract.md).
+[`cc-contract:concurrent-sessions`](../../docs/claude-code-contract.md).
 
 This module ships the storage primitive (`append_event`, `read_events`,
-`log`) without wiring concrete event kinds into every command — those
-land per-command as the rest of Phase 10 ships. The schema enumeration
-in ADR-0035 is the authoritative list; this module enforces shape but
-not membership.
+`log`) plus the `default_target_dir()` resolver used by curator-side
+command sites that don't carry an explicit target_dir parameter. The
+schema enumeration in ADR-0035 is the authoritative list; this module
+enforces shape but not membership.
+
+Event-kind wiring status (2026-05-19): `sync_started` / `sync_completed`
+/ `sync_aborted` / `drift_detected` / `render_applied` (sync.py),
+`init_completed` (bootstrap/init_cmd.py), `manifest_mutated` (mode
+bootstrap + deregister), `manifest_merge_resolved` (manifest_resolve_cmd.py),
+`reconcile_action` (reconcile.py), `sessions_pruned` (cli.py sessions
+prune), `uninstall_completed` (uninstall.py). Remaining ADR-0035 kinds —
+mode_switched, mode_switch_refused (planned `maury mode use`),
+manifest_upgraded (deferred per ADR-0030), claude_revert,
+mining_run_created, review_completed, promotion_started,
+promotion_completed, pr_opened, subscription_added, subscription_pinned,
+backup_created, restore_completed, tool_use_logged, error (catch-all
+not yet wired) — get wired as their owning command sites ship.
 """
 
 from __future__ import annotations
@@ -23,6 +36,19 @@ from typing import Any, Final
 
 AUDIT_REL_PATH: Final[Path] = Path("maury-state") / "audit.jsonl"
 """Audit-log location relative to the target dir (typically `~/.claude`)."""
+
+
+def default_target_dir() -> Path:
+    """Return the canonical audit-log target dir (`~/.claude`).
+
+    Used by command sites that don't carry an explicit `target_dir`
+    parameter (curator-side manifest mutations, etc.) so they can still
+    emit audit events into the operator's `~/.claude/maury-state/`.
+    Factored out as a function so tests can monkey-patch it to a tmp
+    dir without touching every call site.
+    """
+    return Path.home() / ".claude"
+
 
 SCHEMA_VERSION: Final[int] = 1
 """Per ADR-0035: locked at 1 for v1; bumps via per-version-reader pattern."""
@@ -249,6 +275,7 @@ __all__ = [
     "AuditEvent",
     "AuditLogError",
     "append_event",
+    "default_target_dir",
     "log",
     "read_events",
 ]

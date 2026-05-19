@@ -106,3 +106,37 @@ def test_deregister_actions_record_intent(tmp_path: Path) -> None:
     actions_text = "\n".join(result.actions)
     assert "will deregister host 'workstation'" in actions_text
     assert "wrote" in actions_text
+
+
+# ---- audit-log integration (ADR-0035 `manifest_mutated`) ----------------
+
+
+def test_deregister_host_emits_manifest_mutated_event(
+    tmp_path: Path,
+    _isolate_audit_target_dir: Path,
+) -> None:
+    """Successful deregister_host fires a `manifest_mutated` event."""
+    from maury.audit_log import read_events
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath)
+    deregister_host(manifest_path=mpath, host="workstation")
+
+    events = list(read_events(_isolate_audit_target_dir))
+    kinds = [e.event for e in events]
+    assert "manifest_mutated" in kinds
+    event = next(e for e in events if e.event == "manifest_mutated")
+    assert any("deregistered host" in c for c in event.details["changes"])
+    assert "workstation" in str(event.details["changes"])
+
+
+def test_deregister_dry_run_emits_no_audit_event(
+    tmp_path: Path,
+    _isolate_audit_target_dir: Path,
+) -> None:
+    from maury.audit_log import read_events
+
+    mpath = tmp_path / "manifest.json"
+    _write_manifest(mpath)
+    deregister_host(manifest_path=mpath, host="workstation", dry_run=True)
+    assert list(read_events(_isolate_audit_target_dir)) == []

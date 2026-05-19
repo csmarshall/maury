@@ -618,3 +618,105 @@ def test_sync_surfaces_real_manifest_conflict_with_resolve_hint(tmp_path: Path) 
     detail = result.repos[0].detail
     assert "maury manifest resolve" in detail
     assert "structural conflict" in detail.lower() or "conflict" in detail.lower()
+
+
+# ---- audit-log integration (ADR-0035 §"Event kind table") ---------------
+
+
+def test_sync_emits_audit_events_on_happy_path(tmp_path: Path) -> None:
+    """A clean sync emits sync_started → render_applied → sync_completed."""
+    from maury.audit_log import read_events
+
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    repos_root = tmp_path / "repos"
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+    )
+
+    events = list(read_events(target))
+    kinds = [e.event for e in events]
+    # newest-first; reverse for chronological
+    chronological = list(reversed(kinds))
+    assert chronological == [
+        "sync_started",
+        "render_applied",
+        "sync_completed",
+    ], chronological
+    # Every event carries the host_id (resolved via hostname fallback).
+    for e in events:
+        assert e.host_id is not None
+        assert e.host_id.startswith("host_")
+
+
+def test_sync_dry_run_emits_no_audit_events(tmp_path: Path) -> None:
+    """--check (dry_run) must not pollute the audit log."""
+    from maury.audit_log import read_events
+
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=tmp_path / "repos",
+        host_id_file=host_id_file,
+        dry_run=True,
+    )
+
+    events = list(read_events(target))
+    assert events == []
+
+
+def test_sync_emits_drift_detected_and_sync_aborted_on_default_refusal(tmp_path: Path) -> None:
+    """When default-mode sync refuses on drift, audit-log carries
+    sync_started → drift_detected → sync_aborted (result=failure)."""
+    from maury.audit_log import read_events
+
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    repos_root = tmp_path / "repos"
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+
+    # First sync establishes a baseline.
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+    )
+
+    # Modify a rendered file by hand to introduce drift.
+    rendered_path = target / "CLAUDE.md"
+    rendered_path.write_text("hand-edited drift content\n")
+
+    # Wipe the audit log so we can assert just the second sync's events.
+    (target / "maury-state" / "audit.jsonl").unlink()
+
+    result = sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+    )
+    assert result.has_errors()
+
+    events = list(reversed(list(read_events(target))))
+    kinds = [e.event for e in events]
+    assert "sync_started" in kinds
+    assert "drift_detected" in kinds
+    assert "sync_aborted" in kinds
+
+    drift_event = next(e for e in events if e.event == "drift_detected")
+    assert drift_event.details["drift_count"] >= 1
+    assert "modified" in drift_event.details["kinds"]
+
+    aborted = next(e for e in events if e.event == "sync_aborted")
+    assert aborted.result == "failure"
+    assert aborted.details["at_step"] == "drift_check"

@@ -587,6 +587,21 @@ def resolve_manifest(
 
         write_atomic(manifest_path, json.dumps(final, indent=2) + "\n")
 
+        # Audit-log: manifest_merge_resolved. Best-effort per ADR-0035.
+        import contextlib
+
+        from maury.audit_log import AuditLogError, default_target_dir
+        from maury.audit_log import log as audit_log
+
+        with contextlib.suppress(AuditLogError):
+            audit_log(
+                default_target_dir(),
+                "manifest_merge_resolved",
+                conflicts_resolved=[render_path(c.path) for c in merge.conflicts],
+                auto_merged_paths=auto_count,
+                manifest_path=str(manifest_path),
+            )
+
     return ResolveSummary(
         manifest_path=manifest_path,
         auto_merged_paths=auto_count,

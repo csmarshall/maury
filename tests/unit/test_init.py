@@ -444,3 +444,43 @@ def test_init_dry_run_still_reports_collision(tmp_path: Path) -> None:
     assert result.has_errors()
     # Original content untouched even though we evaluated drift.
     assert (target / "CLAUDE.md").read_text() == "pre-existing\n"
+
+
+# ---- audit-log integration (ADR-0035) -----------------------------------
+
+
+def test_init_emits_init_completed_audit_event(tmp_path: Path) -> None:
+    """A successful init writes an `init_completed` event to the
+    target's audit.jsonl, populated with the host_id."""
+    from maury.audit_log import read_events
+
+    host_id_file = tmp_path / ".maury-host-id"
+    repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
+    target = tmp_path / "out"
+
+    result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
+    assert result.rendered is True
+
+    events = list(read_events(target))
+    kinds = [e.event for e in events]
+    assert "init_completed" in kinds
+
+    init_event = next(e for e in events if e.event == "init_completed")
+    assert init_event.host_id is not None
+    assert init_event.host_id.startswith("host_")
+    assert init_event.details["source"] == "dir"
+    assert init_event.details["host_registered"] is True
+
+
+def test_init_dry_run_emits_no_audit_events(tmp_path: Path) -> None:
+    """--check / dry_run must not write to the audit log."""
+    from maury.audit_log import read_events
+
+    host_id_file = tmp_path / ".maury-host-id"
+    repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
+    target = tmp_path / "out"
+
+    init(source_dir=repo, target_dir=target, host_id_file=host_id_file, dry_run=True)
+
+    events = list(read_events(target))
+    assert events == []

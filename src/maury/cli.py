@@ -3149,6 +3149,21 @@ def sessions_prune(target_dir: Path, max_age_hours: float, dry_run: bool) -> Non
         for sid in result.pruned_session_ids:
             click.echo(f"  - {sid}")
 
+    # Audit-log: sessions_pruned (skip dry-run; only log effective writes).
+    if not dry_run and result.pruned_session_ids:
+        import contextlib
+
+        from maury.audit_log import AuditLogError
+        from maury.audit_log import log as audit_log
+
+        with contextlib.suppress(AuditLogError):
+            audit_log(
+                target_dir,
+                "sessions_pruned",
+                pruned_count=len(result.pruned_session_ids),
+                threshold_age=f"{max_age_hours}h",
+            )
+
 
 # ---- uninstall command ----------------------------------------------------
 

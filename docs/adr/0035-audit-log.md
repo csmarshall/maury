@@ -344,3 +344,38 @@ References used:
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
 - 2026-05-13 — event names renamed for vocabulary consistency: `profile_switched` → `mode_switched`, `profile_switch_refused` → `mode_switch_refused`, `from_profile`/`to_profile` payload fields → `from_mode`/`to_mode`. References to `maury profile use` updated to `maury mode use`. Migration archive filename corrected to `mode-switches.jsonl.migrated-<ts>`. No structural changes.
+- 2026-05-19 — V1 event-kind wiring shipped. The storage primitive
+  (`append_event`, `log`, `read_events`) plus the `maury audit show`
+  reader were already in place; this round connected every V1
+  command site to its event kind(s):
+  - `sync` → `sync_started`, `sync_completed`, `sync_aborted`,
+    `drift_detected`, `render_applied`.
+  - `init` → `init_completed`.
+  - `mode bootstrap`, `mode deregister` → `manifest_mutated`.
+  - `manifest resolve` → `manifest_merge_resolved`.
+  - `reconcile` → `reconcile_action` (one per user choice).
+  - `sessions prune` → `sessions_pruned`.
+  - `uninstall` → `uninstall_completed` (was already wired).
+  Engineering details: every call site wraps `log()` in
+  `contextlib.suppress(AuditLogError)` so an audit-write failure
+  (oversize line, IO error) never aborts the underlying
+  operation — audit is best-effort observability, not a
+  source-of-truth gate. A new `default_target_dir()` helper in
+  `audit_log.py` resolves `~/.claude` for curator-side sites
+  (`mode bootstrap`, `mode deregister`, `manifest resolve`) that
+  don't carry an explicit `target_dir`; tests monkey-patch this
+  via the autouse `_isolate_audit_target_dir` conftest fixture.
+  Dry-run paths intentionally suppress audit-log writes —
+  `--check` is observation-only and should leave zero state
+  side-effects, audit-log included.
+  Remaining event kinds — `mode_switched`, `mode_switch_refused`
+  (owned by the planned `maury mode use` per ADR-0025),
+  `manifest_upgraded` (reserved; ADR-0030 framework deferred),
+  `claude_revert`, `mining_run_created`, `review_completed`,
+  `promotion_started`, `promotion_completed`, `pr_opened`,
+  `subscription_added`, `subscription_pinned`, `backup_created`,
+  `restore_completed`, `tool_use_logged`, and the catch-all `error` —
+  wire up as their owning command sites ship.
+  (`migration_completed` is intentionally not in this list: it is a
+  one-shot subsumption of `mode-switches.jsonl` per §"Migration",
+  not a per-command site that needs wiring.)

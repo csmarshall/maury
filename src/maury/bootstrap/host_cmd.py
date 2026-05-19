@@ -179,6 +179,19 @@ def bootstrap_host(
     if not dry_run:
         manifest_path.write_text(dump_manifest(new_manifest), encoding="utf-8")
         actions.append(f"wrote {manifest_path}")
+        # Audit-log: manifest_mutated. Per ADR-0035, this fires after
+        # any maury operation that writes a new manifest version.
+        import contextlib
+
+        from maury.audit_log import AuditLogError, default_target_dir, log
+
+        with contextlib.suppress(AuditLogError):
+            log(
+                default_target_dir(),
+                "manifest_mutated",
+                changes=[f"added host {new_hid} ({name!r})"],
+                manifest_path=str(manifest_path),
+            )
     else:
         actions.append(f"(--check; would write {manifest_path})")
 

@@ -836,3 +836,43 @@ def test_try_auto_merge_surfaces_real_conflict_without_writing(tmp_path: Path) -
     # carries the conflict markers git left from the failed merge.
     assert manifest.read_text() == pre_state
     _ = pid  # silence unused (pid used to set up the fixture)
+
+
+# ---- audit-log integration (ADR-0035 `manifest_merge_resolved`) ---------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_resolve_manifest_emits_manifest_merge_resolved_event(
+    tmp_path: Path,
+    _isolate_audit_target_dir: Path,
+) -> None:
+    """Successful resolve_manifest (additive auto-merge) emits a
+    `manifest_merge_resolved` audit event."""
+    from maury.audit_log import read_events
+
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["hosts"][new_host_id("a")] = {
+        "name": "added-by-ours",
+        "profile": pid,
+        "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
+    }
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["hosts"][new_host_id("b")] = {
+        "name": "added-by-theirs",
+        "profile": pid,
+        "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
+    }
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    resolve_manifest(manifest, prompter=lambda _c: "a")
+
+    events = list(read_events(_isolate_audit_target_dir))
+    kinds = [e.event for e in events]
+    assert "manifest_merge_resolved" in kinds
+    event = next(e for e in events if e.event == "manifest_merge_resolved")
+    # Additive case: zero conflicts resolved, but auto_merged_paths > 0.
+    assert event.details["conflicts_resolved"] == []
+    assert event.details["auto_merged_paths"] > 0

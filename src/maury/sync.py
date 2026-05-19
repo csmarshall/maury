@@ -33,6 +33,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from maury.drift import (
     DriftReport,
@@ -152,6 +153,15 @@ def sync(
     hid, host_spec = _identify_host(manifest, host_id_file)
     result = SyncResult(host_id=hid, profile_id=host_spec.profile)
 
+    # Audit-log: sync_started (skip on dry-run — no state side-effects).
+    if not dry_run:
+        _audit(
+            target_dir,
+            "sync_started",
+            host_id=hid,
+            repos=sorted(host_spec.repos.keys()),
+        )
+
     # Sync each repo declared in the host's manifest entry
     repos_root.mkdir(parents=True, exist_ok=True)
     for nickname, spec in host_spec.repos.items():
@@ -169,6 +179,15 @@ def sync(
 
     # If any repo failed, abort before render
     if result.has_errors():
+        if not dry_run:
+            _audit(
+                target_dir,
+                "sync_aborted",
+                host_id=hid,
+                reason=result.errors[0][:200],
+                at_step="repo_pull",
+                result="failure",
+            )
         return result
 
     # Render. v0: assume the base content lives at repos_root / "base".
@@ -203,6 +222,15 @@ def sync(
         )
     except RenderError as e:
         result.errors.append(f"render failed: {e}")
+        if not dry_run:
+            _audit(
+                target_dir,
+                "sync_aborted",
+                host_id=hid,
+                reason=str(e)[:200],
+                at_step="render",
+                result="failure",
+            )
         return result
 
     result.render_result = rendered
@@ -226,9 +254,17 @@ def sync(
         result.drift_report = drift_report
 
         if drift_report.has_drift():
+            counts = drift_report.summary_counts()
+            if not dry_run:
+                _audit(
+                    target_dir,
+                    "drift_detected",
+                    host_id=hid,
+                    drift_count=sum(counts.values()),
+                    kinds=dict(counts),
+                )
             if drift_mode == DRIFT_MODE_FORCE:
                 result.drift_action = "forced"
-                counts = drift_report.summary_counts()
                 result.warnings.append(
                     f"--force: clobbering drift "
                     f"(modified={counts['modified']}, "
@@ -238,7 +274,6 @@ def sync(
                 )
             elif drift_mode == DRIFT_MODE_NON_INTERACTIVE:
                 result.drift_action = "refused"
-                counts = drift_report.summary_counts()
                 result.errors.append(
                     f"--non-interactive: refusing on drift "
                     f"(modified={counts['modified']}, "
@@ -246,13 +281,21 @@ def sync(
                     f"untracked={counts['untracked']}). "
                     f"Re-run interactively or with --force."
                 )
+                if not dry_run:
+                    _audit(
+                        target_dir,
+                        "sync_aborted",
+                        host_id=hid,
+                        reason="drift detected; refused per --non-interactive",
+                        at_step="drift_check",
+                        result="failure",
+                    )
                 return result
             else:
                 # Default mode. The reconcile menu (Phase 5.x slice 3
                 # per ADR-0017) is not yet wired; v0 refuses with a
                 # pointer at --force as the escape hatch.
                 result.drift_action = "refused"
-                counts = drift_report.summary_counts()
                 result.errors.append(
                     f"drift detected on this host's `~/.claude/` "
                     f"(modified={counts['modified']}, "
@@ -263,6 +306,15 @@ def sync(
                     f"`maury reconcile` (interactive resolution per "
                     f"ADR-0017) is a planned follow-up slice."
                 )
+                if not dry_run:
+                    _audit(
+                        target_dir,
+                        "sync_aborted",
+                        host_id=hid,
+                        reason="drift detected; refused per default drift_mode",
+                        at_step="drift_check",
+                        result="failure",
+                    )
                 return result
         else:
             result.drift_action = "none"
@@ -287,7 +339,50 @@ def sync(
         )
         write_last_render(target_dir, new_baseline)
 
+        # Audit-log: render_applied + sync_completed.
+        # apply_actions is a list of human-readable status strings:
+        # "wrote <path> (…)", "would write …", "unchanged    <path>".
+        files_written = sum(1 for a in result.apply_actions if a.startswith("wrote "))
+        files_unchanged = sum(1 for a in result.apply_actions if a.startswith("unchanged"))
+        _audit(
+            target_dir,
+            "render_applied",
+            host_id=hid,
+            files_written=files_written,
+            files_unchanged=files_unchanged,
+        )
+        _audit(
+            target_dir,
+            "sync_completed",
+            host_id=hid,
+            repos_pulled=[r.nickname for r in result.repos if r.action == "pulled"],
+            drift_action=result.drift_action or "none",
+        )
+
     return result
+
+
+def _audit(
+    target_dir: Path,
+    event_kind: str,
+    *,
+    host_id: str | None = None,
+    result: str = "success",
+    **details: Any,
+) -> None:
+    """Append an audit event for this sync without ever raising upward.
+
+    Wraps `maury.audit_log.log` with `contextlib.suppress(AuditLogError)`
+    so an audit-log write failure (oversize line, IO error) never aborts
+    a sync operation. Per the ADR-0035 convention: audit is best-effort
+    observability, not the source-of-truth for the operation itself.
+    """
+    import contextlib
+
+    from maury.audit_log import AuditLogError, log
+
+    with contextlib.suppress(AuditLogError):
+        log(target_dir, event_kind, host_id=host_id, result=result, **details)
 
 
 def _now_iso() -> str:
