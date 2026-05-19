@@ -142,12 +142,30 @@ def _delete_bin_files(bin_dir: Path) -> tuple[Path, ...]:
     return tuple(removed)
 
 
-def _delete_state_dir(state_dir: Path) -> bool:
-    """Delete the maury-state dir if present. Returns whether it existed."""
-    if state_dir.is_dir():
-        shutil.rmtree(state_dir)
-        return True
-    return False
+def _delete_state_dir(state_dir: Path, *, preserve: tuple[str, ...] = ()) -> bool:
+    """Delete the maury-state dir if present, except for `preserve` filenames.
+
+    Returns whether the state dir existed at entry. Per ADR-0023 §8 +
+    ADR-0035, `audit.jsonl` is preserved as a forensic trail of "who
+    removed maury" — the directory is left behind iff anything was
+    preserved.
+    """
+    if not state_dir.is_dir():
+        return False
+    preserve_set = set(preserve)
+    for child in sorted(state_dir.iterdir()):
+        if child.name in preserve_set:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    # If we preserved at least one file, keep the directory; otherwise
+    # remove it entirely.
+    remaining = list(state_dir.iterdir())
+    if not remaining:
+        state_dir.rmdir()
+    return True
 
 
 def _delete_host_id(host_id_path: Path) -> bool:
@@ -168,15 +186,35 @@ def run_uninstall(
     `target_dir` is the maury-managed Claude Code directory (typically
     `~/.claude`); `home_dir` is the user's home (`~`) so `~/.maury-host-id`
     can be located. Splitting the two enables hermetic testing.
+
+    Per ADR-0035 §"`uninstall_completed`": writes the audit event
+    BEFORE deleting state, and `audit.jsonl` is preserved alongside
+    the user content per ADR-0023 §8's "leaves user content alone"
+    guarantee — the forensic trail of "who removed maury" survives.
     """
+    import contextlib
+
+    from maury.audit_log import AuditLogError, log
+
     settings_path = target_dir / "settings.json"
     removed_hooks, kept_hooks, settings_existed = _rewrite_settings(settings_path)
 
     bin_dir = target_dir / "bin"
     removed_bins = _delete_bin_files(bin_dir)
 
+    # Write the audit event BEFORE wiping state (per ADR-0035), and
+    # preserve audit.jsonl through the wipe. Don't block uninstall on
+    # an audit-log write failure.
+    with contextlib.suppress(AuditLogError):
+        log(
+            target_dir,
+            "uninstall_completed",
+            user_hooks_kept=kept_hooks,
+            scripts_removed=len(removed_bins),
+        )
+
     state_dir = target_dir / "maury-state"
-    state_removed = _delete_state_dir(state_dir)
+    state_removed = _delete_state_dir(state_dir, preserve=("audit.jsonl",))
 
     host_id_path = home_dir / ".maury-host-id"
     host_id_removed = _delete_host_id(host_id_path)

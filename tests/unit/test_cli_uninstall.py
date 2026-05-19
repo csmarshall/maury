@@ -47,7 +47,10 @@ def test_uninstall_with_yes_flag_skips_confirm(tmp_path: Path) -> None:
     assert "removed 1 maury-managed hook(s)" in result.output
     assert "left 1 user hook(s) intact" in result.output
     assert not (home / ".maury-host-id").exists()
-    assert not (target / "maury-state").exists()
+    # Per ADR-0035, audit.jsonl is preserved as the forensic trail.
+    # The state dir survives because of it; everything else inside it is gone.
+    assert (target / "maury-state" / "audit.jsonl").is_file()
+    assert not (target / "maury-state" / "last-render.json").exists()
 
 
 def test_uninstall_prompts_and_aborts_on_no(tmp_path: Path) -> None:

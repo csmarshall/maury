@@ -434,7 +434,15 @@ def manifest_show(manifest_file: Path | None) -> None:
     is_flag=True,
     help="Compute the mapping without writing the upgraded manifest.",
 )
-def manifest_upgrade_v1_to_v2(in_path: Path, out_path: Path | None, dry_run: bool) -> None:
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Where to write the audit-log event for the migration (per ADR-0035).",
+)
+def manifest_upgrade_v1_to_v2(in_path: Path, out_path: Path | None, dry_run: bool, target_dir: Path) -> None:
     """Upgrade a v1 manifest (name-keyed) to v2 (surrogate-ID-keyed).
 
     Per ADR-0015 §"Migration": generates fresh `profile_<hex>` and
@@ -444,6 +452,8 @@ def manifest_upgrade_v1_to_v2(in_path: Path, out_path: Path | None, dry_run: boo
     Prints an old-name → new-id mapping report so callers can correlate
     audit/log entries that referenced the old names.
     """
+    from maury.audit_log import AuditLogError
+    from maury.audit_log import log as audit_log
     from maury.migrations import MigrationError, upgrade_v1_to_v2
 
     try:
@@ -462,6 +472,21 @@ def manifest_upgrade_v1_to_v2(in_path: Path, out_path: Path | None, dry_run: boo
         click.echo("host mapping:")
         for name, hid in sorted(result.mapping.host_name_to_id.items()):
             click.echo(f"  {name!r:<24} → {hid}")
+
+    # Audit-log per ADR-0035 §"`migration_completed`". Don't block the
+    # migration on an audit-log write failure.
+    if not dry_run:
+        import contextlib
+
+        with contextlib.suppress(AuditLogError):
+            audit_log(
+                target_dir.expanduser(),
+                "migration_completed",
+                in_path=str(result.in_path),
+                out_path=str(result.out_path),
+                profile_count=len(result.mapping.profile_name_to_id),
+                host_count=len(result.mapping.host_name_to_id),
+            )
 
 
 @manifest.command("resolve")
