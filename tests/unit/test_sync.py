@@ -499,6 +499,14 @@ def test_sync_uses_host_id_file_when_present(tmp_path: Path) -> None:
 # ---- structured auto-merge integration (ADR-0024 sync wiring) -----------
 
 
+def _configure_git_identity(repo: Path) -> None:
+    """Set a local user.name/user.email on `repo`. Required on CI runners
+    where there's no global git config, both for the test's own commits
+    and for sync's production-code commit during auto-merge."""
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@e.com"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "T"], check=True)
+
+
 def _add_host_commit(repo: Path, hid: str, name: str, pid: str, message: str) -> None:
     """Append a host to a repo's manifest and commit. Used to create
     divergent histories on the local clone and the seed upstream."""
@@ -533,6 +541,7 @@ def test_sync_auto_merges_additive_manifest_conflict(tmp_path: Path) -> None:
     )
     base_clone = repos_root / "base"
     assert (base_clone / ".meta" / "manifest.json").is_file()
+    _configure_git_identity(base_clone)
 
     # Find the profile already in the seed (both sides will bind to it).
     seed_body = json.loads((seed / ".meta" / "manifest.json").read_text())
@@ -582,6 +591,7 @@ def test_sync_surfaces_real_manifest_conflict_with_resolve_hint(tmp_path: Path) 
         host_id_file=host_id_file,
     )
     base_clone = repos_root / "base"
+    _configure_git_identity(base_clone)
 
     seed_body = json.loads((seed / ".meta" / "manifest.json").read_text())
     existing_pid = next(iter(seed_body["profiles"]))
