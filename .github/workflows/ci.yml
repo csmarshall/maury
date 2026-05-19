@@ -63,8 +63,5 @@ jobs:
       - name: "smoke - maury agency validate (canonical)"
         run: uv run maury agency validate --manifest-file base-template/.meta/manifest.json
 
-      - name: "smoke - maury manifest validate (deprecation alias)"
-        run: uv run maury manifest validate --manifest-file base-template/.meta/manifest.json
-
       - name: "smoke - maury probe"
         run: uv run maury probe > /dev/null

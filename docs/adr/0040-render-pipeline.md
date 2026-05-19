@@ -151,12 +151,12 @@ A single `maury sync` invocation:
 
 The umbrella ADR owns `maury agency validate` because the
 command validates the full distributed layer graph, spanning
-all three sub-ADRs' concerns. The command replaces the earlier
-`maury manifest validate` name — the manifest is now distributed
-across per-repo marker files (per ADR-0037), not centralized in
-a single file, so "manifest validate" no longer accurately
-describes the scope. `maury manifest validate` remains as a
-deprecation alias.
+all three sub-ADRs' concerns. The manifest is distributed across
+per-repo marker files (per ADR-0037), not centralized in a single
+file, so "manifest validate" no longer accurately describes the
+scope — `agency` is the verb. Pre-release maury never shipped
+`manifest validate` to actual users, so no deprecation alias is
+maintained (the 2026-05-19 cleanup retired it).
 
 ### Hard failures (validation fails)
 
@@ -284,13 +284,12 @@ maury-internal.
   condensation ([ADR-0048](0048-llm-condensation.md)). This
   ADR becomes the umbrella, keeping cross-cutting concerns
   (`maury agency validate`, pipeline shape, build-order
-  coordination). One additive clarification accompanied the
-  split: `maury manifest validate` is explicitly named as a
-  deprecation alias for `maury agency validate` (the pre-split
-  ADR named the rename but did not commit to keeping the old
-  name as an alias). All other content moved without semantic
+  coordination). All other content moved without semantic
   change; the design was already decomposable, the split makes
   the decomposition explicit.
 - 2026-05-11 — initial publication, single ADR covering all
   three layers + `maury agency validate`. Replaced by the
   umbrella+sub-ADR structure on 2026-05-18.
+- 2026-05-19 — pre-release cleanup: the deprecation-alias
+  commitment for `maury manifest validate` was retracted (no
+  users to deprecate from). Only `maury agency validate` ships.

@@ -42,88 +42,10 @@ def _write_manifest(path: Path, *, with_invalid: bool = False) -> tuple[str, str
     return pid, hid
 
 
-# ---- manifest validate --------------------------------------------------
-
-
-def test_manifest_validate_ok(tmp_path: Path) -> None:
-    mpath = tmp_path / "manifest.json"
-    _write_manifest(mpath)
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate", "--manifest-file", str(mpath)])
-    assert result.exit_code == 0, result.output
-    assert "OK:" in result.output
-    assert "1 profile(s)" in result.output
-    assert "1 host(s)" in result.output
-
-
-def test_manifest_validate_resolves_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    mpath = tmp_path / "manifest.json"
-    _write_manifest(mpath)
-    monkeypatch.setenv("MAURY_MANIFEST_FILE", str(mpath))
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate"])
-    assert result.exit_code == 0, result.output
-    assert "OK:" in result.output
-
-
-def test_manifest_validate_exit_1_on_cross_reference_error(tmp_path: Path) -> None:
-    """A host pointing at a nonexistent profile_id → exit 1 with error."""
-    mpath = tmp_path / "manifest.json"
-    _write_manifest(mpath, with_invalid=True)
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate", "--manifest-file", str(mpath)])
-    assert result.exit_code == 1
-    combined = result.output + (result.stderr or "")
-    assert "error" in combined.lower()
-
-
-def test_manifest_validate_parse_error_on_malformed_json(tmp_path: Path) -> None:
-    mpath = tmp_path / "manifest.json"
-    mpath.write_text("{ this is not: valid json")
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate", "--manifest-file", str(mpath)])
-    assert result.exit_code != 0
-
-
-def test_manifest_validate_no_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("MAURY_MANIFEST_FILE", raising=False)
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate"])
-    assert result.exit_code != 0
-    assert "manifest file not found" in (result.output + (result.stderr or ""))
-
-
-def test_manifest_validate_against_seed(tmp_path: Path) -> None:
-    """The shipped seed manifest must validate cleanly through the CLI."""
-    seed = Path(__file__).resolve().parents[2] / "base-template" / ".meta" / "manifest.json"
-    if not seed.exists():
-        pytest.skip("seed manifest not present")
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate", "--manifest-file", str(seed)])
-    assert result.exit_code == 0, result.output
-    assert "3 profile(s)" in result.output
-    assert "2 host(s)" in result.output
-
-
-def test_manifest_validate_emits_deprecation_notice(tmp_path: Path) -> None:
-    """`maury manifest validate` is the deprecation alias of `agency validate`."""
-    mpath = tmp_path / "manifest.json"
-    _write_manifest(mpath)
-    runner = CliRunner()
-    result = runner.invoke(main, ["manifest", "validate", "--manifest-file", str(mpath)])
-    assert result.exit_code == 0, result.output
-    assert "OK:" in result.output
-    assert "deprecated alias" in result.stderr
-    assert "agency validate" in result.stderr
-    assert "ADR-0040" in result.stderr
-
-
-# ---- agency validate (canonical name; manifest validate is the alias) ----
+# ---- agency validate (manifest validation entry point per ADR-0040) ----
 
 
 def test_agency_validate_ok(tmp_path: Path) -> None:
-    """`agency validate` is the canonical name and behaves like the old alias."""
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath)
     runner = CliRunner()
@@ -153,14 +75,33 @@ def test_agency_validate_exit_1_on_cross_reference_error(tmp_path: Path) -> None
     assert "error" in combined.lower()
 
 
-def test_agency_validate_does_not_emit_deprecation_notice(tmp_path: Path) -> None:
-    """Only the legacy `manifest validate` path prints the deprecation banner."""
+def test_agency_validate_parse_error_on_malformed_json(tmp_path: Path) -> None:
+    mpath = tmp_path / "manifest.json"
+    mpath.write_text("{ this is not: valid json")
+    runner = CliRunner()
+    result = runner.invoke(main, ["agency", "validate", "--manifest-file", str(mpath)])
+    assert result.exit_code != 0
+
+
+def test_agency_validate_no_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MAURY_MANIFEST_FILE", raising=False)
+    runner = CliRunner()
+    result = runner.invoke(main, ["agency", "validate"])
+    assert result.exit_code != 0
+    assert "manifest file not found" in (result.output + (result.stderr or ""))
+
+
+def test_manifest_validate_no_longer_exists(tmp_path: Path) -> None:
+    """The pre-release `manifest validate` deprecation alias was removed
+    2026-05-19 (no users to deprecate from)."""
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath)
     runner = CliRunner()
-    result = runner.invoke(main, ["agency", "validate", "--manifest-file", str(mpath)])
-    assert result.exit_code == 0, result.output
-    assert "deprecated" not in result.stderr.lower()
+    result = runner.invoke(main, ["manifest", "validate", "--manifest-file", str(mpath)])
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr or "")
+    assert "no such command" in combined.lower() or "usage" in combined.lower()
 
 
 def test_agency_validate_against_seed(tmp_path: Path) -> None:

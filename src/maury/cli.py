@@ -279,13 +279,13 @@ def rules_validate(
 
 # ---- manifest + agency subgroups -----------------------------------------
 #
-# `maury agency validate` is the canonical name per ADR-0040; the older
-# `maury manifest validate` continues to work as a deprecation alias that
-# prints a one-line notice to stderr and delegates to the same handler.
+# `maury agency validate` is the validation entry point per ADR-0040;
+# the `manifest` group hosts inspection (`show`) and merge resolution
+# (`resolve`).
 
 
 def _run_manifest_validate(manifest_file: Path | None) -> None:
-    """Shared body for `manifest validate` and `agency validate`."""
+    """Shared body for the manifest-validation handler."""
     path = manifest_file or DEFAULT_MANIFEST_PATH
     if not path.exists():
         raise click.ClickException(f"manifest file not found: {path}")
@@ -373,25 +373,7 @@ def agency_init(target_dir: Path, force: bool, no_git_init: bool) -> None:
 
 @main.group()
 def manifest() -> None:
-    """Inspect and validate the manifest (legacy alias of `agency`)."""
-
-
-@manifest.command("validate")
-@click.option(
-    "--manifest-file",
-    "manifest_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    envvar=DEFAULT_MANIFEST_ENV,
-)
-def manifest_validate(manifest_file: Path | None) -> None:
-    """Deprecated alias of `maury agency validate` (per ADR-0040)."""
-    click.echo(
-        "notice: `maury manifest validate` is the deprecated alias of "
-        "`maury agency validate` (per ADR-0040). Both work today; the "
-        "alias will be removed in a future release.",
-        err=True,
-    )
-    _run_manifest_validate(manifest_file)
+    """Inspect and resolve the manifest. Validation lives under `agency`."""
 
 
 @manifest.command("show")
