@@ -366,6 +366,17 @@ def _sync_one_repo(
         # Pull
         rc, out = _run_git(["git", "-C", str(local_path), "pull", "--ff-only"])
         if rc != 0:
+            # Non-FF rejection on a base repo (i.e., one carrying
+            # `.meta/manifest.json`) is recoverable via ADR-0024's
+            # structured auto-merge. Try that path; if it succeeds,
+            # finish the merge and report "pulled (auto-merged)".
+            # If real conflicts remain, leave the working tree in
+            # the conflicted state and surface a pointer at
+            # `maury manifest resolve`.
+            if _looks_like_non_ff(out) and (local_path / ".meta" / "manifest.json").is_file():
+                return _pull_with_structured_merge(
+                    nickname=nickname, spec=spec, local_path=local_path, ff_only_output=out
+                )
             return RepoSyncResult(
                 nickname=nickname,
                 spec=spec,
@@ -413,6 +424,168 @@ def _sync_one_repo(
         local_path=local_path,
         action="cloned",
         detail=spec.url,
+    )
+
+
+_NON_FF_MARKERS: tuple[str, ...] = (
+    "Not possible to fast-forward",
+    "Need to specify how to reconcile divergent branches",
+    "divergent branches",
+    "non-fast-forward",
+)
+
+
+def _looks_like_non_ff(git_output: str) -> bool:
+    """Heuristically detect a non-fast-forward rejection in `git pull --ff-only` output."""
+    return any(marker in git_output for marker in _NON_FF_MARKERS)
+
+
+def _pull_with_structured_merge(
+    *,
+    nickname: str,
+    spec: RepoSpec,
+    local_path: Path,
+    ff_only_output: str,
+) -> RepoSyncResult:
+    """Recover from a non-FF pull on a manifest-carrying repo via ADR-0024
+    structured auto-merge.
+
+    Flow:
+      1. `git fetch origin` (replenish refs in case --ff-only ate them).
+      2. `git merge --no-ff FETCH_HEAD`.
+      3. If merge succeeds clean → done; report "pulled".
+      4. If merge fails with conflicts → check whether the only
+         conflicted path is `.meta/manifest.json`.
+         - If yes: try structured auto-merge. If clean, `git add` +
+           `git commit` to finish the merge and report "pulled
+           (auto-merged manifest)". If still needs user resolve,
+           leave the conflicted state and tell user to run
+           `maury manifest resolve`.
+         - If non-manifest paths are in conflict too: `git merge
+           --abort` (restore the pre-merge state) and surface the
+           original error — sync isn't equipped to triage those.
+    """
+    from maury.manifest_resolve_cmd import AutoMergeOutcome, ResolveError, try_auto_merge_manifest
+
+    manifest_path = local_path / ".meta" / "manifest.json"
+    repo_cwd = ["git", "-C", str(local_path)]
+
+    rc, fetch_out = _run_git([*repo_cwd, "fetch", "origin"])
+    if rc != 0:
+        return RepoSyncResult(
+            nickname=nickname,
+            spec=spec,
+            local_path=local_path,
+            action="error",
+            detail=f"git fetch failed (rc={rc}): {fetch_out[:300]}",
+        )
+
+    rc, merge_out = _run_git([*repo_cwd, "merge", "--no-ff", "FETCH_HEAD"])
+    if rc == 0:
+        # Merge succeeded cleanly (no manifest conflict at all).
+        return RepoSyncResult(
+            nickname=nickname,
+            spec=spec,
+            local_path=local_path,
+            action="pulled",
+            detail=merge_out.strip().splitlines()[-1] if merge_out.strip() else "",
+        )
+
+    # Merge failed. Identify which files are in conflict.
+    rc, ls_out = _run_git([*repo_cwd, "diff", "--name-only", "--diff-filter=U"])
+    if rc != 0:
+        # Can't even list the conflicted files — punt.
+        _run_git([*repo_cwd, "merge", "--abort"])
+        return RepoSyncResult(
+            nickname=nickname,
+            spec=spec,
+            local_path=local_path,
+            action="error",
+            detail=f"git pull failed (rc=non-FF, recovery diff failed): {ff_only_output[:300]}",
+        )
+    conflicted = {line.strip() for line in ls_out.splitlines() if line.strip()}
+    if conflicted != {".meta/manifest.json"}:
+        # Conflicts beyond the manifest — sync's structured-merge engine
+        # only handles the manifest. Bail out cleanly.
+        _run_git([*repo_cwd, "merge", "--abort"])
+        extra = sorted(conflicted - {".meta/manifest.json"})
+        return RepoSyncResult(
+            nickname=nickname,
+            spec=spec,
+            local_path=local_path,
+            action="error",
+            detail=(
+                f"git pull surfaced conflicts in files maury cannot auto-merge: {extra}. "
+                f"Resolve manually with `git mergetool` (or equivalent) and re-run sync."
+            ),
+        )
+
+    try:
+        report = try_auto_merge_manifest(manifest_path)
+    except ResolveError as exc:
+        # Engine produced a clean merge but the result fails validation,
+        # or the file isn't parseable. Leave the conflicted state for
+        # the user to inspect via `maury manifest resolve`.
+        return RepoSyncResult(
+            nickname=nickname,
+            spec=spec,
+            local_path=local_path,
+            action="error",
+            detail=(
+                f"manifest auto-merge failed validation: {exc}. "
+                f"Run `maury manifest resolve` to walk the conflict manually."
+            ),
+        )
+
+    if report.outcome is AutoMergeOutcome.AUTO_MERGED:
+        # Stage and commit to finalize the in-progress merge.
+        rc, add_out = _run_git([*repo_cwd, "add", ".meta/manifest.json"])
+        if rc != 0:
+            return RepoSyncResult(
+                nickname=nickname,
+                spec=spec,
+                local_path=local_path,
+                action="error",
+                detail=f"git add after auto-merge failed (rc={rc}): {add_out[:300]}",
+            )
+        rc, commit_out = _run_git(
+            [
+                *repo_cwd,
+                "commit",
+                "--no-edit",
+                "-m",
+                f"manifest merge: structured auto-resolve ({report.auto_merged_paths} leaf paths)",
+            ]
+        )
+        if rc != 0:
+            return RepoSyncResult(
+                nickname=nickname,
+                spec=spec,
+                local_path=local_path,
+                action="error",
+                detail=f"git commit after auto-merge failed (rc={rc}): {commit_out[:300]}",
+            )
+        return RepoSyncResult(
+            nickname=nickname,
+            spec=spec,
+            local_path=local_path,
+            action="pulled",
+            detail=f"auto-merged manifest (structured-merge, {report.auto_merged_paths} leaf path(s) reconciled)",
+        )
+
+    # NEEDS_USER_RESOLVE: leave the conflicted working tree alone and
+    # tell the user how to proceed. ADR-0024's interactive resolver
+    # reads the same in-flight merge state.
+    return RepoSyncResult(
+        nickname=nickname,
+        spec=spec,
+        local_path=local_path,
+        action="error",
+        detail=(
+            f"manifest has {len(report.conflict_paths)} structural conflict(s) requiring user arbitration. "
+            f"Run `maury manifest resolve --manifest-file {manifest_path}` to walk through them, "
+            f"then `git commit` to finish the merge."
+        ),
     )
 
 

@@ -5,17 +5,19 @@ ours / theirs), runs the structured-merge engine in `manifest_merge.py`,
 walks any unresolved conflicts with the user, validates the final
 manifest, and writes it atomically.
 
-Out of v1 scope (followups documented in status.md):
-- Semantic context per path ("3 hosts will lose binding").
-- Author/timestamp/branch metadata per side (would need extra git plumbing).
-- Auto-merge integration into `maury sync`.
-- Per-backend URL validator (different file).
-- `~/.config/maury/.lock` advisory lock.
-- Edit-by-hand resolution option.
+Also exposes `try_auto_merge_manifest()` — a non-interactive entry
+point used by `maury sync` (per ADR-0024 §"The flow") when a base-repo
+pull surfaces a manifest conflict. Returns one of
+`AutoMergeOutcome.AUTO_MERGED` (engine resolved everything; manifest
+written atomically; caller does `git add` + `git commit`),
+`AutoMergeOutcome.NEEDS_USER_RESOLVE` (real conflicts remain; caller
+surfaces a pointer at `maury manifest resolve`), or
+`AutoMergeOutcome.NOT_IN_CONFLICT` (the file isn't in merge state).
 """
 
 from __future__ import annotations
 
+import enum
 import json
 import os
 import subprocess
@@ -607,6 +609,112 @@ def _count_leaves(value: Any) -> int:
     return 1
 
 
+# ---- non-interactive auto-merge entry point ------------------------------
+
+
+class AutoMergeOutcome(enum.StrEnum):
+    """Result classes returned by `try_auto_merge_manifest()`."""
+
+    NOT_IN_CONFLICT = "not_in_conflict"
+    """The manifest is not in a merge-conflict state. Caller does nothing."""
+
+    AUTO_MERGED = "auto_merged"
+    """Structured-merge engine resolved every path. Manifest was
+    re-validated and written atomically. Caller is responsible for
+    `git add` + `git commit`."""
+
+    NEEDS_USER_RESOLVE = "needs_user_resolve"
+    """At least one path requires user arbitration. The manifest is
+    left in its conflicted on-disk state. Caller surfaces a pointer
+    at `maury manifest resolve`."""
+
+
+@dataclass(frozen=True)
+class AutoMergeReport:
+    """Summary of a `try_auto_merge_manifest()` run."""
+
+    outcome: AutoMergeOutcome
+    manifest_path: Path
+    auto_merged_paths: int = 0
+    """Number of leaf paths the engine auto-resolved (when outcome is
+    AUTO_MERGED). Zero for the other outcomes."""
+
+    conflict_paths: tuple[PathT, ...] = field(default_factory=tuple)
+    """JSON paths of the conflicts that would need user arbitration
+    (when outcome is NEEDS_USER_RESOLVE). Empty otherwise."""
+
+
+def try_auto_merge_manifest(manifest_path: Path) -> AutoMergeReport:
+    """Attempt a non-interactive structured auto-merge of a conflicted manifest.
+
+    Used by `maury sync` when a base-repo pull lands the working tree
+    in a merge conflict on `.meta/manifest.json`. The caller has
+    already done `git fetch` + `git merge` (or `git pull`) and the
+    file is sitting in git's stage-1/2/3 state.
+
+    Behavior:
+      - If `manifest_path` is not in conflict → NOT_IN_CONFLICT.
+      - Else read ancestor/ours/theirs from git's index, run the
+        structured-merge engine.
+        - If the engine produces zero conflicts: re-validate the
+          merged manifest against the schema (and cross-references),
+          write atomically, return AUTO_MERGED.
+        - If conflicts remain: the manifest is left in its
+          on-disk conflicted state, return NEEDS_USER_RESOLVE with
+          the conflict path list for callers that want to surface
+          a hint.
+
+    Raises ResolveError if the file isn't a manifest (parse failure),
+    if any stage is missing, or if validation of an otherwise-clean
+    merge fails (schema breakage from auto-merge is a real bug to
+    surface, not paper over).
+    """
+    from maury.manifest import ManifestError, load_manifest, validate_manifest
+
+    manifest_path = manifest_path.resolve()
+    repo_root = _repo_root(manifest_path.parent)
+    rel = manifest_path.relative_to(repo_root)
+
+    if not _is_unmerged(repo_root, rel):
+        return AutoMergeReport(
+            outcome=AutoMergeOutcome.NOT_IN_CONFLICT,
+            manifest_path=manifest_path,
+        )
+
+    ancestor, ours, theirs = fetch_three_way(manifest_path)
+    merge = compute_merge(ancestor, ours, theirs)
+
+    if merge.conflicts:
+        return AutoMergeReport(
+            outcome=AutoMergeOutcome.NEEDS_USER_RESOLVE,
+            manifest_path=manifest_path,
+            conflict_paths=tuple(c.path for c in merge.conflicts),
+        )
+
+    # Engine resolved everything. Validate before clobbering.
+    final = merge.resolved
+    tmp_for_validation = manifest_path.parent / f".{manifest_path.name}.validate.tmp"
+    try:
+        tmp_for_validation.write_text(json.dumps(final, indent=2) + "\n")
+        try:
+            m = load_manifest(tmp_for_validation)
+        except ManifestError as exc:
+            raise ResolveError(f"auto-merged manifest failed schema validation: {exc}") from exc
+        errors = validate_manifest(m)
+        if errors:
+            raise ResolveError("auto-merged manifest failed cross-reference validation:\n  " + "\n  ".join(errors))
+    finally:
+        if tmp_for_validation.exists():
+            tmp_for_validation.unlink()
+
+    write_atomic(manifest_path, json.dumps(final, indent=2) + "\n")
+    return AutoMergeReport(
+        outcome=AutoMergeOutcome.AUTO_MERGED,
+        manifest_path=manifest_path,
+        auto_merged_paths=_count_leaves(final),
+    )
+
+
 # ---- default interactive prompter ----------------------------------------
 
 
@@ -647,6 +755,8 @@ def _fmt(value: Any) -> str:
 
 
 __all__ = [
+    "AutoMergeOutcome",
+    "AutoMergeReport",
     "Prompter",
     "ResolveError",
     "ResolveSummary",
@@ -654,5 +764,6 @@ __all__ = [
     "fetch_three_way",
     "render_path",
     "resolve_manifest",
+    "try_auto_merge_manifest",
     "write_atomic",
 ]

@@ -279,3 +279,23 @@ friendly path.
 ## Amendment history
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
+- 2026-05-19 — auto-merge integration into `maury sync` shipped.
+  Implementation note: sync.py's `_sync_one_repo` retains `git pull
+  --ff-only` as the safe default; on a non-FF rejection AND when
+  the repo carries `.meta/manifest.json` (i.e., is the base repo),
+  sync calls a new `_pull_with_structured_merge` helper that does
+  `git fetch origin` + `git merge --no-ff FETCH_HEAD`, then if the
+  only conflicted path is `.meta/manifest.json` invokes
+  `try_auto_merge_manifest()` (new non-interactive entry point in
+  `manifest_resolve_cmd.py`). Outcomes: AUTO_MERGED → `git add` +
+  `git commit -m "manifest merge: structured auto-resolve …"` to
+  finish the in-progress merge, RepoSyncResult.action="pulled"
+  with detail "auto-merged manifest"; NEEDS_USER_RESOLVE →
+  RepoSyncResult.action="error" with detail pointing at
+  `maury manifest resolve`. Non-manifest conflicts in the same
+  merge surface as a `git merge --abort` + error pointing the
+  user at manual mergetool. The render step uses sync's
+  in-memory (pre-pull) manifest; a re-run picks up the merged
+  view. Tests: `test_sync_auto_merges_additive_manifest_conflict`
+  + `test_sync_surfaces_real_manifest_conflict_with_resolve_hint`
+  + three `try_auto_merge_manifest()` unit tests.

@@ -13,11 +13,13 @@ import pytest
 from maury.ids import new_host_id, new_profile_id
 from maury.manifest_merge import Conflict, ConflictKind
 from maury.manifest_resolve_cmd import (
+    AutoMergeOutcome,
     ResolveError,
     fetch_side_metadata,
     fetch_three_way,
     render_path,
     resolve_manifest,
+    try_auto_merge_manifest,
     write_atomic,
 )
 
@@ -750,3 +752,87 @@ def test_resolve_summary_carries_side_metadata(tmp_path: Path) -> None:
     assert summary.side_b_meta is not None
     assert summary.side_a_meta.branch == "main"
     assert summary.side_b_meta.branch == "theirs"
+
+
+# ---- try_auto_merge_manifest ---------------------------------------------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_try_auto_merge_returns_not_in_conflict_for_clean_repo(tmp_path: Path) -> None:
+    """A manifest that isn't in merge state → NOT_IN_CONFLICT, no write."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run_git(["git", "init", "-q", "-b", "main"], cwd=repo)
+    _run_git(["git", "config", "user.name", "t"], cwd=repo)
+    _run_git(["git", "config", "user.email", "t@t.invalid"], cwd=repo)
+    manifest = repo / "manifest.json"
+    seed = _seed_minimum_v2()
+    manifest.write_text(json.dumps(seed, indent=2) + "\n")
+    _run_git(["git", "add", "manifest.json"], cwd=repo)
+    _run_git(["git", "commit", "-q", "-m", "initial"], cwd=repo)
+
+    before = manifest.read_text()
+    report = try_auto_merge_manifest(manifest)
+    assert report.outcome is AutoMergeOutcome.NOT_IN_CONFLICT
+    assert report.auto_merged_paths == 0
+    assert report.conflict_paths == ()
+    # File unchanged.
+    assert manifest.read_text() == before
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_try_auto_merge_resolves_additive_case_and_writes(tmp_path: Path) -> None:
+    """Two hosts added on opposite sides → engine merges, file is written
+    with both, outcome is AUTO_MERGED. Caller still does git add + commit."""
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    new_a = new_host_id("a")
+    ours["hosts"][new_a] = {
+        "name": "added-by-ours",
+        "profile": pid,
+        "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
+    }
+    theirs = json.loads(json.dumps(ancestor))
+    new_b = new_host_id("b")
+    theirs["hosts"][new_b] = {
+        "name": "added-by-theirs",
+        "profile": pid,
+        "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
+    }
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    report = try_auto_merge_manifest(manifest)
+    assert report.outcome is AutoMergeOutcome.AUTO_MERGED, report
+    assert report.auto_merged_paths > 0
+    # File now contains BOTH new hosts.
+    on_disk = json.loads(manifest.read_text())
+    assert new_a in on_disk["hosts"]
+    assert new_b in on_disk["hosts"]
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_try_auto_merge_surfaces_real_conflict_without_writing(tmp_path: Path) -> None:
+    """Both sides modify the same host → NEEDS_USER_RESOLVE, file untouched
+    on disk (left in the conflicted git state for the interactive resolver)."""
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    hid = next(iter(seed["hosts"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["hosts"][hid]["name"] = "renamed-by-ours"
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["hosts"][hid]["name"] = "renamed-by-theirs"
+
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+    pre_state = manifest.read_text()
+
+    report = try_auto_merge_manifest(manifest)
+    assert report.outcome is AutoMergeOutcome.NEEDS_USER_RESOLVE
+    assert report.auto_merged_paths == 0
+    assert len(report.conflict_paths) >= 1
+    # Manifest on disk was NOT written by the auto-merge attempt — still
+    # carries the conflict markers git left from the failed merge.
+    assert manifest.read_text() == pre_state
+    _ = pid  # silence unused (pid used to set up the fixture)

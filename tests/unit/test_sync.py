@@ -494,3 +494,117 @@ def test_sync_uses_host_id_file_when_present(tmp_path: Path) -> None:
         dry_run=True,
     )
     assert result.host_id == real_hid
+
+
+# ---- structured auto-merge integration (ADR-0024 sync wiring) -----------
+
+
+def _add_host_commit(repo: Path, hid: str, name: str, pid: str, message: str) -> None:
+    """Append a host to a repo's manifest and commit. Used to create
+    divergent histories on the local clone and the seed upstream."""
+    mpath = repo / ".meta" / "manifest.json"
+    body = json.loads(mpath.read_text())
+    body["hosts"][hid] = {
+        "name": name,
+        "profile": pid,
+        "repos": {"base": {"url": str(repo.absolute()), "mode": "rw"}},
+    }
+    mpath.write_text(json.dumps(body, indent=2) + "\n")
+    subprocess.run(["git", "-C", str(repo), "add", ".meta/manifest.json"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", message], check=True)
+
+
+def test_sync_auto_merges_additive_manifest_conflict(tmp_path: Path) -> None:
+    """The canonical 'two hosts bootstrapping' case: upstream adds host-A,
+    local adds host-B. `git pull --ff-only` fails non-FF; sync's recovery
+    runs the structured auto-merge engine, commits the result, and reports
+    'pulled (auto-merged manifest)'."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    repos_root = tmp_path / "repos"
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+
+    # First sync: clone seed into repos_root/base + render.
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+    )
+    base_clone = repos_root / "base"
+    assert (base_clone / ".meta" / "manifest.json").is_file()
+
+    # Find the profile already in the seed (both sides will bind to it).
+    seed_body = json.loads((seed / ".meta" / "manifest.json").read_text())
+    pid = next(iter(seed_body["profiles"]))
+
+    # Diverge: upstream adds host-upstream; local clone adds host-local.
+    new_upstream = new_host_id("upstream")
+    new_local = new_host_id("local")
+    _add_host_commit(seed, new_upstream, "added-upstream", pid, "upstream commit")
+    _add_host_commit(base_clone, new_local, "added-local", pid, "local commit")
+
+    # Re-run sync from the local clone's manifest. `git pull --ff-only`
+    # should fail (non-FF); structured auto-merge should resolve it.
+    result = sync(
+        manifest_path=base_clone / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+        drift_mode="force",  # don't trip ADR-0017 drift check on second render
+    )
+    assert not result.has_errors(), result.errors
+    assert len(result.repos) == 1
+    assert result.repos[0].action == "pulled", result.repos[0].detail
+    assert "auto-merged" in result.repos[0].detail.lower()
+
+    # Manifest on disk now contains BOTH new hosts.
+    final_body = json.loads((base_clone / ".meta" / "manifest.json").read_text())
+    assert new_upstream in final_body["hosts"]
+    assert new_local in final_body["hosts"]
+
+
+def test_sync_surfaces_real_manifest_conflict_with_resolve_hint(tmp_path: Path) -> None:
+    """If both sides modify the same profile's description to different
+    values, structured merge can't auto-resolve (BOTH_MODIFIED). Sync
+    leaves the working tree in the conflicted state and surfaces an
+    error pointing at `maury manifest resolve`. The host's `name` is
+    left untouched so `_identify_host` still resolves the hostname."""
+    seed = _make_seed_repo(tmp_path, hostname=socket.gethostname())
+    repos_root = tmp_path / "repos"
+    target = tmp_path / "out"
+    host_id_file = tmp_path / ".maury-host-id"
+
+    sync(
+        manifest_path=seed / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+    )
+    base_clone = repos_root / "base"
+
+    seed_body = json.loads((seed / ".meta" / "manifest.json").read_text())
+    existing_pid = next(iter(seed_body["profiles"]))
+
+    def _modify_profile_desc_and_commit(repo: Path, new_desc: str, msg: str) -> None:
+        mpath = repo / ".meta" / "manifest.json"
+        body = json.loads(mpath.read_text())
+        body["profiles"][existing_pid]["description"] = new_desc
+        mpath.write_text(json.dumps(body, indent=2) + "\n")
+        subprocess.run(["git", "-C", str(repo), "add", ".meta/manifest.json"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", msg], check=True)
+
+    _modify_profile_desc_and_commit(seed, "upstream-description", "upstream description")
+    _modify_profile_desc_and_commit(base_clone, "local-description", "local description")
+
+    result = sync(
+        manifest_path=base_clone / ".meta" / "manifest.json",
+        target_dir=target,
+        repos_root=repos_root,
+        host_id_file=host_id_file,
+        drift_mode="force",
+    )
+    assert result.has_errors() or result.repos[0].action == "error"
+    detail = result.repos[0].detail
+    assert "maury manifest resolve" in detail
+    assert "structural conflict" in detail.lower() or "conflict" in detail.lower()
