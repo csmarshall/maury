@@ -224,8 +224,12 @@ no migration is needed.
 - **`gh` becomes a soft dependency for `pr` mode** — required
   if you want maury-driven PR creation; optional if you'll
   open PRs manually. Documented; not silently assumed.
-- **Manifest schema bumps to v3** for the enum extension.
-  First user of ADR-0030's per-version-upgrade machinery.
+- **No schema-version bump required** for the enum extension.
+  Adding a new enum value is forward-compatible at the JSON
+  layer; older maury versions seeing `pr` would surface it as
+  an unrecognized enum value rather than fail. If a future
+  change does require a version bump, ADR-0030 (currently
+  Deferred) is the framework to revive.
 - **`maury review` gains a per-mode terminal step.** Bounded
   conditional in the review flow; ~30 LOC.
 - **Distinction from ADR-0045 stays clear.** `pr` mode is

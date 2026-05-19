@@ -260,11 +260,13 @@ manifest to the specified ref. Maury's `git pull` becomes
 `git fetch && git checkout <ref>` for pinned repos. v1 ships
 this option; the default is HEAD-tracking (no pin).
 
-The `repos.<nick>.ref` field lands in **manifest schema v3**
-alongside [ADR-0033](0033-pr-repo-mode.md)'s `pr`-mode enum
-extension — the v2→v3 upgrade script (per
-[ADR-0030](0030-manifest-schema-migrations.md)) is a no-op for
-repos that don't use `ref` (absent field = HEAD-tracking).
+The `repos.<nick>.ref` field can land as an additive v1 field
+(absent = HEAD-tracking, default) or as part of a future v2
+schema bump — that decision is held until the field actually
+ships. Either way the upgrade is a no-op for repos that don't
+use `ref`. Note: ADR-0030 is currently Deferred (no real
+multi-version schema exists yet); the per-version upgrade
+framework lands if/when a v2 is genuinely needed.
 
 Curator-side semver discipline (e.g., tagging team-engineering
 releases as v1.0.0, v1.1.0) is out of maury's scope — it's a
