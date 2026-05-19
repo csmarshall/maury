@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -452,6 +453,204 @@ def test_resolve_manifest_populates_semantic_summary_in_prompts(tmp_path: Path) 
     resolve_manifest(manifest, prompter=take_a)
     assert seen, "prompter should have been invoked"
     assert any("host(s) on A" in s for s in seen if s)
+
+
+# ---- edit_resolution (edit-by-hand) --------------------------------------
+
+
+def _fake_editor_writing(value: Any) -> Callable[[Path], int]:
+    """Return an EditorInvoker that rewrites the file's `resolution` field."""
+    import json as _json
+
+    def invoker(path: Path) -> int:
+        body = _json.loads(path.read_text())
+        body["resolution"] = value
+        path.write_text(_json.dumps(body, indent=2) + "\n")
+        return 0
+
+    return invoker
+
+
+def test_edit_resolution_applies_user_value(tmp_path: Path) -> None:
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import edit_resolution
+
+    conflict = Conflict(
+        path=("profiles", "p1", "name"),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor="home",
+        side_a="renamed-A",
+        side_b="renamed-B",
+    )
+    applied, value = edit_resolution(conflict, editor_invoker=_fake_editor_writing("chosen-by-hand"))
+    assert applied is True
+    assert value == "chosen-by-hand"
+
+
+def test_edit_resolution_null_means_skip(tmp_path: Path) -> None:
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import edit_resolution
+
+    conflict = Conflict(
+        path=("profiles", "p1", "name"),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor="home",
+        side_a="A",
+        side_b="B",
+    )
+    # Default template's resolution is null; a fake editor that doesn't change anything
+    # leaves it null → applied=False.
+    applied, value = edit_resolution(conflict, editor_invoker=lambda _p: 0)
+    assert applied is False
+    assert value is None
+
+
+def test_edit_resolution_editor_nonzero_exit_means_skip(tmp_path: Path) -> None:
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import edit_resolution
+
+    conflict = Conflict(
+        path=("v",),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor=1,
+        side_a=2,
+        side_b=3,
+    )
+    applied, _ = edit_resolution(conflict, editor_invoker=lambda _p: 1)
+    assert applied is False
+
+
+def test_edit_resolution_delete_token_yields_delete_sentinel(tmp_path: Path) -> None:
+    from maury.manifest_merge import DELETE_SENTINEL, Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import EDIT_DELETE_TOKEN, edit_resolution
+
+    conflict = Conflict(
+        path=("profiles", "p1"),
+        kind=ConflictKind.DELETE_VS_MODIFY,
+        ancestor={"name": "home"},
+        side_a=DELETE_SENTINEL,
+        side_b={"name": "renamed"},
+    )
+    applied, value = edit_resolution(conflict, editor_invoker=_fake_editor_writing(EDIT_DELETE_TOKEN))
+    assert applied is True
+    assert value is DELETE_SENTINEL
+
+
+def test_edit_resolution_malformed_json_means_skip(tmp_path: Path) -> None:
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import edit_resolution
+
+    conflict = Conflict(
+        path=("v",),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor=1,
+        side_a=2,
+        side_b=3,
+    )
+
+    def break_the_file(path: Path) -> int:
+        path.write_text("{ not valid")
+        return 0
+
+    applied, _ = edit_resolution(conflict, editor_invoker=break_the_file)
+    assert applied is False
+
+
+def test_edit_resolution_template_includes_path_and_kind(tmp_path: Path) -> None:
+    """The template surfaces enough context that the user knows what they're editing."""
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import edit_resolution
+
+    seen: dict[str, Any] = {}
+
+    def capturing_invoker(path: Path) -> int:
+        seen["body"] = json.loads(path.read_text())
+        return 0
+
+    conflict = Conflict(
+        path=("hosts", "host_abc", "name"),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor="old-name",
+        side_a="A-name",
+        side_b="B-name",
+    )
+    edit_resolution(conflict, editor_invoker=capturing_invoker)
+    body = seen["body"]
+    assert body["path"] == "hosts.host_abc.name"
+    assert body["kind"] == "both_modified"
+    assert body["ancestor"] == "old-name"
+    assert body["side_a"] == "A-name"
+    assert body["side_b"] == "B-name"
+    assert body["resolution"] is None
+    assert "_help" in body
+
+
+def test_edit_resolution_template_encodes_delete_sentinel(tmp_path: Path) -> None:
+    """DELETE_SENTINEL becomes the EDIT_DELETE_TOKEN string in the template."""
+    from maury.manifest_merge import DELETE_SENTINEL, Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import EDIT_DELETE_TOKEN, edit_resolution
+
+    seen: dict[str, Any] = {}
+
+    def capturing_invoker(path: Path) -> int:
+        seen["body"] = json.loads(path.read_text())
+        return 0
+
+    conflict = Conflict(
+        path=("profiles", "p1"),
+        kind=ConflictKind.DELETE_VS_MODIFY,
+        ancestor={"name": "home"},
+        side_a=DELETE_SENTINEL,
+        side_b={"name": "renamed"},
+    )
+    edit_resolution(conflict, editor_invoker=capturing_invoker)
+    assert seen["body"]["side_a"] == EDIT_DELETE_TOKEN
+
+
+# ---- resolve_manifest edit-by-hand ---------------------------------------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_resolve_manifest_e_choice_invokes_editor(tmp_path: Path) -> None:
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["profiles"][pid]["name"] = "renamed-ours"
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["profiles"][pid]["name"] = "renamed-theirs"
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    summary = resolve_manifest(
+        manifest,
+        prompter=lambda _c: "e",
+        editor_invoker=_fake_editor_writing("manually-chosen"),
+    )
+    assert summary.chosen_sides == ("edit",)
+    body = json.loads(manifest.read_text())
+    assert body["profiles"][pid]["name"] == "manually-chosen"
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_resolve_manifest_e_with_null_resolution_falls_back_to_skip(tmp_path: Path) -> None:
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["profiles"][pid]["name"] = "renamed-ours"
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["profiles"][pid]["name"] = "renamed-theirs"
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    summary = resolve_manifest(
+        manifest,
+        prompter=lambda _c: "e",
+        editor_invoker=lambda _p: 0,  # noop editor → resolution stays null
+    )
+    assert summary.chosen_sides == ("skip",)
+    body = json.loads(manifest.read_text())
+    # Ancestor preserved.
+    assert body["profiles"][pid]["name"] == seed["profiles"][pid]["name"]
 
 
 # ---- fetch_side_metadata --------------------------------------------------

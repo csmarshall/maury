@@ -23,7 +23,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from maury.manifest_merge import (
     DELETE_SENTINEL,
@@ -91,7 +91,17 @@ Prompter = Callable[[Conflict], str]
 """Injectable prompter for resolve's interactive UI.
 
 Returns one of: 'a' (take side A), 'b' (take side B), 's' (skip
-this conflict — leave ancestor in place), 'q' (abort the whole run).
+this conflict — leave ancestor in place), 'e' (edit by hand —
+spawn $EDITOR with a template), 'q' (abort the whole run).
+"""
+
+
+EditorInvoker = Callable[[Path], int]
+"""Editor adapter for edit-by-hand resolution.
+
+Takes a path to a JSON template, mutates it in place via $EDITOR
+(or whatever the implementation chooses), and returns the editor's
+exit code. Tests inject a fake invoker that writes a known value.
 """
 
 
@@ -292,6 +302,113 @@ def render_path(path: PathT) -> str:
     return ".".join(path)
 
 
+# ---- edit-by-hand --------------------------------------------------------
+
+
+# Sentinel string the user can write in the resolution field to signal
+# "delete this key" (for DELETE_VS_MODIFY conflicts where they want to
+# accept the deletion even though it wasn't the value either raw side
+# wrote). Distinguished from the literal string "<deleted>" only via
+# the user's choice of context — same trade-off git's standard merge
+# markers make.
+EDIT_DELETE_TOKEN: Final[str] = "<deleted>"
+
+
+def _fmt_for_template(value: Any) -> Any:
+    """Convert DELETE_SENTINEL to the EDIT_DELETE_TOKEN string for templates."""
+    if value is DELETE_SENTINEL:
+        return EDIT_DELETE_TOKEN
+    return value
+
+
+def _default_editor_invoker(path: Path) -> int:
+    """Spawn $EDITOR (or fallback) on `path`, return its exit code."""
+    import os
+    import shutil
+
+    candidates = [os.environ.get("EDITOR"), "vim", "vi", "nano"]
+    for editor in candidates:
+        if not editor:
+            continue
+        # If $EDITOR is set to "code -w" or similar, shutil.which would
+        # only find the first token. Resolve manually.
+        first_token = editor.split()[0]
+        if shutil.which(first_token) is None:
+            continue
+        try:
+            proc = subprocess.run(
+                [*editor.split(), str(path)],
+                check=False,
+            )
+        except OSError:
+            continue
+        return proc.returncode
+    raise ResolveError("no editor available: set $EDITOR or install one of vim/vi/nano on PATH.")
+
+
+def edit_resolution(
+    conflict: Conflict,
+    *,
+    editor_invoker: EditorInvoker | None = None,
+) -> tuple[bool, Any]:
+    """Spawn the user's editor on a JSON template; parse their resolution.
+
+    Returns (applied, value):
+    - applied=True, value=Any: user filled in the `resolution` field;
+      use `value` (which may be the DELETE_SENTINEL if they wrote the
+      EDIT_DELETE_TOKEN string).
+    - applied=False, value=None: user left resolution as null, or
+      the editor exited non-zero, or the file couldn't be parsed.
+      Caller should treat as a skip.
+    """
+    import tempfile
+
+    invoker = editor_invoker if editor_invoker is not None else _default_editor_invoker
+
+    template = {
+        "path": render_path(conflict.path),
+        "kind": conflict.kind.value,
+        "_help": (
+            "Edit the 'resolution' field below to your chosen value (JSON-encoded). "
+            f"Use the string {EDIT_DELETE_TOKEN!r} to delete this key. "
+            "Leave as null (or save unchanged) to skip this conflict."
+        ),
+        "ancestor": _fmt_for_template(conflict.ancestor),
+        "side_a": _fmt_for_template(conflict.side_a),
+        "side_b": _fmt_for_template(conflict.side_b),
+        "resolution": None,
+    }
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".json",
+        prefix="maury-resolve-",
+        delete=False,
+    ) as fh:
+        fh.write(json.dumps(template, indent=2) + "\n")
+        tmp_path = Path(fh.name)
+
+    try:
+        rc = invoker(tmp_path)
+        if rc != 0:
+            return (False, None)
+        try:
+            parsed = json.loads(tmp_path.read_text())
+        except json.JSONDecodeError:
+            return (False, None)
+        if not isinstance(parsed, dict):
+            return (False, None)
+        resolution = parsed.get("resolution")
+        if resolution is None:
+            return (False, None)
+        if isinstance(resolution, str) and resolution == EDIT_DELETE_TOKEN:
+            return (True, DELETE_SENTINEL)
+        return (True, resolution)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 def semantic_summary(
     conflict: Conflict,
     *,
@@ -373,6 +490,7 @@ def resolve_manifest(
     *,
     prompter: Prompter,
     write: bool = True,
+    editor_invoker: EditorInvoker | None = None,
 ) -> ResolveSummary:
     """End-to-end resolve.
 
@@ -380,6 +498,10 @@ def resolve_manifest(
     walks conflicts via the prompter, validates the result, and writes
     atomically. Caller is responsible for `git add` + commit after a
     successful run.
+
+    `editor_invoker` is injectable to make the edit-by-hand path
+    testable; production passes None and the default-editor fallback
+    chain ($EDITOR, vim, vi, nano) is used.
     """
     from maury.manifest import ManifestError, load_manifest, validate_manifest
 
@@ -425,8 +547,21 @@ def resolve_manifest(
             else:
                 choices[conflict.path] = conflict.ancestor
             chosen_sides.append("skip")
+        elif choice == "e":
+            applied, value = edit_resolution(conflict, editor_invoker=editor_invoker)
+            if applied:
+                choices[conflict.path] = value
+                chosen_sides.append("edit")
+            else:
+                # User left the resolution null or editor exited non-zero
+                # → treat as skip per the documented contract.
+                if conflict.ancestor is DELETE_SENTINEL:
+                    choices[conflict.path] = DELETE_SENTINEL
+                else:
+                    choices[conflict.path] = conflict.ancestor
+                chosen_sides.append("skip")
         else:
-            raise ResolveError(f"prompter returned unrecognised choice {choice!r} (expected 'a','b','s','q')")
+            raise ResolveError(f"prompter returned unrecognised choice {choice!r} (expected 'a','b','s','e','q')")
 
     final = apply_resolutions(merge, choices)
 
@@ -499,7 +634,7 @@ def default_prompter(conflict: Conflict) -> str:
         click.echo(f"  ⓘ {conflict.semantic_summary}")
     click.echo("")
     choice: str = click.prompt(
-        "  resolve [a=take A / b=take B / s=skip (keep ancestor) / q=abort]",
+        "  resolve [a=take A / b=take B / e=edit by hand / s=skip (keep ancestor) / q=abort]",
         default="s",
     )
     return choice.strip().lower()[:1]
