@@ -464,6 +464,79 @@ def manifest_upgrade_v1_to_v2(in_path: Path, out_path: Path | None, dry_run: boo
             click.echo(f"  {name!r:<24} → {hid}")
 
 
+@manifest.command("resolve")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file with unresolved git conflict markers.",
+)
+@click.option(
+    "--non-interactive",
+    "non_interactive",
+    is_flag=True,
+    help="Refuse to prompt; exit 1 if any conflicts remain after the auto-merge.",
+)
+def manifest_resolve(manifest_file: Path | None, non_interactive: bool) -> None:
+    """Interactively resolve a 3-way git merge conflict on the manifest.
+
+    Per ADR-0024, the structured-merge engine auto-resolves the
+    inclusive-additive case (both sides added different keys → keep
+    both); everything else surfaces here for the user to arbitrate.
+
+    Validates the result against the manifest schema before writing.
+    Caller is responsible for `git add` + commit after this command
+    finishes.
+    """
+    from maury.manifest_merge import Conflict
+    from maury.manifest_resolve_cmd import (
+        Prompter,
+        ResolveError,
+        default_prompter,
+        resolve_manifest,
+    )
+
+    path = manifest_file or DEFAULT_MANIFEST_PATH
+    if not path.exists():
+        raise click.ClickException(f"manifest file not found: {path}")
+
+    prompter: Prompter
+    if non_interactive:
+
+        def _refuse(_conflict: Conflict) -> str:
+            raise ResolveError(
+                "--non-interactive: refusing to prompt. Re-run without the flag "
+                "to walk through the conflict resolver, or revert to a clean state."
+            )
+
+        prompter = _refuse
+    else:
+        prompter = default_prompter
+
+    try:
+        summary = resolve_manifest(path, prompter=prompter)
+    except ResolveError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo("")
+    if summary.aborted:
+        click.echo("aborted by user; manifest not written.")
+        sys.exit(2)
+
+    click.echo(
+        f"resolved {summary.manifest_path}: "
+        f"auto-merged {summary.auto_merged_paths} leaf path(s); "
+        f"user resolved {summary.user_resolved_paths} conflict(s)."
+    )
+    if summary.chosen_sides:
+        side_counts = {side: summary.chosen_sides.count(side) for side in set(summary.chosen_sides)}
+        choices_text = ", ".join(f"{side}={n}" for side, n in sorted(side_counts.items()))
+        click.echo(f"  choices: {choices_text}")
+    click.echo("")
+    click.echo("Next: `git add` the manifest, then commit the merge.")
+
+
 # ---- profile subgroup ----------------------------------------------------
 
 

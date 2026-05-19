@@ -1,0 +1,343 @@
+"""CLI driver for `maury manifest resolve` (per ADR-0024).
+
+Reads the three-way state from git (`:1:` / `:2:` / `:3:` for ancestor /
+ours / theirs), runs the structured-merge engine in `manifest_merge.py`,
+walks any unresolved conflicts with the user, validates the final
+manifest, and writes it atomically.
+
+Out of v1 scope (followups documented in status.md):
+- Semantic context per path ("3 hosts will lose binding").
+- Author/timestamp/branch metadata per side (would need extra git plumbing).
+- Auto-merge integration into `maury sync`.
+- Per-backend URL validator (different file).
+- `~/.config/maury/.lock` advisory lock.
+- Edit-by-hand resolution option.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import tempfile
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from maury.manifest_merge import (
+    DELETE_SENTINEL,
+    Conflict,
+    ConflictKind,
+    MergeResult,
+    PathT,
+    apply_resolutions,
+    compute_merge,
+)
+
+
+class ResolveError(RuntimeError):
+    """Raised when the resolve command cannot proceed."""
+
+
+@dataclass(frozen=True)
+class ResolveSummary:
+    """Outcome of a resolve run."""
+
+    manifest_path: Path
+    auto_merged_paths: int
+    """Number of paths the engine auto-resolved (additive case + clean diffs)."""
+
+    user_resolved_paths: int
+    """Number of conflicts the user picked through."""
+
+    aborted: bool = False
+    """True iff the user chose to abort during a prompt."""
+
+    chosen_sides: tuple[str, ...] = field(default_factory=tuple)
+    """Per-conflict side selected (for the final commit-message audit trail)."""
+
+
+Prompter = Callable[[Conflict], str]
+"""Injectable prompter for resolve's interactive UI.
+
+Returns one of: 'a' (take side A), 'b' (take side B), 's' (skip
+this conflict — leave ancestor in place), 'q' (abort the whole run).
+"""
+
+
+# ---- git plumbing ---------------------------------------------------------
+
+
+def _run_git(cmd: list[str], *, cwd: Path) -> tuple[int, str]:
+    """Run a git command in cwd; return (rc, combined output)."""
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            check=False,
+            cwd=str(cwd),
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return -1, str(e)
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
+def _read_git_blob(repo_root: Path, ref: str) -> str | None:
+    """Read a single blob via `git show <ref>` (returns stdout, not stderr).
+
+    Returns None if the ref doesn't exist or is empty (e.g., one side
+    deleted the file). The combined-output shape of _run_git mixes
+    stdout and stderr, so this uses a direct subprocess call to keep
+    stdout clean for the JSON parse.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "show", ref],
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            check=False,
+            cwd=str(repo_root),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _repo_root(start: Path) -> Path:
+    """Resolve the git repo root containing `start`. Raises ResolveError."""
+    rc, out = _run_git(["git", "rev-parse", "--show-toplevel"], cwd=start)
+    if rc != 0:
+        raise ResolveError(f"{start}: not inside a git repository: {out.strip()}")
+    return Path(out.strip())
+
+
+def _is_unmerged(repo_root: Path, rel_path: Path) -> bool:
+    """True iff the given path is in git's merge-conflict state."""
+    rc, out = _run_git(
+        ["git", "ls-files", "--unmerged", "--", str(rel_path)],
+        cwd=repo_root,
+    )
+    if rc != 0:
+        return False
+    # Non-empty output = the file has unmerged stages 1/2/3.
+    return bool(out.strip())
+
+
+def fetch_three_way(manifest_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Return (ancestor, ours, theirs) parsed from git's index stages.
+
+    Raises ResolveError if the file isn't in a merge conflict or any
+    side fails to parse.
+    """
+    manifest_path = manifest_path.resolve()
+    repo_root = _repo_root(manifest_path.parent)
+    try:
+        rel = manifest_path.relative_to(repo_root)
+    except ValueError as exc:
+        raise ResolveError(f"{manifest_path}: path is not inside the repo root {repo_root}") from exc
+
+    if not _is_unmerged(repo_root, rel):
+        raise ResolveError(
+            f"{manifest_path}: no merge conflict detected. "
+            f"This command only runs against a manifest in git's merge-conflict state."
+        )
+
+    parsed: list[dict[str, Any]] = []
+    for stage in ("1", "2", "3"):
+        raw = _read_git_blob(repo_root, f":{stage}:{rel}")
+        if raw is None:
+            raise ResolveError(
+                f"{manifest_path}: stage {stage} of the merge state is missing. "
+                f"The file may be in a delete-vs-modify conflict on the file level, not the content level."
+            )
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ResolveError(f"{manifest_path}: stage {stage} of the merge state is not valid JSON: {exc}") from exc
+        if not isinstance(obj, dict):
+            raise ResolveError(f"{manifest_path}: stage {stage} top-level is not a JSON object.")
+        parsed.append(obj)
+    return parsed[0], parsed[1], parsed[2]
+
+
+# ---- atomic write ---------------------------------------------------------
+
+
+def write_atomic(path: Path, content: str) -> None:
+    """Write `content` to `path` via tmpfile + rename (POSIX atomic)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".manifest.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+
+# ---- driver ---------------------------------------------------------------
+
+
+def render_path(path: PathT) -> str:
+    """Render a JSON path tuple as a dotted string for display."""
+    return ".".join(path)
+
+
+def resolve_manifest(
+    manifest_path: Path,
+    *,
+    prompter: Prompter,
+    write: bool = True,
+) -> ResolveSummary:
+    """End-to-end resolve.
+
+    Fetches the three-way state from git, runs the structured merge,
+    walks conflicts via the prompter, validates the result, and writes
+    atomically. Caller is responsible for `git add` + commit after a
+    successful run.
+    """
+    from maury.manifest import ManifestError, load_manifest, validate_manifest
+
+    ancestor, ours, theirs = fetch_three_way(manifest_path)
+    merge = compute_merge(ancestor, ours, theirs)
+
+    auto_count = _count_auto_resolved(merge)
+    chosen_sides: list[str] = []
+    choices: dict[PathT, Any] = {}
+
+    for conflict in merge.conflicts:
+        choice = prompter(conflict)
+        if choice == "q":
+            return ResolveSummary(
+                manifest_path=manifest_path,
+                auto_merged_paths=auto_count,
+                user_resolved_paths=len(choices),
+                aborted=True,
+                chosen_sides=tuple(chosen_sides),
+            )
+        if choice == "a":
+            if conflict.side_a is DELETE_SENTINEL:
+                choices[conflict.path] = DELETE_SENTINEL
+            else:
+                choices[conflict.path] = conflict.side_a
+            chosen_sides.append("A")
+        elif choice == "b":
+            if conflict.side_b is DELETE_SENTINEL:
+                choices[conflict.path] = DELETE_SENTINEL
+            else:
+                choices[conflict.path] = conflict.side_b
+            chosen_sides.append("B")
+        elif choice == "s":
+            # Skip: keep ancestor's value. For BOTH_ADDED_SAME_KEY_DIFFERENT_VALUE
+            # the ancestor was absent → equivalent to deleting both sides' add.
+            if conflict.ancestor is DELETE_SENTINEL:
+                choices[conflict.path] = DELETE_SENTINEL
+            else:
+                choices[conflict.path] = conflict.ancestor
+            chosen_sides.append("skip")
+        else:
+            raise ResolveError(f"prompter returned unrecognised choice {choice!r} (expected 'a','b','s','q')")
+
+    final = apply_resolutions(merge, choices)
+
+    # Schema-validate before writing.
+    if write:
+        # Write to a temp location next to the real manifest so we can
+        # round-trip-validate before clobbering.
+        tmp_for_validation = manifest_path.parent / f".{manifest_path.name}.validate.tmp"
+        try:
+            tmp_for_validation.write_text(json.dumps(final, indent=2) + "\n")
+            try:
+                m = load_manifest(tmp_for_validation)
+            except ManifestError as exc:
+                raise ResolveError(f"resolved manifest failed schema validation: {exc}") from exc
+            errors = validate_manifest(m)
+            if errors:
+                raise ResolveError("resolved manifest failed cross-reference validation:\n  " + "\n  ".join(errors))
+        finally:
+            if tmp_for_validation.exists():
+                tmp_for_validation.unlink()
+
+        write_atomic(manifest_path, json.dumps(final, indent=2) + "\n")
+
+    return ResolveSummary(
+        manifest_path=manifest_path,
+        auto_merged_paths=auto_count,
+        user_resolved_paths=len(merge.conflicts),
+        aborted=False,
+        chosen_sides=tuple(chosen_sides),
+    )
+
+
+def _count_auto_resolved(merge: MergeResult) -> int:
+    """Count leaf keys in the auto-resolved portion. Approximation of 'merged paths'."""
+    return _count_leaves(merge.resolved)
+
+
+def _count_leaves(value: Any) -> int:
+    if isinstance(value, dict):
+        return sum(_count_leaves(v) for v in value.values()) if value else 0
+    return 1
+
+
+# ---- default interactive prompter ----------------------------------------
+
+
+def default_prompter(conflict: Conflict) -> str:
+    """Stdin-based prompter used by the CLI."""
+    import click
+
+    click.echo("")
+    click.echo("─" * 60)
+    click.echo(f"path: {render_path(conflict.path)}")
+    click.echo(f"kind: {conflict.kind.value}")
+    click.echo(f"  ancestor:  {_fmt(conflict.ancestor)}")
+    click.echo(f"  side A:    {_fmt(conflict.side_a)}")
+    click.echo(f"  side B:    {_fmt(conflict.side_b)}")
+    if conflict.kind is ConflictKind.BOTH_MODIFIED:
+        explanation = "Both sides changed the ancestor's value to different new values. Pick which side's value lands."
+    elif conflict.kind is ConflictKind.DELETE_VS_MODIFY:
+        explanation = (
+            "One side deleted this key; the other modified it. 'a' takes side A's intent; 'b' takes side B's intent."
+        )
+    else:
+        explanation = "Both sides added this key with different content. Pick which side's value lands."
+    click.echo(f"  → {explanation}")
+    click.echo("")
+    choice: str = click.prompt(
+        "  resolve [a=take A / b=take B / s=skip (keep ancestor) / q=abort]",
+        default="s",
+    )
+    return choice.strip().lower()[:1]
+
+
+def _fmt(value: Any) -> str:
+    if value is DELETE_SENTINEL:
+        return "<deleted>"
+    return json.dumps(value, indent=None)
+
+
+__all__ = [
+    "Prompter",
+    "ResolveError",
+    "ResolveSummary",
+    "default_prompter",
+    "fetch_three_way",
+    "render_path",
+    "resolve_manifest",
+    "write_atomic",
+]
