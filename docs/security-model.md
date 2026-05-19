@@ -228,7 +228,7 @@ from "documented discipline" to "structurally enforced."
 - **Maury-side detection of account/mode mismatch.** A sibling to
   [ADR-0025](adr/0025-profile-switching-session-safeguards.md)'s
   session safeguards, for the credential-mode case. Would surface
-  via the [`maury-status` skill](adr/0017-drift-detection-and-reconciliation.md#the-maury-status-skill)
+  via the planned [`maury-status` skill](adr/0017-drift-detection-and-reconciliation.md#the-maury-status-skill)
   and via the mode-change advisory. Requires a stable Claude Code
   surface for reading the active Anthropic account — currently
   unspecified upstream. Tracked in
@@ -241,10 +241,12 @@ from "documented discipline" to "structurally enforced."
   [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md) could name
   the per-mode-credential discipline at first-host setup, when the
   user is most likely to internalize it.
-- **`scripts/check-doc-links.py` / `maury doctor --docs`.** Not
-  security per se, but the same hygiene impulse — internal-link
-  rot is a class of trust-boundary erosion in the doc set itself.
-  Tracked as a maintainer followup.
+- **`maury doctor --docs`.** Not security per se, but the same
+  hygiene impulse — internal-link rot is a class of trust-boundary
+  erosion in the doc set itself. `scripts/check-doc-links.py` (shipped
+  2026-05-13, with pre-commit wiring 2026-05-18) covers the
+  contributor-side check; a `--docs` subcheck for end-users is
+  still a maintainer followup.
 
 ---
 

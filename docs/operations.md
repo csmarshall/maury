@@ -208,6 +208,9 @@ flowchart TD
 
 ## `maury review <run-id>`
 
+> **Status:** ⏳ planned (Phase 7) per [`status.md`](status.md).
+> The flowchart below describes the target UX.
+
 Walk the run branch's commits with a curator. Per ADR-0022.
 
 ```mermaid
@@ -245,6 +248,9 @@ flowchart TD
 
 ## `maury promote --from --to`
 
+> **Status:** ⏳ planned (Phase 9) per [`status.md`](status.md).
+> The flowchart below describes the target UX.
+
 Cross-repo promotion (e.g., work → base). Curator host has rw on
 both. Per [ADR-0045](adr/0045-cross-trust-boundary-promotion.md) +
 ADR-0022.
@@ -268,6 +274,11 @@ flowchart TD
 ---
 
 ## `maury mode use <name>`
+
+> **Status:** ⏳ planned (Phase 5.x) per [`status.md`](status.md).
+> The flowchart below describes the target UX. Today, mode
+> changes are a two-step `maury mode deregister` + `maury mode
+> bootstrap` (both shipped 2026-05-19 per ADR-0039).
 
 Switch the host's active mode. Re-renders. Hook teardown is
 implicit via the marker scheme.

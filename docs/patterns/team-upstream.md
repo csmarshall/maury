@@ -140,6 +140,11 @@ registry is a planned-but-not-built future enhancement
 
 ## Engineer (consumer) setup
 
+> **Status:** `maury subscribe` is ⏳ planned (v1.1+) per
+> [`status.md`](../status.md). The steps below describe the
+> target UX; today, consumers manually edit their mode marker
+> to add the rules repo as a sublayer and run `maury sync`.
+
 ### Step 1 — Subscribe
 
 ```sh
@@ -214,6 +219,12 @@ When you (Alice) discover a useful pattern via mining
 think belongs in the team rules repo (not just your personal
 mode):
 
+> **Status:** `maury mine`'s run-branch generation (Phase 6
+> finalization) and `maury review <run-id>` (Phase 7) are
+> still landing per [`status.md`](../status.md). The snippet
+> below describes the target UX. Today, `maury mine` produces
+> in-memory findings without the per-commit branch.
+
 ```sh
 maury mine                            # produces a maury/run/<run-id> branch
 maury review <run-id>                 # walk the commits
@@ -269,6 +280,11 @@ their next sync.
 To pin a consumer to a specific version (e.g., "we audited
 rules-team-engineering as of v1.2.0; don't auto-upgrade until
 we review the next batch"):
+
+> **Status:** `maury subscribe --pin` and `maury subscription
+> update` are ⏳ planned (v1.1+) per [`status.md`](../status.md).
+> Today, pinning is done by editing the sublayer entry's
+> commit/tag reference in `.meta/maury-marker.json` directly.
 
 ```sh
 # At subscribe time:

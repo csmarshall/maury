@@ -135,6 +135,29 @@ discovered by walking the marker graph from base outward.
   than reading a single file. Acceptable for agency-sized
   installations (tens to hundreds of repos).
 
+### D — Per-repo marker with full transitive sublayer list cached
+
+A variant of C: each marker records not just direct sublayers but
+the **full transitive closure** of layers reachable through it
+(so a base repo's marker lists every descendant in one place,
+avoiding traversal).
+
+- ✅ Single-file agency-wide view from the base marker.
+- ❌ Loses locality: adding any sublayer anywhere in the tree
+  requires updating every ancestor's marker up to the base.
+  This breaks the "adding a rules repo to `mode:work` edits one
+  file" invariant that motivated rejecting option B.
+- ❌ Stale-cache risk: if a downstream marker mutates without the
+  ancestors being updated, the base's transitive list lies.
+  Validating the cache requires the same traversal that would
+  produce the answer directly.
+
+Option C wins because direct-deps-only keeps the locality
+guarantee that distinguishes a distributed manifest from a
+centralized one. Agency-sized traversal is cheap enough that
+caching the answer at every node is a worse trade than walking
+the graph when needed.
+
 ## Decision Outcome
 
 Chosen: **Option C** — `.meta/maury-marker.json` as a
