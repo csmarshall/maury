@@ -86,9 +86,10 @@ of the existing trust-boundary mechanisms.
 - **Tenet 3.** The work/home trust contract is physical: each
   piece must be cross-checked, not trusted. The host-id file is
   the fourth physical piece.
-- **Backwards compatibility.** Existing hosts already have
-  `~/.maury-host-id` written. The guard must work for those hosts
-  (some without a tag suffix) without forcing a re-bootstrap.
+- **State coherence.** `maury init` writes both
+  `~/.maury-host-id` AND the baseline atomically. The guard
+  treats their independent absence/presence as state corruption,
+  not a normal operating mode.
 - **Legitimate re-anchoring exists.** A user wiping and
   re-imaging a laptop, or restoring from backup onto new
   hardware, is a real scenario. The guard must not block this;
@@ -232,21 +233,22 @@ existing one:
    bootstrap."
 4. Writes fresh files on completion.
 
-#### Backwards compatibility for pre-2026-05-14 hosts
+#### State-corruption case: host-id present, baseline absent
 
-A host bootstrapped before this ADR has `~/.maury-host-id` but
-no `host-identity.json`. On the first sync after upgrading:
+`maury init` writes `~/.maury-host-id` and `host-identity.json`
+together (the host-id file is written first; the baseline is
+written immediately after on the same code path). The only way
+to observe one without the other is filesystem corruption,
+manual deletion of one file, or a partial restore from backup.
 
-- Maury detects: file exists, baseline absent.
-- Maury treats this as "first sync after upgrade" and writes the
-  baseline from the current `~/.maury-host-id` value. Audit log
-  records the auto-creation.
-- Subsequent syncs are guarded normally.
+The guard treats this as state corruption — `check_host_identity`
+raises `HostIdentityError` pointing the user at `maury init
+--reset` to re-anchor. There is no silent auto-recovery.
 
-This is a one-time grace path. It silently establishes the
-baseline because there's no prior state to compare against; the
-worst case is the user gets one free identity swap on upgrade,
-which is a tolerable cost for a backwards-compatibility convenience.
+The pre-release "silently auto-create a baseline if missing"
+path (drafted 2026-05-14 for pre-ADR-0042 hosts) was retired
+2026-05-19 — no users existed who could have bootstrapped before
+the ADR was added.
 
 #### Per-mode-change interaction
 
@@ -378,4 +380,11 @@ Claude Code itself is unaffected.
 
 ## Amendment history
 
-None.
+- 2026-05-19 — pre-release cleanup: the silent "auto-create
+  baseline on first sync after upgrade" path was retired (no
+  users existed before the ADR who could need it). The guard
+  now treats host-id-present-but-baseline-absent as state
+  corruption and raises `HostIdentityError` pointing at
+  `maury init --reset`. `IdentityCheckOutcome.FIRST_RUN_AUTO_BASELINE`
+  and `auto_create_baseline_for_upgrade()` were deleted.
+  §Drivers and §"State-corruption case" sections rewritten.

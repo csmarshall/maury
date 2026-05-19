@@ -29,7 +29,7 @@ def _make_manifest(tmp_path: Path, *, with_existing_host: bool = True) -> Path:
         "hosts": {},
     }
     if with_existing_host:
-        existing_hid = new_host_id()
+        existing_hid = new_host_id("h")
         payload["hosts"][existing_hid] = {
             "name": "old-laptop",
             "profile": pid,

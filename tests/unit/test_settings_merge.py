@@ -177,7 +177,7 @@ def test_render_engine_emits_merged_settings(tmp_path: Path) -> None:
     )
 
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
@@ -204,7 +204,7 @@ def test_render_engine_skips_settings_when_no_layers_provide(tmp_path: Path) -> 
     (repo / "CLAUDE.md").write_text("just markdown\n")
 
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
@@ -226,7 +226,7 @@ def test_render_engine_records_settings_error_on_bad_json(tmp_path: Path) -> Non
     (repo / "settings.json").write_text("{ this is not valid json")
 
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},

@@ -458,3 +458,16 @@ keep their existing `id:` slug field. No migration.
   uniformly referred to as `maury mode bootstrap` (the legacy
   `maury bootstrap host` CLI alias was retired in the same
   pre-release cleanup; see ADR-0039 amendment history).
+- 2026-05-19 — **pre-release format cleanup:** the untagged
+  `host_<32 hex>` form was retired. Every host ID is now
+  `host_<8 hex>_<tag>`. The "untagged form accepted forever"
+  promise made on 2026-05-14 was a backwards-compat commitment
+  for users that did not yet exist; with zero shipped users to
+  preserve compatibility for, the cruft was deleted instead. If
+  v1 ships with this format, the same RFC-1123 grammar still
+  applies; `profile_<32 hex>` is unchanged (modes never gained
+  the tag suffix). `is_host_id` now rejects the legacy form;
+  `new_host_id(tag)` requires a tag (no None default);
+  `split_host_id` always returns `(hex_prefix, tag)` rather
+  than `(prefix, tag_or_none)`. Test fixtures and the seed
+  manifest updated to use tagged IDs.

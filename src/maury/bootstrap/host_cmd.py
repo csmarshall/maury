@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from maury.ids import new_host_id, short
+from maury.ids import new_host_id, normalize_tag, short
 from maury.manifest import (
     HostSpec,
     Manifest,
@@ -147,8 +147,12 @@ def bootstrap_host(
     if base_url is None:
         actions.append(f"inferred base URL from existing manifest: {resolved_base_url}")
 
-    # 5. Generate fresh host_id.
-    new_hid = new_host_id()
+    # 5. Generate fresh host_id. Curator-side bootstrap derives the
+    # cosmetic tag from `name` (normalized to DNS-label grammar);
+    # the new host's `~/.maury-host-id` is seeded from this value
+    # when the user later runs `maury init` on that hardware. Per
+    # ADR-0039 §"Tag UX at bootstrap".
+    new_hid = new_host_id(normalize_tag(name))
 
     # 6. Build HostSpec.
     new_spec = HostSpec(

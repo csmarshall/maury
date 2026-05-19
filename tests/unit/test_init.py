@@ -33,7 +33,7 @@ def _make_minimal_repo(
     repo.mkdir()
     (repo / "CLAUDE.md").write_text("# base\n")
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     manifest = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
@@ -113,7 +113,7 @@ def test_init_writes_host_id_file_when_missing(tmp_path: Path) -> None:
 def test_init_reuses_existing_host_id_file(tmp_path: Path) -> None:
     repo = _make_minimal_repo(tmp_path)
     host_id_file = tmp_path / ".maury-host-id"
-    existing = "host_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    existing = "host_aaaaaaaa_preexisting"
     host_id_file.write_text(existing + "\n")
     result = init(source_dir=repo, target_dir=tmp_path / "out", host_id_file=host_id_file)
     assert host_id_file.read_text().strip() == existing

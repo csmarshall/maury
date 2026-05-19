@@ -14,7 +14,7 @@ from maury.ids import new_host_id, new_profile_id
 def _seed(path: Path) -> tuple[str, str]:
     """Write a manifest with one profile and one already-registered host."""
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(

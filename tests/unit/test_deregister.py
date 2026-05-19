@@ -13,8 +13,8 @@ from maury.ids import new_host_id, new_profile_id
 
 def _write_manifest(path: Path, *, with_host_name: str = "workstation") -> tuple[str, str, str]:
     pid = new_profile_id()
-    hid = new_host_id()
-    other_hid = new_host_id()
+    hid = new_host_id("h")
+    other_hid = new_host_id("h")
     body: dict[str, object] = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},

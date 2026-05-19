@@ -268,7 +268,7 @@ def parse_manifest(text: str, source: str = "<string>") -> Manifest:
     hosts: dict[str, HostSpec] = {}
     for hid, raw in raw_hosts.items():
         if not is_host_id(hid):
-            raise ManifestError(f"{source}: host key {hid!r} is not a valid host ID (expected 'host_<32 hex chars>')")
+            raise ManifestError(f"{source}: host key {hid!r} is not a valid host ID (expected 'host_<8 hex>_<tag>')")
         if not isinstance(raw, dict):
             raise ManifestError(f"{source}: host {hid!r} value must be an object")
         extra = set(raw) - _VALID_HOST_KEYS

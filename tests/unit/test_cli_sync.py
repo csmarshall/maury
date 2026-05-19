@@ -31,7 +31,7 @@ def _write_manifest(path: Path, *, hostname: str = "definitely-not-this-machine-
     chosen so `socket.gethostname()` will not match, exercising the
     sync engine's host-not-in-manifest error path without git I/O."""
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     body = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
@@ -444,25 +444,19 @@ def test_sync_confirm_identity_change_acks_and_rewrites_baseline(
     assert new_baseline.host_id_hex == "88ff77ee"
 
 
-def test_sync_first_run_auto_baseline_on_upgrade(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pre-2026-05-14 host has `~/.maury-host-id` but no baseline. Sync
-    silently establishes the baseline and proceeds."""
-    from maury.host_identity import baseline_path, read_baseline
-    from maury.sync import SyncError
+def test_sync_baseline_missing_raises_state_corruption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`~/.maury-host-id` present but `host-identity.json` absent is
+    state corruption (init writes both atomically). The pre-release
+    "silently auto-upgrade" path was retired 2026-05-19; the guard
+    now refuses and points the user at `maury init --reset`."""
+    from maury.host_identity import baseline_path
 
     host_id_file = tmp_path / ".maury-host-id"
     host_id_file.write_text("host_24b2a0aa_laptop\n")
     monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     target = tmp_path / "out"
-    # No baseline pre-written.
     assert not baseline_path(target).exists()
-
-    # Stub _identify_host so we don't go through full sync.
-    def fake_identify_host(*_a: object, **_kw: object) -> tuple[str, object]:
-        raise SyncError("post-guard SyncError (test stub)")
-
-    monkeypatch.setattr("maury.sync._identify_host", fake_identify_host)
 
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath)
@@ -480,12 +474,10 @@ def test_sync_first_run_auto_baseline_on_upgrade(tmp_path: Path, monkeypatch: py
             "--check",
         ],
     )
-    # Auto-baseline note printed.
-    assert "established host-identity baseline" in result.output
-    # Baseline file now exists with the current hex.
-    baseline = read_baseline(target)
-    assert baseline is not None
-    assert baseline.host_id_hex == "24b2a0aa"
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr or "")
+    assert "baseline missing" in combined
+    assert "maury init --reset" in combined
 
 
 def test_sync_no_host_id_file_skips_guard_silently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

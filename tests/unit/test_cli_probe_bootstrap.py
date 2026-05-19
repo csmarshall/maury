@@ -25,7 +25,7 @@ from maury.ids import new_host_id, new_profile_id
 def _write_seed_manifest(tmp_path: Path) -> tuple[Path, str, str]:
     """Create a manifest with a single host so bootstrap_host has a base to copy from."""
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     body = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},

@@ -25,7 +25,7 @@ def _make_seed_repo(tmp_path: Path, *, hostname: str = "synthetic-host") -> Path
     seed = tmp_path / "seed-base"
     seed.mkdir()
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     manifest = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
@@ -74,7 +74,7 @@ def test_sync_unknown_host_id_raises(tmp_path: Path) -> None:
     """If ~/.maury-host-id has a value not in the manifest, fail loud."""
     seed = _make_seed_repo(tmp_path)
     host_id_file = tmp_path / ".maury-host-id"
-    host_id_file.write_text("host_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+    host_id_file.write_text("host_aaaaaaaa_unknown\n")
     with pytest.raises(SyncError) as ei:
         sync(
             manifest_path=seed / ".meta" / "manifest.json",

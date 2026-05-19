@@ -162,7 +162,7 @@ def test_fetch_three_way_refuses_outside_git_repo(tmp_path: Path) -> None:
 def _seed_minimum_v2(name_prefix: str = "alice") -> dict[str, Any]:
     """A minimal v2 manifest that passes load_manifest + validate_manifest."""
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     return {
         "version": 1,
         "profiles": {pid: {"name": f"{name_prefix}-home", "extends": None}},
@@ -184,14 +184,14 @@ def test_resolve_manifest_auto_merges_additive_case(tmp_path: Path) -> None:
 
     ancestor = seed
     ours = json.loads(json.dumps(ancestor))
-    new_hid_a = new_host_id()
+    new_hid_a = new_host_id("h")
     ours["hosts"][new_hid_a] = {
         "name": "added-by-ours",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
     }
     theirs = json.loads(json.dumps(ancestor))
-    new_hid_b = new_host_id()
+    new_hid_b = new_host_id("h")
     theirs["hosts"][new_hid_b] = {
         "name": "added-by-theirs",
         "profile": pid,
@@ -733,13 +733,13 @@ def test_resolve_summary_carries_side_metadata(tmp_path: Path) -> None:
     pid = next(iter(seed["profiles"].keys()))
     ancestor = seed
     ours = json.loads(json.dumps(ancestor))
-    ours["hosts"][new_host_id()] = {
+    ours["hosts"][new_host_id("h")] = {
         "name": "added-by-ours",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
     }
     theirs = json.loads(json.dumps(ancestor))
-    theirs["hosts"][new_host_id()] = {
+    theirs["hosts"][new_host_id("h")] = {
         "name": "added-by-theirs",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},

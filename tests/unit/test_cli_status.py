@@ -28,7 +28,7 @@ def _write_manifest(
 ) -> tuple[str, str]:
     """Write a minimal v2 manifest. Returns (profile_id, host_id)."""
     pid = new_profile_id()
-    hid = host_id or new_host_id()
+    hid = host_id or new_host_id("h")
     body = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
@@ -120,7 +120,7 @@ def test_status_host_identity_unregistered_shows_warning(tmp_path: Path, monkeyp
     _write_manifest(mpath)  # uses a fresh hid
 
     host_id_file = tmp_path / ".maury-host-id"
-    host_id_file.write_text(new_host_id() + "\n")  # a *different* host_id
+    host_id_file.write_text(new_host_id("h") + "\n")  # a *different* host_id
     monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     runner = CliRunner()

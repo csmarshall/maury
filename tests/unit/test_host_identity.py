@@ -11,7 +11,6 @@ from maury.host_identity import (
     HostIdentityBaseline,
     HostIdentityError,
     IdentityCheckOutcome,
-    auto_create_baseline_for_upgrade,
     baseline_path,
     check_host_identity,
     format_identity_change_message,
@@ -94,20 +93,6 @@ def test_check_returns_ok_when_baseline_matches(tmp_path: Path) -> None:
     assert result.baseline is not None
 
 
-def test_check_ok_for_legacy_32_hex_host_id(tmp_path: Path) -> None:
-    """Pre-2026-05-14 hosts have `host_<32 hex>` IDs; the hex prefix
-    extraction must work for those too (the full 32 chars become the
-    'prefix' since there's no _<tag>)."""
-    target = tmp_path / "target"
-    host_id_file = tmp_path / ".maury-host-id"
-    legacy = "host_" + "a" * 32
-    write_baseline(target, _make_baseline(host_id_hex="a" * 32))
-    _write_host_id_file(host_id_file, legacy)
-
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
-    assert result.outcome == IdentityCheckOutcome.OK
-
-
 def test_check_tag_only_edit_does_not_trigger_guard(tmp_path: Path) -> None:
     """The guard checks the 8-hex PREFIX only. Editing the tag (from
     `_laptop` to `_workstation` for instance) leaves the hex unchanged
@@ -119,24 +104,6 @@ def test_check_tag_only_edit_does_not_trigger_guard(tmp_path: Path) -> None:
 
     result = check_host_identity(target_dir=target, host_id_file=host_id_file)
     assert result.outcome == IdentityCheckOutcome.OK
-
-
-# ---- check_host_identity: first-run upgrade path ------------------------
-
-
-def test_check_first_run_returns_auto_baseline_outcome(tmp_path: Path) -> None:
-    """No baseline on disk but host_id_file exists → upgrade path."""
-    target = tmp_path / "target"
-    host_id_file = tmp_path / ".maury-host-id"
-    _write_host_id_file(host_id_file, "host_24b2a0aa_laptop")
-
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
-    assert result.outcome == IdentityCheckOutcome.FIRST_RUN_AUTO_BASELINE
-    assert result.current_hex == "24b2a0aa"
-    assert result.baseline_hex is None
-    assert result.baseline is None
-    # No file written yet — caller invokes auto_create_baseline_for_upgrade()
-    assert read_baseline(target) is None
 
 
 # ---- check_host_identity: refused mismatch ------------------------------
@@ -194,6 +161,17 @@ def test_check_raises_when_host_id_file_missing(tmp_path: Path) -> None:
         check_host_identity(target_dir=target, host_id_file=host_id_file)
 
 
+def test_check_raises_when_baseline_missing_but_host_id_present(tmp_path: Path) -> None:
+    """Host-id file without a baseline is state corruption (init writes
+    both atomically). The pre-release "auto-upgrade silently" path was
+    retired 2026-05-19."""
+    target = tmp_path / "target"
+    host_id_file = tmp_path / ".maury-host-id"
+    _write_host_id_file(host_id_file, "host_24b2a0aa_laptop")
+    with pytest.raises(HostIdentityError, match="baseline missing"):
+        check_host_identity(target_dir=target, host_id_file=host_id_file)
+
+
 # ---- format_identity_change_message ------------------------------------
 
 
@@ -217,37 +195,3 @@ def test_format_change_message_includes_both_hex_values_and_full_id(tmp_path: Pa
     assert "home" in msg  # mode name from baseline
     assert "--confirm-identity-change" in msg
     assert "maury init --reset" in msg
-
-
-# ---- auto_create_baseline_for_upgrade ----------------------------------
-
-
-def test_auto_create_baseline_writes_synthetic_record(tmp_path: Path) -> None:
-    """Backwards-compat path for pre-2026-05-14 hosts."""
-    target = tmp_path / "target"
-    baseline = auto_create_baseline_for_upgrade(
-        target_dir=target,
-        current_hex="24b2a0aa",
-        mode_id="mode_3f1a",
-        mode_name="home",
-    )
-    assert baseline.host_id_hex == "24b2a0aa"
-    assert baseline.mode_id == "mode_3f1a"
-    assert baseline.mode_name_at_bootstrap == "home"
-    # Persisted on disk
-    loaded = read_baseline(target)
-    assert loaded == baseline
-
-
-def test_auto_create_baseline_works_without_mode_metadata(tmp_path: Path) -> None:
-    """If the upgrade caller can't determine the mode (manifest absent,
-    etc.), the baseline still works — just with empty audit fields."""
-    target = tmp_path / "target"
-    baseline = auto_create_baseline_for_upgrade(target_dir=target, current_hex="24b2a0aa")
-    assert baseline.mode_id == ""
-    assert baseline.mode_name_at_bootstrap == ""
-    # The load-bearing hex comparison still works
-    host_id_file = tmp_path / ".maury-host-id"
-    _write_host_id_file(host_id_file, "host_24b2a0aa_anything")
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
-    assert result.outcome == IdentityCheckOutcome.OK

@@ -232,7 +232,7 @@ def test_rules_validate_with_manifest_resolves_profile_set(tmp_path: Path) -> No
     rules.write_text("rules: []\n")
     mpath = tmp_path / "manifest.json"
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     body = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},

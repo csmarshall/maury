@@ -54,7 +54,6 @@ from maury.empirical_tests import run as run_empirical
 from maury.host_identity import (
     HostIdentityError,
     IdentityCheckOutcome,
-    auto_create_baseline_for_upgrade,
     check_host_identity,
     format_identity_change_message,
 )
@@ -598,12 +597,12 @@ def probe(output_path: Path | None, hostname_override: str | None) -> None:
 # ---- init (the user's first command on a new host, per ADR-0018) -------
 
 
-def _resolve_init_tag(*, explicit_tag: str | None) -> str | None:
+def _resolve_init_tag(*, explicit_tag: str | None) -> str:
     """Resolve the host-tag for `maury init` per ADR-0039 §"Tag UX at bootstrap".
 
-    Returns None to fall back to the legacy 32-hex format (no tag). This
-    happens only when the user passes `--tag ""` explicitly or future
-    flags opt out — currently the function always produces a tag.
+    Always returns a tag string — every host_id carries a tag per
+    ADR-0015 (2026-05-19 onward; the pre-release "untagged" 32-hex
+    form was retired).
 
     Three paths:
       1. `--tag <value>` passed: normalize and use it. If normalization
@@ -674,10 +673,6 @@ def _enforce_identity_guard(*, target_dir: Path, allow_change: bool = False) -> 
     `IdentityCheckResult`:
 
     - **OK**: silent; return.
-    - **FIRST_RUN_AUTO_BASELINE**: pre-2026-05-14 upgrade path. Auto-
-      write a synthetic baseline (best-effort metadata; empty mode
-      fields are tolerable since the load-bearing hex still works) and
-      print a one-line note so the user sees the transition.
     - **CHANGED_REFUSED**: print the verbose abort message and exit 1.
       The message describes both remediation paths
       (`--confirm-identity-change` and `maury init --reset`).
@@ -704,19 +699,6 @@ def _enforce_identity_guard(*, target_dir: Path, allow_change: bool = False) -> 
         raise click.ClickException(str(e)) from e
 
     if result.outcome == IdentityCheckOutcome.OK:
-        return
-    if result.outcome == IdentityCheckOutcome.FIRST_RUN_AUTO_BASELINE:
-        # Per ADR-0042 §"Backwards compatibility": silently establish a
-        # baseline so subsequent runs are guarded. Mode metadata is
-        # left empty here; `maury init --reset` would populate it.
-        auto_create_baseline_for_upgrade(
-            target_dir=target_dir,
-            current_hex=result.current_hex,
-        )
-        click.echo(
-            f"  note: established host-identity baseline at {target_dir}/maury-state/host-identity.json "
-            f"(first run after 2026-05-14 ADR-0042 upgrade)"
-        )
         return
     if result.outcome == IdentityCheckOutcome.CHANGED_REFUSED:
         click.echo(

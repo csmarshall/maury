@@ -50,7 +50,7 @@ def _write_minimal_repo(tmp_path: Path, *, hostname: str = "test-host") -> tuple
     repo.mkdir()
     (repo / "CLAUDE.md").write_text("# base\n")
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     manifest = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},

@@ -24,6 +24,7 @@ Future sub-phases:
 
 from __future__ import annotations
 
+import socket
 import tarfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -38,7 +39,7 @@ from maury.drift import (
     write_last_render,
 )
 from maury.host_identity import HostIdentityBaseline, write_baseline
-from maury.ids import host_id_hex_prefix, new_host_id
+from maury.ids import host_id_hex_prefix, new_host_id, normalize_tag
 from maury.manifest import HOST_ID_FILE, ManifestError, load_manifest
 from maury.render import RenderError, RenderResult, apply_render, render
 from maury.sync import (
@@ -141,7 +142,12 @@ def init(
         actions.append(f"using existing host id from {host_id_file}: {host_id_value}")
         host_id_created = False
     else:
-        host_id_value = new_host_id(tag=tag)
+        # CLI normally resolves the tag via interactive prompt or `--tag`.
+        # Engine callers (tests, programmatic bootstrap) that pass None
+        # fall back to a hostname-derived tag — same default as the
+        # interactive prompt's pre-fill.
+        resolved_tag = tag if tag is not None else normalize_tag(socket.gethostname())
+        host_id_value = new_host_id(resolved_tag)
         if not dry_run:
             host_id_file.parent.mkdir(parents=True, exist_ok=True)
             host_id_file.write_text(host_id_value + "\n", encoding="utf-8")

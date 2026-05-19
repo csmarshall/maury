@@ -219,7 +219,7 @@ def _seed_manifest_with_repo(
     from maury.ids import new_profile_id as _new_profile_id
 
     if host_id is None:
-        host_id = _new_host_id()
+        host_id = _new_host_id("h")
     pid = _new_profile_id()
     manifest_path = tmp_path / "manifest.json"
     body: dict[str, object] = {
@@ -321,10 +321,10 @@ def test_init_repo_access_check_refuses_when_host_not_registered(
     """No host registration → refuse."""
     remote = "git@github.com:eng-standards/rules-linting.git"
     target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
-    manifest_path, _ = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="rw", host_id=new_host_id())
+    manifest_path, _ = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="rw", host_id=new_host_id("h"))
     # Host-id file points at a DIFFERENT host than what's in the manifest.
     host_id_file = tmp_path / ".maury-host-id"
-    host_id_file.write_text(new_host_id())
+    host_id_file.write_text(new_host_id("h"))
     monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
 
     with pytest.raises(RepoInitError, match="current host not registered"):

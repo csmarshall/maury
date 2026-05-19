@@ -47,7 +47,7 @@ def _make_finding(**overrides: object) -> Finding:
 
 def _write_minimal_manifest(path: Path) -> tuple[str, str]:
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     body = {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
@@ -452,7 +452,7 @@ def test_reconcile_baseline_host_not_in_manifest_errors(tmp_path: Path) -> None:
     state_dir = target / "maury-state"
     state_dir.mkdir(parents=True)
     # Construct a last-render.json that references a non-manifest host_id
-    bogus_hid = new_host_id()
+    bogus_hid = new_host_id("h")
     last_render = {
         "host_id": bogus_hid,
         "files": [],

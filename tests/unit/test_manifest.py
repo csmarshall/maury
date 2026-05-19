@@ -27,8 +27,8 @@ from maury.manifest import (
 P_BASE = "profile_00000000000000000000000000000001"
 P_HOME = "profile_00000000000000000000000000000002"
 P_WORK = "profile_00000000000000000000000000000003"
-H_WORKSTATION = "host_00000000000000000000000000000010"
-H_WORK = "host_00000000000000000000000000000011"
+H_WORKSTATION = "host_00000010_workstation"
+H_WORK = "host_00000011_work"
 
 
 VALID_JSON = f"""
@@ -71,7 +71,7 @@ VALID_JSON = f"""
 
 
 def test_id_generators_produce_recognized_format() -> None:
-    hid = new_host_id()
+    hid = new_host_id("h")
     pid = new_profile_id()
     assert is_host_id(hid)
     assert is_profile_id(pid)
@@ -81,7 +81,7 @@ def test_id_generators_produce_recognized_format() -> None:
 
 def test_id_collision_resistance() -> None:
     """100 IDs should all be unique."""
-    ids = {new_host_id() for _ in range(100)}
+    ids = {new_host_id("h") for _ in range(100)}
     assert len(ids) == 100
 
 

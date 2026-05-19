@@ -34,7 +34,7 @@ def _make_repo(tmp_path: Path, layout: dict[str, str]) -> Path:
 def _basic_manifest() -> tuple[Manifest, str, str]:
     """A minimal manifest: one profile (home) with one host (workstation)."""
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     m = Manifest(
         version=2,
         profiles={pid: ProfileSpec(name="home")},
@@ -177,7 +177,7 @@ def test_render_walks_inheritance_chain(tmp_path: Path) -> None:
     pid_root = new_profile_id()
     pid_mid = new_profile_id()
     pid_leaf = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     m = Manifest(
         version=2,
         profiles={
@@ -234,7 +234,7 @@ def test_render_host_profile_mismatch_raises(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     pid_a = new_profile_id()
     pid_b = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     m = Manifest(
         version=2,
         profiles={pid_a: ProfileSpec(name="a"), pid_b: ProfileSpec(name="b")},

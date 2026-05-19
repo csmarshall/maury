@@ -53,7 +53,7 @@ def _make_conflict_repo(
 
 def _seed_minimum_v2() -> dict[str, Any]:
     pid = new_profile_id()
-    hid = new_host_id()
+    hid = new_host_id("h")
     return {
         "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
@@ -76,13 +76,13 @@ def test_resolve_auto_merge_additive_case(tmp_path: Path) -> None:
     pid = next(iter(seed["profiles"].keys()))
     ancestor = seed
     ours = json.loads(json.dumps(ancestor))
-    ours["hosts"][new_host_id()] = {
+    ours["hosts"][new_host_id("h")] = {
         "name": "bob-laptop",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
     }
     theirs = json.loads(json.dumps(ancestor))
-    theirs["hosts"][new_host_id()] = {
+    theirs["hosts"][new_host_id("h")] = {
         "name": "carol-laptop",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
@@ -174,13 +174,13 @@ def test_resolve_non_interactive_auto_resolves_clean_case(tmp_path: Path) -> Non
     pid = next(iter(seed["profiles"].keys()))
     ancestor = seed
     ours = json.loads(json.dumps(ancestor))
-    ours["hosts"][new_host_id()] = {
+    ours["hosts"][new_host_id("h")] = {
         "name": "bob",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
     }
     theirs = json.loads(json.dumps(ancestor))
-    theirs["hosts"][new_host_id()] = {
+    theirs["hosts"][new_host_id("h")] = {
         "name": "carol",
         "profile": pid,
         "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},

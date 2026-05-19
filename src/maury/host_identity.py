@@ -1,8 +1,8 @@
 """Host-identity baseline tracking (ADR-0042).
 
-Records a snapshot of `~/.maury-host-id`'s hex prefix at bootstrap so
-subsequent mode-scoped commands can detect hex edits — accidental or
-otherwise — that would silently swap the host into a different
+Records a snapshot of `~/.maury-host-id`'s 8-hex prefix at bootstrap
+so subsequent mode-scoped commands can detect hex edits — accidental
+or otherwise — that would silently swap the host into a different
 mode-registration.
 
 Pattern follows SSH's `known_hosts`: trust on first use (write baseline
@@ -14,7 +14,7 @@ physical checkpoint.
 Schema: `~/.claude/maury-state/host-identity.json`
   {
     "schema_version": 1,
-    "host_id_hex": "<8-or-32 hex>",
+    "host_id_hex": "<8 hex>",
     "registered_at": "<RFC 3339 UTC>",
     "mode_id": "<mode_<hex>>",
     "mode_name_at_bootstrap": "<display label snapshot>"
@@ -110,12 +110,10 @@ def read_baseline(target_dir: Path) -> HostIdentityBaseline | None:
 class IdentityCheckOutcome(StrEnum):
     """Result classes returned by `check_host_identity()`.
 
-    Callers branch on this to decide whether to proceed, abort, or
-    apply the backwards-compat auto-baseline path.
+    Callers branch on this to decide whether to proceed or abort.
     """
 
     OK = "ok"  # Baseline exists, current hex matches. Proceed normally.
-    FIRST_RUN_AUTO_BASELINE = "first_run_auto_baseline"  # Pre-2026-05-14 upgrade path.
     CHANGED_REFUSED = "changed_refused"  # Mismatch detected; caller must abort.
     CHANGED_ACKNOWLEDGED = "changed_acknowledged"  # Caller passed allow_change=True; baseline rewritten.
 
@@ -125,14 +123,13 @@ class IdentityCheckResult:
     """Outcome of a host-identity guard check.
 
     `current_hex` is always populated from `~/.maury-host-id` so the
-    caller can include it in error messages. `baseline_hex` is None
-    when there's no prior baseline on disk (first run).
+    caller can include it in error messages.
     """
 
     outcome: IdentityCheckOutcome
     current_hex: str
-    baseline_hex: str | None
-    baseline: HostIdentityBaseline | None  # None on FIRST_RUN_AUTO_BASELINE before write
+    baseline_hex: str
+    baseline: HostIdentityBaseline
 
 
 def check_host_identity(
@@ -156,16 +153,15 @@ def check_host_identity(
 
     Behavior matrix:
         baseline exists, hex match           -> OK
-        baseline absent, host_id_file exists -> FIRST_RUN_AUTO_BASELINE
-                                                (caller writes a synthetic
-                                                baseline from current state)
         baseline exists, hex differs:
             allow_change=False               -> CHANGED_REFUSED
             allow_change=True                -> CHANGED_ACKNOWLEDGED + rewrite
 
     Raises:
         HostIdentityError: if `host_id_file` is missing (no identity to
-            check; caller should run `maury init` first).
+            check; caller should run `maury init` first), or if the
+            baseline file is missing (state corruption — caller should
+            run `maury init --reset`).
     """
     if not host_id_file.is_file():
         raise HostIdentityError(f"host id file not found at {host_id_file}. Run `maury init` first.")
@@ -174,14 +170,10 @@ def check_host_identity(
 
     baseline = read_baseline(target_dir)
     if baseline is None:
-        # Pre-2026-05-14 upgrade path: no baseline on disk but the
-        # host has an existing host_id_file. The caller writes a
-        # synthetic baseline so subsequent runs are guarded normally.
-        return IdentityCheckResult(
-            outcome=IdentityCheckOutcome.FIRST_RUN_AUTO_BASELINE,
-            current_hex=current_hex,
-            baseline_hex=None,
-            baseline=None,
+        raise HostIdentityError(
+            f"host-identity baseline missing at {baseline_path(target_dir)} "
+            f"but {host_id_file} exists. This is unexpected state corruption; "
+            f"run `maury init --reset` to re-anchor."
         )
 
     if baseline.host_id_hex == current_hex:
@@ -269,41 +261,6 @@ def format_identity_change_message(
     )
 
 
-def auto_create_baseline_for_upgrade(
-    *,
-    target_dir: Path,
-    current_hex: str,
-    mode_id: str = "",
-    mode_name: str = "",
-) -> HostIdentityBaseline:
-    """Pre-2026-05-14 upgrade convenience: synthesize a baseline from
-    the host's current state.
-
-    Per ADR-0042 §"Backwards compatibility": when this maury sees a
-    `~/.maury-host-id` file but no `host-identity.json`, it auto-creates
-    the baseline from current values so subsequent runs are guarded.
-    Mode metadata is best-effort — the caller supplies it from the
-    manifest if available, else empty strings (the audit fields stay
-    blank but the load-bearing hex comparison still works).
-
-    The grace path is intentionally silent (no prompt) — the worst case
-    is the user gets one free identity swap on upgrade, which is a
-    tolerable cost. A `maury doctor` rule (followup) could surface the
-    auto-creation explicitly.
-    """
-    from datetime import UTC, datetime
-
-    baseline = HostIdentityBaseline(
-        schema_version=SCHEMA_VERSION,
-        host_id_hex=current_hex,
-        registered_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        mode_id=mode_id,
-        mode_name_at_bootstrap=mode_name,
-    )
-    write_baseline(target_dir, baseline)
-    return baseline
-
-
 __all__ = [
     "HOST_IDENTITY_FILENAME",
     "SCHEMA_VERSION",
@@ -312,7 +269,6 @@ __all__ = [
     "HostIdentityError",
     "IdentityCheckOutcome",
     "IdentityCheckResult",
-    "auto_create_baseline_for_upgrade",
     "baseline_path",
     "check_host_identity",
     "format_identity_change_message",

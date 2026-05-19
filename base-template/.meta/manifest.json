@@ -19,7 +19,7 @@
     }
   },
   "hosts": {
-    "host_0be82a2a67204f4397deb8a40add0360": {
+    "host_0be82a2a_workstation": {
       "name": "workstation",
       "profile": "profile_a55be4817cf94504a7a1932724a309f8",
       "lock": false,
@@ -37,7 +37,7 @@
       "owner": "<your-personal-email>",
       "added": "2026-05-13"
     },
-    "host_ca7a4b75fdc144aaae8d015730cf0eca": {
+    "host_ca7a4b75_work-laptop": {
       "name": "work-laptop",
       "profile": "profile_cad5d6bffe73432f924cf0ca86997d96",
       "lock": true,
