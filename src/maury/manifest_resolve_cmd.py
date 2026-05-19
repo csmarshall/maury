@@ -41,6 +41,29 @@ class ResolveError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class SideMetadata:
+    """Commit metadata for one side of a 3-way merge.
+
+    Captured from `git log -1` on HEAD (side A / 'ours') and MERGE_HEAD
+    (side B / 'theirs') so the user sees who made each change and when
+    while resolving conflicts. Per ADR-0024 §"On clock skew", we surface
+    both timestamps verbatim and let the user judge any inversions.
+    """
+
+    short_sha: str
+    author: str
+    """Author identity (typically "Name <email>")."""
+
+    committer_date: str
+    """ISO 8601 timestamp from the committer (used for "later wins" judgment)."""
+
+    branch: str | None
+    """Branch label if resolvable (`HEAD` -> current branch via
+    `git rev-parse --abbrev-ref`; MERGE_HEAD -> the branch name git
+    recorded in `.git/MERGE_MSG`). May be None if neither is available."""
+
+
+@dataclass(frozen=True)
 class ResolveSummary:
     """Outcome of a resolve run."""
 
@@ -56,6 +79,12 @@ class ResolveSummary:
 
     chosen_sides: tuple[str, ...] = field(default_factory=tuple)
     """Per-conflict side selected (for the final commit-message audit trail)."""
+
+    side_a_meta: SideMetadata | None = None
+    """Metadata captured for side A (`HEAD`); None if lookup failed."""
+
+    side_b_meta: SideMetadata | None = None
+    """Metadata captured for side B (`MERGE_HEAD`); None if lookup failed."""
 
 
 Prompter = Callable[[Conflict], str]
@@ -127,6 +156,72 @@ def _is_unmerged(repo_root: Path, rel_path: Path) -> bool:
         return False
     # Non-empty output = the file has unmerged stages 1/2/3.
     return bool(out.strip())
+
+
+def _read_commit_metadata(repo_root: Path, ref: str) -> SideMetadata | None:
+    """Look up commit metadata for `ref`. Returns None on any failure."""
+    rc, out = _run_git(
+        ["git", "log", "-1", "--pretty=format:%h%x09%an <%ae>%x09%cI", ref],
+        cwd=repo_root,
+    )
+    if rc != 0:
+        return None
+    parts = out.strip().split("\t")
+    if len(parts) != 3:
+        return None
+    short_sha, author, committer_date = parts
+    branch = _resolve_branch_label(repo_root, ref)
+    return SideMetadata(
+        short_sha=short_sha,
+        author=author,
+        committer_date=committer_date,
+        branch=branch,
+    )
+
+
+def _resolve_branch_label(repo_root: Path, ref: str) -> str | None:
+    """Best-effort branch-name resolution for a ref.
+
+    HEAD → `git rev-parse --abbrev-ref HEAD`.
+    MERGE_HEAD → parse `.git/MERGE_MSG` (which git writes during
+    a conflicted merge with "Merge branch 'foo' ..."). Falls back
+    to None if neither path produces a clean answer.
+    """
+    if ref == "HEAD":
+        rc, out = _run_git(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
+        if rc == 0:
+            value = out.strip()
+            return value if value and value != "HEAD" else None
+        return None
+    if ref == "MERGE_HEAD":
+        merge_msg = repo_root / ".git" / "MERGE_MSG"
+        if merge_msg.is_file():
+            for line in merge_msg.read_text().splitlines():
+                # Default merge-commit message: "Merge branch 'foo' [into bar]"
+                stripped = line.strip()
+                if stripped.startswith("Merge branch '") and "'" in stripped[len("Merge branch '") :]:
+                    rest = stripped[len("Merge branch '") :]
+                    end = rest.index("'")
+                    return rest[:end]
+        return None
+    return None
+
+
+def fetch_side_metadata(manifest_path: Path) -> tuple[SideMetadata | None, SideMetadata | None]:
+    """Return (side_a_meta, side_b_meta) for the current merge state.
+
+    Both fields are None-safe: if HEAD or MERGE_HEAD aren't readable
+    the caller still gets a usable resolver, just without metadata.
+    """
+    manifest_path = manifest_path.resolve()
+    try:
+        repo_root = _repo_root(manifest_path.parent)
+    except ResolveError:
+        return None, None
+    return (
+        _read_commit_metadata(repo_root, "HEAD"),
+        _read_commit_metadata(repo_root, "MERGE_HEAD"),
+    )
 
 
 def fetch_three_way(manifest_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -290,6 +385,7 @@ def resolve_manifest(
 
     ancestor, ours, theirs = fetch_three_way(manifest_path)
     merge = compute_merge(ancestor, ours, theirs)
+    side_a_meta, side_b_meta = fetch_side_metadata(manifest_path)
 
     auto_count = _count_auto_resolved(merge)
     chosen_sides: list[str] = []
@@ -306,6 +402,8 @@ def resolve_manifest(
                 user_resolved_paths=len(choices),
                 aborted=True,
                 chosen_sides=tuple(chosen_sides),
+                side_a_meta=side_a_meta,
+                side_b_meta=side_b_meta,
             )
         if choice == "a":
             if conflict.side_a is DELETE_SENTINEL:
@@ -358,6 +456,8 @@ def resolve_manifest(
         user_resolved_paths=len(merge.conflicts),
         aborted=False,
         chosen_sides=tuple(chosen_sides),
+        side_a_meta=side_a_meta,
+        side_b_meta=side_b_meta,
     )
 
 

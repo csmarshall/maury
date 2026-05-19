@@ -494,6 +494,7 @@ def manifest_resolve(manifest_file: Path | None, non_interactive: bool) -> None:
         Prompter,
         ResolveError,
         default_prompter,
+        fetch_side_metadata,
         resolve_manifest,
     )
     from maury.process_lock import ProcessLockHeldError, process_lock
@@ -514,6 +515,23 @@ def manifest_resolve(manifest_file: Path | None, non_interactive: bool) -> None:
         prompter = _refuse
     else:
         prompter = default_prompter
+
+    # Surface side metadata up-front so the user sees who made each change
+    # before walking conflict-by-conflict (per ADR-0024 §"On clock skew" —
+    # we render both timestamps verbatim and let the user judge).
+    side_a_meta, side_b_meta = fetch_side_metadata(path)
+    if side_a_meta or side_b_meta:
+        click.echo("merge sides:")
+        if side_a_meta is not None:
+            branch_text = f" ({side_a_meta.branch})" if side_a_meta.branch else ""
+            click.echo(
+                f"  A (ours):   {side_a_meta.short_sha}{branch_text}  {side_a_meta.author}  {side_a_meta.committer_date}"
+            )
+        if side_b_meta is not None:
+            branch_text = f" ({side_b_meta.branch})" if side_b_meta.branch else ""
+            click.echo(
+                f"  B (theirs): {side_b_meta.short_sha}{branch_text}  {side_b_meta.author}  {side_b_meta.committer_date}"
+            )
 
     try:
         with process_lock():

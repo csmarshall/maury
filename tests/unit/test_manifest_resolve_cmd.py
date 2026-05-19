@@ -13,6 +13,7 @@ from maury.ids import new_host_id, new_profile_id
 from maury.manifest_merge import Conflict, ConflictKind
 from maury.manifest_resolve_cmd import (
     ResolveError,
+    fetch_side_metadata,
     fetch_three_way,
     render_path,
     resolve_manifest,
@@ -451,3 +452,102 @@ def test_resolve_manifest_populates_semantic_summary_in_prompts(tmp_path: Path) 
     resolve_manifest(manifest, prompter=take_a)
     assert seen, "prompter should have been invoked"
     assert any("host(s) on A" in s for s in seen if s)
+
+
+# ---- fetch_side_metadata --------------------------------------------------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_fetch_side_metadata_captures_both_sides(tmp_path: Path) -> None:
+    """Both HEAD and MERGE_HEAD metadata land when the file is in conflict."""
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["profiles"][pid]["name"] = "ours-name"
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["profiles"][pid]["name"] = "theirs-name"
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    side_a, side_b = fetch_side_metadata(manifest)
+    assert side_a is not None
+    assert side_b is not None
+    # Author identity baked in by _make_repo_in_conflict's git config.
+    assert "<t@t.invalid>" in side_a.author
+    assert "<t@t.invalid>" in side_b.author
+    # ISO 8601 committer dates (e.g., 2026-05-19T10:42:00-05:00).
+    assert "T" in side_a.committer_date
+    assert "T" in side_b.committer_date
+    # Short SHAs (7+ hex chars).
+    assert len(side_a.short_sha) >= 7
+    assert len(side_b.short_sha) >= 7
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_fetch_side_metadata_branches_resolve(tmp_path: Path) -> None:
+    """Side A branch resolves to current branch; side B from MERGE_MSG."""
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["profiles"][pid]["name"] = "ours"
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["profiles"][pid]["name"] = "theirs"
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    side_a, side_b = fetch_side_metadata(manifest)
+    assert side_a is not None
+    assert side_a.branch == "main"  # set by _make_repo_in_conflict
+    assert side_b is not None
+    assert side_b.branch == "theirs"  # the branch we merged in
+
+
+def test_fetch_side_metadata_returns_none_outside_git_repo(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    side_a, side_b = fetch_side_metadata(manifest)
+    assert side_a is None
+    assert side_b is None
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_fetch_side_metadata_no_merge_head_returns_only_head(tmp_path: Path) -> None:
+    """A clean repo (no MERGE_HEAD) yields side_a populated and side_b None."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run_git(["git", "init", "-q"], cwd=repo)
+    _run_git(["git", "config", "user.name", "t"], cwd=repo)
+    _run_git(["git", "config", "user.email", "t@t.invalid"], cwd=repo)
+    manifest = repo / "manifest.json"
+    manifest.write_text("{}")
+    _run_git(["git", "add", "manifest.json"], cwd=repo)
+    _run_git(["git", "commit", "-q", "-m", "clean"], cwd=repo)
+    side_a, side_b = fetch_side_metadata(manifest)
+    assert side_a is not None
+    assert side_b is None
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_resolve_summary_carries_side_metadata(tmp_path: Path) -> None:
+    """ResolveSummary populates side_a_meta and side_b_meta on the auto-merge path."""
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["hosts"][new_host_id()] = {
+        "name": "added-by-ours",
+        "profile": pid,
+        "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
+    }
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["hosts"][new_host_id()] = {
+        "name": "added-by-theirs",
+        "profile": pid,
+        "repos": {"base": {"url": "git@x:o/r.git", "mode": "rw"}},
+    }
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+    summary = resolve_manifest(manifest, prompter=lambda _c: "a")
+    assert summary.side_a_meta is not None
+    assert summary.side_b_meta is not None
+    assert summary.side_a_meta.branch == "main"
+    assert summary.side_b_meta.branch == "theirs"
