@@ -21,7 +21,7 @@ from maury.manifest import PushPolicy, RepoMode, load_manifest
 
 def _make_manifest(tmp_path: Path, *, with_existing_host: bool = True) -> Path:
     """Write a minimal manifest at tmp_path/manifest.json. By default it has
-    one already-registered host so `bootstrap host` can infer the base URL."""
+    one already-registered host so `bootstrap_host` can infer the base URL."""
     pid = new_profile_id()
     payload: dict[str, Any] = {
         "version": 1,

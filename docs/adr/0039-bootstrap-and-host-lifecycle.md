@@ -852,5 +852,6 @@ machinery that produced the rendered file.
   per ADR-0042 (host-identity guard).
 - 2026-05-19 — pre-release cleanup: the legacy `maury bootstrap host`
   CLI alias was deleted (no users exist to deprecate from). `maury
-  mode bootstrap` is the sole CLI surface; the `run_bootstrap_host`
-  engine function in `maury.bootstrap` is unchanged.
+  mode bootstrap` is the sole CLI surface; the
+  `maury.bootstrap.bootstrap_host` engine function (imported into
+  `cli.py` under the alias `run_bootstrap_host`) is unchanged.

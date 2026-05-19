@@ -184,11 +184,14 @@ to track since `uv` is what we already use for development).
 #### CLI verb separation
 
 - **`maury init`** — user's first command on a new machine.
-- **Curator-side ops** — `maury mode bootstrap` (register a new
-  host against an existing mode in the manifest; the `maury
-  bootstrap host` alias was retired 2026-05-19); future
-  curator commands (`bootstrap repo`, snippet generators, etc.)
-  belong to this same audience but are planned, not shipped.
+- **Curator-side ops** — shipped: `maury agency init` (creates
+  the agency marker + initial commit), `maury mode bootstrap`
+  (registers a new host against an existing mode in the
+  manifest; the pre-release `maury bootstrap host` CLI alias
+  was retired 2026-05-19), `maury repo init` (per ADR-0038,
+  rules-repo lifecycle). Future curator surfaces (snippet
+  generators, etc.) belong to this same audience but are
+  planned, not shipped.
 
 Different verbs, different audiences, no overlap.
 
@@ -224,9 +227,12 @@ adapter brings its own auth model.
   Claude Code already being installed and configured.
 - **It does not auto-install Python.** The pipx install step
   assumes Python 3.11+ is on PATH.
-- **It does not generate or push base content.** Init pulls
-  existing base; it doesn't bootstrap a fleet from scratch. For
-  that, see `maury bootstrap repo base` (curator command, Phase 4).
+- **It does not generate or push base content.** Init pulls an
+  existing base; it doesn't bootstrap an agency from scratch. For
+  that, see `maury agency init` (shipped 2026-05-18) for the
+  agency-level marker + initial commit; a future `maury repo
+  init` / curator-side new-base-repo command is planned per
+  ADR-0038.
 
 #### Init drift preflight (added 2026-05-07)
 

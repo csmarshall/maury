@@ -1,10 +1,15 @@
-"""`maury bootstrap host` — curator-side host registration.
+"""`maury mode bootstrap` engine — curator-side host registration.
 
-Per ADR-0018, `maury bootstrap` is the curator's set of fleet-side
-ops, distinct from `maury init` (which is the new-host's first
-command). This module ships the `host` subverb: register a new host
-in the manifest so that when the user runs `maury init` on that
-host, the hostname fallback resolves to the registered entry.
+Per ADR-0018 + ADR-0039, this is the curator's agency-side op for
+registering a new host into an existing mode in the manifest.
+Distinct from `maury init` (the new-host's first command on its own
+hardware). Once a host is registered here, when the user runs
+`maury init` on that host the hostname fallback resolves to the
+registered entry.
+
+The pre-release CLI alias `maury bootstrap host` was retired
+2026-05-19 (no users existed to deprecate from); the engine function
+`bootstrap_host` exported below is unchanged.
 
 v0 scope:
   - Append a HostSpec to the manifest with a fresh `host_<hex>` ID.
@@ -47,7 +52,7 @@ from maury.manifest import (
 
 @dataclass(frozen=True)
 class BootstrapHostResult:
-    """Summary of what `bootstrap host` did (or would do, in dry-run)."""
+    """Summary of what `mode bootstrap` did (or would do, in dry-run)."""
 
     actions: list[str] = field(default_factory=list)
     host_id: str = ""
