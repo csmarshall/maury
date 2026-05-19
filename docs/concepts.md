@@ -659,18 +659,22 @@ Why mode-scoped:
 - Replacement-hardware recovery is a content-copy, not an
   identity-transfer (per Tenet 6, identity is not name).
 
-**Tagged ID format and the hex/tag split** (per the 2026-05-14
-amendment to [ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md)):
-host IDs may carry an optional cosmetic suffix —
-`host_<8 hex>_<tag>` (e.g., `host_24b2a0aa_laptop`). The 8-hex
-prefix is the **lookup primitive**; the **cosmetic tag**
-(`[a-z0-9-]{1,32}`, RFC 1123 DNS-label grammar) is purely a
-human-readable label and is never parsed for resolution. This
-yields a **mutability split**: the hex is immutable identity
-(editing it is functionally a host-identity swap, guarded by
-the identity baseline below); the tag is freely editable. The
-legacy `host_<32 hex>` form remains valid forever — no
-migration.
+**Tagged ID format and the hex/tag split** (per
+[ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md)):
+every host ID is `host_<8 hex>_<tag>` (e.g.,
+`host_24b2a0aa_laptop`). The 8-hex prefix is the **lookup
+primitive**; the **cosmetic tag** (`[a-z0-9-]{1,32}`, RFC 1123
+DNS-label grammar) is purely a human-readable label and is
+never parsed for resolution. This yields a **mutability split**:
+the hex is immutable identity (editing it is functionally a
+host-identity swap, guarded by the identity baseline below);
+the tag is freely editable. (Profile IDs remain `profile_<32 hex>`
+with no tag suffix; the human-facing payoff doesn't apply.)
+
+The untagged `host_<32 hex>` form was retired pre-release on
+2026-05-19; the "accepted forever" promise from the 2026-05-14
+amendment was a backwards-compat commitment to a userbase of
+zero, and was deleted rather than frozen into v1.
 
 **Identity baseline + host-identity guard** (per
 [ADR-0042](adr/0042-host-identity-guard.md)): every host has a

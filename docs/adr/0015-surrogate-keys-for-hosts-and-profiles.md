@@ -22,14 +22,20 @@
   unchanged. All existing `profile_<hex>` values in manifests require
   migration per ADR-0030. See ADR-0037 §mode for the full context.
 - 2026-05-14 — **non-breaking format extension:** `host_<hex>` IDs may
-  now carry an optional **cosmetic tag suffix** for human readability:
+  carry a mandatory **cosmetic tag suffix** for human readability:
   `host_<8-hex>_<tag>` (e.g., `host_24b2a0aa_laptop`). The 8-hex prefix
-  remains the lookup primitive; the tag is purely cosmetic and never
+  is the lookup primitive; the tag is purely cosmetic and never
   parsed for resolution. Tag grammar: `[a-z0-9-]{1,32}` (DNS hostname
-  rules per RFC 1123). Existing 32-hex IDs (`host_<32 hex>`) remain
-  valid forever — no migration. The "never modified after first init"
+  rules per RFC 1123). The "never modified after first init"
   invariant splits: the hex is immutable identity; the tag is freely
-  editable. See §"Tagged ID format" below.
+  editable. See §"Tagged ID format" below. (Profile IDs remain
+  `profile_<32 hex>` — modes do not surface in human-facing places
+  the way hosts do, so the readability payoff doesn't apply.)
+- 2026-05-19 — the untagged `host_<32 hex>` form was retired
+  pre-release. The 2026-05-14 "remain valid forever" commitment
+  was a backwards-compat promise to a userbase of zero, deleted
+  rather than frozen into v1. Body sections below have been
+  updated; see Amendment history for the full delta.
 
 ## Related tenets
 
@@ -41,9 +47,11 @@ The original v1 manifest used human-readable names as primary keys for
 hosts and profiles — a textbook violation of the surrogate-vs-natural-
 key principle (Codd / DDD Entity Identity). Renaming a host or profile
 would have broken every reference: directory paths, audit log entries,
-rule targets, fragment provenance. Maury adds **`host_<32 hex>` and
-`profile_<32 hex>` surrogate IDs** for both entity types, with names
-demoted to mutable display labels. Directory paths still use names for
+rule targets, fragment provenance. Maury adds surrogate IDs for both
+entity types — **`host_<8 hex>_<tag>`** (the 8-hex prefix is the
+lookup primitive; the tag is cosmetic per RFC 1123 DNS-label
+grammar) and **`profile_<32 hex>`** — with names demoted to mutable
+display labels. Directory paths still use names for
 navigability; renames are atomic operations that update manifest +
 `git mv` together. Trade-off: pre-commit hook needed to keep
 directory name in sync with the embedded `name` field.
@@ -130,28 +138,30 @@ rename) so navigability is preserved.
 
 #### ID format
 
-Stable, opaque, time-sortable string with an entity-type prefix:
+Stable, opaque strings with an entity-type prefix:
 
 ```
-host_<32 hex chars>      e.g., host_8a7f3c1d4e9b4a2c8f1e7d5b6c2a9e4f
+host_<8 hex>_<tag>       e.g., host_24b2a0aa_laptop
 profile_<32 hex chars>   e.g., profile_3f1a8b2c4d5e6f7081a2b3c4d5e6f708
 ```
 
-Implementation: `uuid4().hex` with the prefix prepended. Stdlib only,
-no dependency. The prefix (`host_`, `mode_`) makes IDs
-self-describing in audit logs and error messages.
+Implementation: `uuid4().hex` with the prefix prepended; for hosts,
+the first 8 hex chars of the UUID are used as the lookup primitive
+and a cosmetic tag is appended (see §"Tagged ID format" below).
+Stdlib only, no dependency. The prefix (`host_`, `profile_`) makes
+IDs self-describing in audit logs and error messages.
 
-#### Tagged ID format (amended 2026-05-14)
+#### Tagged ID format
 
-The legacy `host_<32 hex>` form has a real readability problem: a
-user looking at `~/.maury-host-id` or grepping the manifest sees
-`host_24b2a0aadfd3459fa2a21ed7d0d79333` and has no idea which
-host that refers to without cross-referencing the manifest's
-`name` field. For an entity that's surfaced in every audit log
-entry, in error messages, and in the local-state file, that's
-cognitive friction with no payoff.
+A `host_<32 hex>`-only form would have a real readability problem:
+a user looking at `~/.maury-host-id` or grepping the manifest would
+see `host_24b2a0aadfd3459fa2a21ed7d0d79333` with no clue which host
+that refers to without cross-referencing the manifest's `name`
+field. For an entity that's surfaced in every audit log entry, in
+error messages, and in the local-state file, that's cognitive
+friction with no payoff.
 
-The amended format adds an **optional cosmetic tag suffix**:
+The shipped format carries a **mandatory cosmetic tag suffix**:
 
 ```
 host_<8 hex chars>_<tag>     e.g., host_24b2a0aa_laptop
@@ -175,16 +185,18 @@ Where:
   normalizing user input) and displaying it in human-facing
   output.
 
-Both `host_<32 hex>` (legacy 32-hex) and `host_<8 hex>_<tag>`
-(new tagged) regex-validate. No migration needed; hosts initialized
-before 2026-05-14 keep their original IDs forever. The validation
-regex shipped in `src/maury/ids.py`:
+The validation regex shipped in `src/maury/ids.py`:
 
 ```
-^host_([0-9a-f]{32}|[0-9a-f]{8}_[a-z0-9-]{1,32})$
+^host_[0-9a-f]{8}_[a-z0-9-]{1,32}$
 ```
 
-The `mode_<32 hex>` format is **not** extended with tags. Modes
+(History: a 2026-05-14 amendment added the tagged form as an
+optional extension alongside `host_<32 hex>`; the untagged form
+was retired 2026-05-19 as part of a pre-release surface cleanup.
+See Amendment history below.)
+
+The `profile_<32 hex>` format is **not** extended with tags. Modes
 are not surfaced in `~/.maury-host-id` or in audit log entries
 where ID readability matters most; the manifest's `name` field
 already carries the human label. Adding tags to mode IDs would

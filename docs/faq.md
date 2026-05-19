@@ -212,11 +212,10 @@ bump that might touch transcript output.
 The 8-hex prefix of your host ID is **immutable identity**;
 the trailing `_<tag>` suffix is a freely-editable cosmetic
 label. Per
-[ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md)'s
-2026-05-14 amendment. (Legacy `host_<32 hex>` IDs from
-pre-2026-05-14 hosts remain valid forever; the hex/tag
-split is opt-in for new hosts. The guard checks the leading
-hex prefix in both formats.)
+[ADR-0015](adr/0015-surrogate-keys-for-hosts-and-profiles.md):
+every host ID is `host_<8 hex>_<tag>`. (The pre-release
+untagged `host_<32 hex>` form was retired 2026-05-19; the
+guard only ever needs to compare 8-hex prefixes.)
 
 - Edit the tag (`host_24b2a0aa_laptop` → `host_24b2a0aa_main-laptop`)
   — fine, no consequences.

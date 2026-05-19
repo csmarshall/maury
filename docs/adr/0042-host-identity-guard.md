@@ -265,9 +265,6 @@ normal bootstrap; no identity-change abort fires.
 - ✅ **Good:** Accidental hex edits no longer silently swap a host
   into a different mode. Loud error catches the case at the
   exact moment it would have caused damage.
-- ✅ **Good:** Backwards-compatible. Pre-2026-05-14 hosts get the
-  guard automatically on first post-upgrade sync, with no
-  re-bootstrap required.
 - ✅ **Good:** Stands on shoulders of SSH `known_hosts`. Users
   familiar with that pattern transfer their mental model directly
   ("oh, like accepting a new host key").
@@ -287,11 +284,12 @@ normal bootstrap; no identity-change abort fires.
 
 ### Confirmation
 
-- Unit tests in `tests/unit/test_host_identity_guard.py` cover:
-  baseline auto-creation on first sync, hex-mismatch abort,
-  `--confirm-identity-change` flag flow, `init --reset` flow,
-  tag-only edits not triggering the guard, mode-change
-  interaction.
+- Unit tests in `tests/unit/test_host_identity.py` cover:
+  baseline write/read round-trip, hex-mismatch abort,
+  `--confirm-identity-change` flag flow, tag-only edits not
+  triggering the guard, and the state-corruption case
+  (host-id present but baseline absent → `HostIdentityError`
+  pointing at `maury init --reset`).
 - Integration test in `tests/integration/test_identity_swap.py`
   simulates the accidental-edit scenario end-to-end.
 - ADR-0029 File inventory entry for `host-identity.json` keeps
@@ -365,10 +363,10 @@ normal bootstrap; no identity-change abort fires.
 ## Followups
 
 - **`maury doctor` rule** flagging "baseline missing but
-  `~/.maury-host-id` present" as a config-drift signal. Currently
-  the guard silently auto-creates the baseline; a doctor rule
-  would surface this explicitly so users notice the upgrade
-  transition.
+  `~/.maury-host-id` present" as a state-corruption signal —
+  pre-empting the next mode-scoped command's hard
+  `HostIdentityError` with a softer doctor-level warning that
+  points at `maury init --reset` before the user is mid-sync.
 - **CLI affordance:** `maury status` could show the baseline state
   alongside the current ID for trust-debugging convenience.
 
