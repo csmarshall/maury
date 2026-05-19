@@ -496,6 +496,7 @@ def manifest_resolve(manifest_file: Path | None, non_interactive: bool) -> None:
         default_prompter,
         resolve_manifest,
     )
+    from maury.process_lock import ProcessLockHeldError, process_lock
 
     path = manifest_file or DEFAULT_MANIFEST_PATH
     if not path.exists():
@@ -515,7 +516,10 @@ def manifest_resolve(manifest_file: Path | None, non_interactive: bool) -> None:
         prompter = default_prompter
 
     try:
-        summary = resolve_manifest(path, prompter=prompter)
+        with process_lock():
+            summary = resolve_manifest(path, prompter=prompter)
+    except ProcessLockHeldError as e:
+        raise click.ClickException(str(e)) from e
     except ResolveError as e:
         raise click.ClickException(str(e)) from e
 
