@@ -165,9 +165,7 @@ def test_bump_refuses_when_no_baseline(tmp_path: Path) -> None:
         bump(tmp_path, kind="minor")
 
 
-def test_bump_refuses_when_target_tag_already_exists(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_bump_refuses_when_target_tag_already_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Defensive: if the computed new tag already exists, refuse without overwriting.
 
     This collision path isn't reachable via normal flow (`latest_semver_tag`
