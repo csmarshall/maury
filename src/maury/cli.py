@@ -3433,9 +3433,15 @@ def repo() -> None:
     help="Don't run `git init`, commit, or tag. Useful for offline scaffolding.",
 )
 @click.option(
+    "--no-hook",
+    "no_hook",
+    is_flag=True,
+    help="Don't install the auto-patch-bump post-commit hook (ADR-0038 step 6).",
+)
+@click.option(
     "--force",
     is_flag=True,
-    help="Re-initialize even if .meta/maury-marker.json or .meta/maury-governance.json exist.",
+    help="Re-initialize even if .meta files or a non-maury post-commit hook exist.",
 )
 def repo_init(
     target_dir: Path,
@@ -3446,13 +3452,15 @@ def repo_init(
     min_reviewers: int | None,
     initial_tag: str,
     no_git_init: bool,
+    no_hook: bool,
     force: bool,
 ) -> None:
     """Initialize a new rules repo per ADR-0038.
 
     Writes .meta/maury-governance.json (owners, pr_target) and
-    .meta/maury-marker.json (layer=rules, agency_id), then creates
-    the initial semver tag.
+    .meta/maury-marker.json (layer=rules, agency_id), creates the
+    initial semver tag, and installs the auto-patch-bump post-commit
+    hook (each commit gets a vMAJOR.MINOR.(PATCH+1) tag automatically).
 
     Idempotent: refuses if either .meta file exists. --force overwrites.
     """
@@ -3469,6 +3477,7 @@ def repo_init(
             initial_tag=initial_tag_val,
             force=force,
             git_init=not no_git_init,
+            install_hook=not no_hook,
         )
     except RepoInitError as e:
         raise click.ClickException(str(e)) from e
@@ -3488,8 +3497,57 @@ def repo_init(
         click.echo(f"  commit: {summary.git_commit_sha[:12]}")
     elif no_git_init:
         click.echo("  git init: skipped (--no-git-init)")
+    if summary.post_commit_hook_installed:
+        click.echo("  post-commit hook: installed (auto-patch-bump on each commit)")
+    elif no_hook:
+        click.echo("  post-commit hook: skipped (--no-hook)")
     if summary.force_used:
         click.echo("  ⚠️ --force used: prior governance/marker overwritten.")
+
+
+@repo.command("bump")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=".",
+    show_default=True,
+    help="Path to the rules repo.",
+)
+@click.option(
+    "--major",
+    "bump_major",
+    is_flag=True,
+    help="Bump the major component (resets minor + patch to 0).",
+)
+@click.option(
+    "--minor",
+    "bump_minor",
+    is_flag=True,
+    help="Bump the minor component (resets patch to 0).",
+)
+def repo_bump_cmd(target_dir: Path, bump_major: bool, bump_minor: bool) -> None:
+    """Bump the rules repo's semver tag (major or minor only).
+
+    Per ADR-0038: patch bumps are the post-commit hook's job; major and
+    minor are explicit curator actions. Pass exactly one of --major or
+    --minor. Reads the current highest v<maj>.<min>.<patch> tag, applies
+    the bump, and creates the new tag at HEAD.
+    """
+    from maury.repo_bump import RepoBumpError, bump
+
+    if bump_major == bump_minor:
+        raise click.ClickException("pass exactly one of --major or --minor")
+
+    target_dir = target_dir.expanduser().resolve()
+    kind = "major" if bump_major else "minor"
+    try:
+        summary = bump(target_dir, kind=kind)
+    except RepoBumpError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo(f"bumped {summary.kind}: {summary.prior_tag} → {summary.new_tag}")
+    click.echo(f"  tag created at HEAD in {summary.repo_dir}")
 
 
 # ---- mode group ----------------------------------------------------------

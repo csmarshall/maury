@@ -63,6 +63,8 @@ class RepoInitSummary:
 
     git_commit_sha: str | None = None
     force_used: bool = False
+    post_commit_hook_installed: bool = False
+    """True iff the auto-patch-bump hook was written to .git/hooks/post-commit."""
 
 
 def _build_marker(agency_id: str) -> dict[str, object]:
@@ -115,6 +117,7 @@ def init_repo(
     initial_tag: str | None = DEFAULT_INITIAL_TAG,
     force: bool = False,
     git_init: bool = True,
+    install_hook: bool = True,
 ) -> RepoInitSummary:
     """Initialize a new rules repo rooted at target_dir.
 
@@ -127,8 +130,11 @@ def init_repo(
         min_reviewers: Reviewer-count expectation.
         initial_tag: Initial semver tag, or None to skip tagging.
         force: Allow re-init if either .meta/maury-marker.json or
-            .meta/maury-governance.json exists.
+            .meta/maury-governance.json exists. Also forces overwriting
+            a pre-existing non-maury post-commit hook.
         git_init: Run git init + stage + commit. Skip with False.
+        install_hook: Install the auto-patch-bump post-commit hook
+            (ADR-0038 step 6). Requires git_init=True (no-op otherwise).
 
     Raises:
         RepoInitError if validation fails or git operations fail.
@@ -199,6 +205,16 @@ def init_repo(
                     raise RepoInitError(f"git tag {initial_tag} failed: {out}")
                 tag_written = initial_tag
 
+    hook_installed = False
+    if git_init and install_hook:
+        from maury.repo_bump import RepoBumpError, install_post_commit_hook
+
+        try:
+            install_post_commit_hook(target_dir, force=force)
+            hook_installed = True
+        except RepoBumpError as exc:
+            raise RepoInitError(str(exc)) from exc
+
     return RepoInitSummary(
         target_dir=target_dir,
         agency_id=agency_id,
@@ -212,6 +228,7 @@ def init_repo(
         tag_already_existed=tag_already_existed,
         git_commit_sha=commit_sha,
         force_used=force,
+        post_commit_hook_installed=hook_installed,
     )
 
 
