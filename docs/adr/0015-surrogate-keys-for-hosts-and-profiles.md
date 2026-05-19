@@ -10,12 +10,12 @@
   that `~/.maury-host-id` is "created by `maury bootstrap host`."
   As of the Phase 4 implementation, `maury init` creates the
   file on the new host's first run (see
-  `src/maury/bootstrap/init_cmd.py:120-126`); `maury bootstrap
-  host` is a curator-side command that runs on a *different*
-  host (with rw access to the base repo) and never writes to
-  `~/.maury-host-id` on the host being registered. The "never
-  modified" invariant still holds — once init creates the file,
-  it's immutable.
+  `src/maury/bootstrap/init_cmd.py:120-126`); the curator-side
+  registration command (now `maury mode bootstrap` — see the
+  2026-05-19 entry below) runs on a *different* host (with rw
+  access to the base repo) and never writes to `~/.maury-host-id`
+  on the host being registered. The "never modified" invariant
+  still holds — once init creates the file, it's immutable.
 - 2026-05-11 — **breaking schema change:** `profile_<32 hex>` surrogate
   ID prefix renamed to `mode_<32 hex>` per ADR-0037 doctoral examination
   (profile → mode vocabulary rename). The `host_<32 hex>` prefix is
@@ -162,7 +162,7 @@ Where:
 - **`<8 hex chars>`** — the lookup primitive. 8 hex = 4 billion
   possibilities; for personal-scale fleets (≤ 100 hosts) the
   birthday-paradox collision probability is < 1 in 800 million.
-  If a curator-side `bootstrap host` ever detects a hex
+  If a curator-side `mode bootstrap` ever detects a hex
   collision against the manifest, init regenerates.
 - **`<tag>`** — purely cosmetic. Grammar: `[a-z0-9-]{1,32}`
   (lowercase alphanumeric + hyphens, max 32 chars). Matches DNS
@@ -354,7 +354,7 @@ not pre-emptively.
   `~/.maury-host-id` file. `maury init` creates it on first
   run on the new host; without it (e.g., before init has been
   run), the host can't identify itself in the manifest. The
-  curator-side `maury bootstrap host` registers the *manifest
+  curator-side `maury mode bootstrap` registers the *manifest
   entry* for the new host but does not touch
   `~/.maury-host-id` on the new machine — that's init's job.
 - ❌ **Bad:** Code refactor is moderate — manifest module
@@ -454,3 +454,7 @@ keep their existing `id:` slug field. No migration.
 - 2026-05-11 — `profile_<32 hex>` renamed to `mode_<32 hex>` throughout. Breaking schema change; migration required per ADR-0030. `host_<32 hex>` unchanged.
 - 2026-05-14 — non-breaking format extension: `host_<hex>` IDs may carry an optional cosmetic tag suffix (`host_<8 hex>_<tag>`). Hex remains immutable identity; tag is freely editable. Existing 32-hex IDs accepted forever; no migration. See top-of-file note + §"Tagged ID format" for grammar (RFC 1123 DNS labels) and §"Mutability split" for the hex/tag invariant separation.
 - 2026-05-19 — `version: 1` is the first schema users will ever see. Pre-release "v1→v2 migration" tooling deleted (no users exist to migrate from). Migration framework lands if/when a v2 is genuinely needed.
+- 2026-05-19 — vocabulary sweep: the curator-side command is now
+  uniformly referred to as `maury mode bootstrap` (the legacy
+  `maury bootstrap host` CLI alias was retired in the same
+  pre-release cleanup; see ADR-0039 amendment history).

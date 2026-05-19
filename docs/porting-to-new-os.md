@@ -165,10 +165,9 @@ To go from Tier 2 to Tier 1:
 9. [ ] **Add CI coverage.** A workflow job that installs
        Python + uv on your platform and runs `pytest`.
 10. [ ] **Run an end-to-end install on a real host.** The
-        `maury bootstrap init` flow succeeds without
-        platform-specific hand-tweaks. (Additional bootstrap
-        subcommands ship as Phase 4 progresses; verify each
-        as it lands.)
+        `maury init` flow succeeds without platform-specific
+        hand-tweaks. (Additional bootstrap subcommands ship
+        as Phase 4 progresses; verify each as it lands.)
 
 ## Testing the port
 
@@ -185,7 +184,7 @@ uv run maury doctor
 
 # 2. Render layer — does maury build a hook config that
 #    won't silently no-op?
-#    Requires a manifest. Run after `maury bootstrap init`
+#    Requires a manifest. Run after `maury init`
 #    has produced one.
 uv run maury render --check --target /tmp/maury-render-test
 

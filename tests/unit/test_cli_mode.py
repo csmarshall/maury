@@ -34,7 +34,7 @@ def _seed(path: Path) -> tuple[str, str]:
     return pid, hid
 
 
-# ---- mode bootstrap (alias of bootstrap host) ----------------------------
+# ---- mode bootstrap (sole curator-side host-registration command) -----
 
 
 def test_mode_bootstrap_registers_host(tmp_path: Path) -> None:

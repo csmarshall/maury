@@ -184,10 +184,11 @@ to track since `uv` is what we already use for development).
 #### CLI verb separation
 
 - **`maury init`** — user's first command on a new machine.
-- **`maury bootstrap`** — curator-side ops: `bootstrap repo`
-  (creates a new GitHub repo + deploy keys), `bootstrap profile`
-  (creates a new profile dir + manifest entry), `bootstrap-snippet`
-  (generates a paste-on-new-host one-liner).
+- **Curator-side ops** — `maury mode bootstrap` (register a new
+  host against an existing mode in the manifest; the `maury
+  bootstrap host` alias was retired 2026-05-19); future
+  curator commands (`bootstrap repo`, snippet generators, etc.)
+  belong to this same audience but are planned, not shipped.
 
 Different verbs, different audiences, no overlap.
 
@@ -367,9 +368,10 @@ write and the baseline persist.
 ## Build-order placement
 
 `maury init` lands in **Phase 4 (bootstrap commands)**
-alongside `maury bootstrap repo` and `maury bootstrap host`.
-The probe mechanism (Phase 2 — already shipped) and the
-render engine (Phase 3 — already shipped) are prerequisites.
+alongside `maury mode bootstrap` (the pre-release `bootstrap
+host` alias was retired 2026-05-19) and the future `bootstrap
+repo`. The probe mechanism (Phase 2 — already shipped) and
+the render engine (Phase 3 — already shipped) are prerequisites.
 
 ## Followups
 
@@ -384,3 +386,7 @@ render engine (Phase 3 — already shipped) are prerequisites.
 
 - 2026-05-11 — "fleet" renamed to "agency" per ADR-0037 doctoral examination. No semantic changes to bootstrap flow.
 - 2026-05-13 — `.meta/manifest.json` → `.meta/maury-marker.json`; step 3 reworded to reflect the distributed-marker model from [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md). Note added at top deferring to [ADR-0039](0039-bootstrap-and-host-lifecycle.md) as the source of truth for current bootstrap UX.
+- 2026-05-19 — pre-release cleanup: the legacy `maury bootstrap
+  host` CLI alias was retired (no users exist to deprecate from).
+  Curator-side host registration ships only as `maury mode
+  bootstrap`. CLI verb-separation section updated accordingly.

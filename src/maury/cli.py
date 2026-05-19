@@ -595,92 +595,6 @@ def probe(output_path: Path | None, hostname_override: str | None) -> None:
         click.echo(payload)
 
 
-@main.group()
-def bootstrap() -> None:
-    """Bootstrap a new host or repo."""
-
-
-# ---- bootstrap host (curator-side host registration, per ADR-0018) ----
-
-
-@bootstrap.command("host")
-@click.option(
-    "--manifest-file",
-    "manifest_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    envvar=DEFAULT_MANIFEST_ENV,
-    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
-)
-@click.option("--name", "name", required=True, help="Display name for the new host (should match its hostname).")
-@click.option(
-    "--profile",
-    "profile",
-    required=True,
-    help="Profile (name or ID) the new host belongs to.",
-)
-@click.option(
-    "--base-url",
-    "base_url",
-    default=None,
-    help="Base repo URL. If omitted, copied from another already-registered host's `base` entry.",
-)
-@click.option(
-    "--base-mode",
-    "base_mode",
-    type=click.Choice(["ro", "rw", "pr"], case_sensitive=False),
-    default="ro",
-    show_default=True,
-    help="Access mode for the new host's base repo.",
-)
-@click.option(
-    "--push-policy",
-    "push_policy",
-    type=click.Choice(["permissive", "own_profile_only", "disabled"], case_sensitive=False),
-    default="own_profile_only",
-    show_default=True,
-    help="Push policy for the new host.",
-)
-@click.option("--owner", "owner", default=None, help="Optional owner identifier (email, handle).")
-@click.option("--check", "dry_run", is_flag=True, help="Dry-run: show what would happen, write nothing.")
-def bootstrap_host_cmd(
-    manifest_file: Path | None,
-    name: str,
-    profile: str,
-    base_url: str | None,
-    base_mode: str,
-    push_policy: str,
-    owner: str | None,
-    dry_run: bool,
-) -> None:
-    """Register a new host in the manifest (curator-side)."""
-    from maury.manifest import PushPolicy, RepoMode
-
-    mpath = manifest_file or DEFAULT_MANIFEST_PATH
-    if not mpath.exists():
-        raise click.ClickException(f"manifest file not found: {mpath}")
-
-    try:
-        result = run_bootstrap_host(
-            manifest_path=mpath,
-            name=name,
-            profile=profile,
-            base_url=base_url,
-            base_mode=RepoMode(base_mode.lower()),
-            push_policy=PushPolicy(push_policy.lower()),
-            owner=owner,
-            dry_run=dry_run,
-        )
-    except BootstrapHostError as e:
-        raise click.ClickException(str(e)) from e
-
-    for action in result.actions:
-        click.echo(f"  {action}")
-    click.echo("")
-    click.echo(result.message)
-    if dry_run:
-        click.echo("(--check; no files were written)")
-
-
 # ---- init (the user's first command on a new host, per ADR-0018) -------
 
 
@@ -3530,9 +3444,10 @@ def repo_bump_cmd(target_dir: Path, bump_major: bool, bump_minor: bool) -> None:
 
 # ---- mode group ----------------------------------------------------------
 #
-# `mode` is the modern vocabulary per ADR-0039; `bootstrap host` is the
-# legacy CLI surface that operates against the same manifest. Both work
-# today; `mode bootstrap` reuses the same handler.
+# `mode` is the canonical curator-side vocabulary per ADR-0039.
+# The pre-release `bootstrap host` CLI alias was retired
+# 2026-05-19 (no users to deprecate from); the engine function
+# `run_bootstrap_host` in `maury.bootstrap` is unchanged.
 
 
 @main.group()
@@ -3591,9 +3506,10 @@ def mode_bootstrap(
 ) -> None:
     """Register the current host into a specified mode (ADR-0039).
 
-    Modern-vocabulary form of `maury bootstrap host` — same handler,
-    same v2-flat manifest target. The mode-based marker-file equivalent
-    will land when ADR-0030's schema-migration machinery ships.
+    Curator-side host registration. Same v2-flat manifest target as
+    the legacy pre-release `bootstrap host` alias (retired 2026-05-19);
+    the mode-based marker-file equivalent will land when ADR-0030's
+    schema-migration machinery ships.
     """
     from maury.manifest import PushPolicy, RepoMode
 

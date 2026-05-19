@@ -1,9 +1,12 @@
-"""CLI-layer tests for `maury probe` and `maury bootstrap host`.
+"""CLI-layer tests for `maury probe` and `maury mode bootstrap`.
 
 The capability probe internals are covered in `test_capability_probe.py`;
 the bootstrap_host engine is covered in `test_bootstrap_host.py`. These
 tests cover the CLI wiring: flag parsing, env-var resolution, error
 paths, exit codes, output format.
+
+The pre-release `maury bootstrap host` CLI alias was retired 2026-05-19;
+`maury mode bootstrap` is the sole curator-side host-registration verb.
 
 Pattern follows `test_cli_init.py` and `test_cli_manifest.py`.
 """
@@ -85,7 +88,7 @@ def test_probe_hostname_override_writes_to_file(tmp_path: Path) -> None:
     assert payload["hostname"] == "test-override-host"
 
 
-# ---- bootstrap host -----------------------------------------------------
+# ---- mode bootstrap -----------------------------------------------------
 
 
 def test_bootstrap_host_dry_run_writes_no_changes(tmp_path: Path) -> None:
@@ -95,13 +98,13 @@ def test_bootstrap_host_dry_run_writes_no_changes(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "home",
             "--check",
         ],
@@ -118,13 +121,13 @@ def test_bootstrap_host_persists_when_not_dry_run(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "home",
         ],
     )
@@ -141,13 +144,13 @@ def test_bootstrap_host_explicit_base_url_overrides_inheritance(tmp_path: Path) 
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "home",
             "--base-url",
             "git@codeberg.org:user/different-base.git",
@@ -168,13 +171,13 @@ def test_bootstrap_host_unknown_profile_errors(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "nonexistent",
         ],
     )
@@ -186,13 +189,13 @@ def test_bootstrap_host_no_manifest_errors(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(tmp_path / "nonexistent.json"),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "home",
         ],
     )
@@ -200,14 +203,14 @@ def test_bootstrap_host_no_manifest_errors(tmp_path: Path) -> None:
 
 
 def test_bootstrap_host_missing_required_args_fails_with_usage(tmp_path: Path) -> None:
-    """Click should refuse without required --name or --profile."""
+    """Click should refuse without required --name or --mode."""
     mpath, _, _ = _write_seed_manifest(tmp_path)
     runner = CliRunner()
-    # Missing --profile
-    result = runner.invoke(main, ["bootstrap", "host", "--manifest-file", str(mpath), "--name", "new-host"])
+    # Missing --mode
+    result = runner.invoke(main, ["mode", "bootstrap", "--manifest-file", str(mpath), "--name", "new-host"])
     assert result.exit_code != 0
     combined = result.output + (result.stderr or "")
-    assert "profile" in combined.lower()
+    assert "mode" in combined.lower()
 
 
 def test_bootstrap_host_invalid_repo_mode_rejected_by_click(tmp_path: Path) -> None:
@@ -217,13 +220,13 @@ def test_bootstrap_host_invalid_repo_mode_rejected_by_click(tmp_path: Path) -> N
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "home",
             "--base-mode",
             "foo",
@@ -240,13 +243,13 @@ def test_bootstrap_host_invalid_push_policy_rejected_by_click(tmp_path: Path) ->
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "new-host",
-            "--profile",
+            "--mode",
             "home",
             "--push-policy",
             "yolo",

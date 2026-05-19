@@ -95,7 +95,8 @@ Host github-work
 }
 ```
 
-Bootstrap (`maury bootstrap host`, per [ADR-0018](0018-minimum-bootstrap-ux.md))
+Bootstrap (`maury mode bootstrap`, per [ADR-0018](0018-minimum-bootstrap-ux.md)
+and [ADR-0039](0039-bootstrap-and-host-lifecycle.md))
 generates the keypairs, prints the public keys for installation
 on GitHub, and updates both the SSH config and the manifest.
 
@@ -176,11 +177,12 @@ on GitHub, and updates both the SSH config and the manifest.
 
 ## Build-order placement
 
-Phase 4 (Bootstrap commands) — `maury bootstrap host` per
-[ADR-0018](0018-minimum-bootstrap-ux.md) is what generates the
-keypairs and updates SSH config + manifest. The deploy-key
-*concept* is foundational and predates implementation; the
-mechanics ship with Phase 4.
+Phase 4 (Bootstrap commands) — `maury mode bootstrap` per
+[ADR-0018](0018-minimum-bootstrap-ux.md) +
+[ADR-0039](0039-bootstrap-and-host-lifecycle.md) is what
+generates the keypairs and updates SSH config + manifest.
+The deploy-key *concept* is foundational and predates
+implementation; the mechanics ship with Phase 4.
 
 ## Followups
 

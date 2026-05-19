@@ -1,4 +1,8 @@
-"""Tests for `maury bootstrap host` (Phase 4 curator-side ops, per ADR-0018)."""
+"""Tests for `maury mode bootstrap` (Phase 4 curator-side ops, per ADR-0018).
+
+(The legacy `bootstrap host` alias was removed pre-release 2026-05-19; the
+engine function `bootstrap_host` is still the implementation core, but the
+CLI surface is now `maury mode bootstrap`.)"""
 
 from __future__ import annotations
 
@@ -189,13 +193,13 @@ def test_bootstrap_host_cli_smoke(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
+            "mode",
             "bootstrap",
-            "host",
             "--manifest-file",
             str(mpath),
             "--name",
             "newlaptop",
-            "--profile",
+            "--mode",
             "home",
         ],
     )
