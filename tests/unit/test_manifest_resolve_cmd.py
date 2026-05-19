@@ -330,3 +330,124 @@ def test_resolve_manifest_validates_after_resolution(tmp_path: Path) -> None:
     # Take A → manifest's profile.extends points at a nonexistent profile.
     with pytest.raises(ResolveError, match="validation"):
         resolve_manifest(manifest, prompter=lambda _c: "a")
+
+
+# ---- semantic_summary ----------------------------------------------------
+
+
+def test_semantic_summary_profile_delete_vs_modify_counts_bound_hosts() -> None:
+    """Side A deletes a profile; side B has hosts referencing it."""
+    from maury.manifest_merge import DELETE_SENTINEL, Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import semantic_summary
+
+    pid = "profile_abc"
+    ancestor: dict[str, Any] = {
+        "profiles": {pid: {"name": "home", "extends": None}},
+        "hosts": {"host_a": {"profile": pid, "repos": {}}},
+    }
+    side_a: dict[str, Any] = {"profiles": {}, "hosts": ancestor["hosts"]}  # deleted profile
+    side_b: dict[str, Any] = {
+        "profiles": {pid: {"name": "home", "extends": None}},
+        "hosts": {
+            "host_a": {"profile": pid, "repos": {}},
+            "host_b": {"profile": pid, "repos": {}},
+        },
+    }
+    conflict = Conflict(
+        path=("profiles", pid),
+        kind=ConflictKind.DELETE_VS_MODIFY,
+        ancestor=ancestor["profiles"][pid],
+        side_a=DELETE_SENTINEL,
+        side_b=side_b["profiles"][pid],
+    )
+    summary = semantic_summary(conflict, ancestor=ancestor, side_a=side_a, side_b=side_b)
+    assert summary is not None
+    assert "side A" in summary
+    assert "2 host(s)" in summary  # both host_a and host_b on B side reference it
+
+
+def test_semantic_summary_profile_both_modified_counts_hosts_per_side() -> None:
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import semantic_summary
+
+    pid = "profile_abc"
+    ancestor: dict[str, Any] = {
+        "profiles": {pid: {"name": "home", "extends": None}},
+        "hosts": {"host_a": {"profile": pid, "repos": {}}},
+    }
+    side_a: dict[str, Any] = {
+        "profiles": {pid: {"name": "renamed-A", "extends": None}},
+        "hosts": {"host_a": {"profile": pid, "repos": {}}},
+    }
+    side_b: dict[str, Any] = {
+        "profiles": {pid: {"name": "renamed-B", "extends": None}},
+        "hosts": {
+            "host_a": {"profile": pid, "repos": {}},
+            "host_b": {"profile": pid, "repos": {}},
+        },
+    }
+    conflict = Conflict(
+        path=("profiles", pid),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor=ancestor["profiles"][pid],
+        side_a=side_a["profiles"][pid],
+        side_b=side_b["profiles"][pid],
+    )
+    summary = semantic_summary(conflict, ancestor=ancestor, side_a=side_a, side_b=side_b)
+    assert summary is not None
+    assert "1 host(s) on A" in summary
+    assert "2 on B" in summary
+
+
+def test_semantic_summary_host_delete_vs_modify() -> None:
+    from maury.manifest_merge import DELETE_SENTINEL, Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import semantic_summary
+
+    hid = "host_abc"
+    conflict = Conflict(
+        path=("hosts", hid),
+        kind=ConflictKind.DELETE_VS_MODIFY,
+        ancestor={"name": "old"},
+        side_a=DELETE_SENTINEL,
+        side_b={"name": "renamed"},
+    )
+    summary = semantic_summary(conflict, ancestor={}, side_a={}, side_b={})
+    assert summary is not None
+    assert "side A retires" in summary
+
+
+def test_semantic_summary_returns_none_for_unknown_paths() -> None:
+    from maury.manifest_merge import Conflict, ConflictKind
+    from maury.manifest_resolve_cmd import semantic_summary
+
+    conflict = Conflict(
+        path=("version",),
+        kind=ConflictKind.BOTH_MODIFIED,
+        ancestor=1,
+        side_a=2,
+        side_b=3,
+    )
+    assert semantic_summary(conflict, ancestor={}, side_a={}, side_b={}) is None
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_resolve_manifest_populates_semantic_summary_in_prompts(tmp_path: Path) -> None:
+    """End-to-end: a profile-rename conflict surfaces a summary to the prompter."""
+    seed = _seed_minimum_v2()
+    pid = next(iter(seed["profiles"].keys()))
+    ancestor = seed
+    ours = json.loads(json.dumps(ancestor))
+    ours["profiles"][pid]["name"] = "renamed-ours"
+    theirs = json.loads(json.dumps(ancestor))
+    theirs["profiles"][pid]["name"] = "renamed-theirs"
+    manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
+
+    seen: list[str | None] = []
+
+    def take_a(conflict: Conflict) -> str:
+        seen.append(conflict.semantic_summary)
+        return "a"
+
+    resolve_manifest(manifest, prompter=take_a)
+    assert seen, "prompter should have been invoked"
+    assert any("host(s) on A" in s for s in seen if s)

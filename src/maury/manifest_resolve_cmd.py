@@ -21,7 +21,7 @@ import os
 import subprocess
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -197,6 +197,82 @@ def render_path(path: PathT) -> str:
     return ".".join(path)
 
 
+def semantic_summary(
+    conflict: Conflict,
+    *,
+    ancestor: dict[str, Any],
+    side_a: dict[str, Any],
+    side_b: dict[str, Any],
+) -> str | None:
+    """Compute a consequence-aware one-liner for known manifest paths.
+
+    Returns None if the path doesn't match a known shape. Today we
+    annotate:
+
+    - `profiles.<profile_id>` deletion → count of hosts bound to it
+      in the OPPOSITE side (so the user sees how many hosts would
+      lose their binding if they accept the deletion).
+    - `hosts.<host_id>` deletion → flags that the host is being
+      retired.
+
+    Additional shapes (extends-chain changes, repo-mode flips, etc.)
+    are reasonable future enhancements.
+    """
+    path = conflict.path
+    if len(path) >= 2 and path[0] == "profiles":
+        return _summarize_profile_conflict(conflict, ancestor=ancestor, side_a=side_a, side_b=side_b)
+    if len(path) >= 2 and path[0] == "hosts":
+        return _summarize_host_conflict(conflict)
+    return None
+
+
+def _hosts_bound_to_profile(manifest: dict[str, Any], profile_id: str) -> int:
+    """Count hosts whose `profile` field references the given profile ID."""
+    hosts = manifest.get("hosts")
+    if not isinstance(hosts, dict):
+        return 0
+    return sum(1 for spec in hosts.values() if isinstance(spec, dict) and spec.get("profile") == profile_id)
+
+
+def _summarize_profile_conflict(
+    conflict: Conflict,
+    *,
+    ancestor: dict[str, Any],
+    side_a: dict[str, Any],
+    side_b: dict[str, Any],
+) -> str | None:
+    """Summarize the consequence of a profile-level conflict.
+
+    Matches both top-level (`profiles.<pid>`) and any nested change
+    inside the same profile (`profiles.<pid>.name`, etc.). The
+    deletion-of-profile case is by definition at the top level
+    (`len(path) == 2`); deeper paths can only be BOTH_MODIFIED.
+    """
+    profile_id = conflict.path[1]
+    if len(conflict.path) == 2 and conflict.kind is ConflictKind.DELETE_VS_MODIFY:
+        deleting_side = "A" if conflict.side_a is DELETE_SENTINEL else "B"
+        keeping_manifest = side_b if conflict.side_a is DELETE_SENTINEL else side_a
+        bound = _hosts_bound_to_profile(keeping_manifest, profile_id)
+        if bound > 0:
+            return f"side {deleting_side} deletes this profile; {bound} host(s) on the other side still reference it."
+        return f"side {deleting_side} deletes this profile; no other side hosts reference it."
+    if conflict.kind is ConflictKind.BOTH_MODIFIED:
+        bound_a = _hosts_bound_to_profile(side_a, profile_id)
+        bound_b = _hosts_bound_to_profile(side_b, profile_id)
+        return f"this profile is bound by {bound_a} host(s) on A and {bound_b} on B."
+    return None
+
+
+def _summarize_host_conflict(conflict: Conflict) -> str | None:
+    """Summarize the consequence of a host-level conflict."""
+    if conflict.kind is ConflictKind.DELETE_VS_MODIFY:
+        deleting_side = "A" if conflict.side_a is DELETE_SENTINEL else "B"
+        return f"side {deleting_side} retires this host; it will no longer sync."
+    if conflict.kind is ConflictKind.BOTH_MODIFIED:
+        return "both sides modified this host's record."
+    return None
+
+
 def resolve_manifest(
     manifest_path: Path,
     *,
@@ -219,7 +295,9 @@ def resolve_manifest(
     chosen_sides: list[str] = []
     choices: dict[PathT, Any] = {}
 
-    for conflict in merge.conflicts:
+    for raw_conflict in merge.conflicts:
+        summary = semantic_summary(raw_conflict, ancestor=ancestor, side_a=ours, side_b=theirs)
+        conflict = replace(raw_conflict, semantic_summary=summary) if summary else raw_conflict
         choice = prompter(conflict)
         if choice == "q":
             return ResolveSummary(
@@ -317,6 +395,8 @@ def default_prompter(conflict: Conflict) -> str:
     else:
         explanation = "Both sides added this key with different content. Pick which side's value lands."
     click.echo(f"  → {explanation}")
+    if conflict.semantic_summary:
+        click.echo(f"  ⓘ {conflict.semantic_summary}")
     click.echo("")
     choice: str = click.prompt(
         "  resolve [a=take A / b=take B / s=skip (keep ancestor) / q=abort]",

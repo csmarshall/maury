@@ -66,6 +66,13 @@ class Conflict:
     side_b: Any
     """Side B's value, or `_MISSING` if B deleted the key."""
 
+    semantic_summary: str | None = None
+    """Optional consequence-aware annotation (e.g., 'N hosts bound to
+    this profile would lose their binding'). Populated by the resolver,
+    not by the merge engine; the engine itself stays manifest-shape-
+    agnostic. Free-form text intended to be surfaced verbatim in the
+    interactive prompt."""
+
 
 @dataclass(frozen=True)
 class MergeResult:
