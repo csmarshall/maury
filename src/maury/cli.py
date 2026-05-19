@@ -3737,3 +3737,110 @@ def mode_deregister(
     click.echo(f"deregistered host {result.name!r} ({result.host_id}) from mode {result.profile_name!r}.")
     if dry_run:
         click.echo("(--check; no files were written)")
+
+
+# ---- audit group ---------------------------------------------------------
+
+
+@main.group()
+def audit() -> None:
+    """Inspect the local audit log (per ADR-0035)."""
+
+
+@audit.command("show")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory containing maury-state/audit.jsonl.",
+)
+@click.option(
+    "--kind",
+    "kinds",
+    multiple=True,
+    help="Filter to specific event kinds (pass multiple --kind flags for >1).",
+)
+@click.option(
+    "--since",
+    "since",
+    default=None,
+    help="Exclude events with ts < this ISO-8601 timestamp.",
+)
+@click.option(
+    "--until",
+    "until",
+    default=None,
+    help="Exclude events with ts >= this ISO-8601 timestamp.",
+)
+@click.option(
+    "--actor",
+    "actor",
+    type=click.Choice(["maury", "user", "claude", "hook"]),
+    default=None,
+    help="Filter to events from one actor.",
+)
+@click.option(
+    "--limit",
+    "limit",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Maximum number of events to show (newest first).",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
+def audit_show(
+    target_dir: Path,
+    kinds: tuple[str, ...],
+    since: str | None,
+    until: str | None,
+    actor: str | None,
+    limit: int,
+    output_format: str,
+) -> None:
+    """Read the audit log newest-first with optional filters.
+
+    The audit log is host-local (~/.claude/maury-state/audit.jsonl per
+    ADR-0029/0035), append-only, JSONL. Each command that mutates
+    state appends one event per ADR-0035's enumeration.
+    """
+    from maury.audit_log import read_events
+
+    target_dir = target_dir.expanduser()
+    events = list(
+        read_events(
+            target_dir,
+            kinds=kinds or None,
+            since=since,
+            until=until,
+            actor=actor,
+            limit=limit,
+        )
+    )
+    if not events:
+        if not (target_dir / "maury-state" / "audit.jsonl").is_file():
+            click.echo(f"no audit log at {target_dir}/maury-state/audit.jsonl.")
+        else:
+            click.echo("no events match the given filters.")
+        return
+
+    if output_format == "json":
+        import json as _json
+
+        click.echo(_json.dumps([e.to_json() for e in events], indent=2))
+        return
+
+    for event in events:
+        actor_text = f" [{event.actor}]" if event.actor != "maury" else ""
+        result_text = "" if event.result == "success" else f" ({event.result})"
+        click.echo(f"{event.ts}  {event.event:<28}{actor_text}{result_text}")
+        if event.details:
+            for key, value in event.details.items():
+                click.echo(f"    {key}: {value}")

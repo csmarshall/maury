@@ -73,7 +73,7 @@ Legend: ✅ shipped (works on devel today) · 🟡 partially shipped · ⏳ plan
 | Proposal queue + review UI | ⏳ planned (Phase 7) | Per [ADR-0022](adr/0022-branch-per-mining-run.md). |
 | Rule synthesis from reclassifications | ⏳ planned (Phase 8) | |
 | Cross-boundary promotion | ⏳ planned (Phase 9) | Per [ADR-0045](adr/0045-cross-trust-boundary-promotion.md). |
-| Audit log + push-policy enforcement | ⏳ planned (Phase 10) | |
+| Audit log + push-policy enforcement | 🟡 partially shipped 2026-05-19 | Storage primitive ([`src/maury/audit_log.py`](#)) + `maury audit show` reader shipped (append-only JSONL at `~/.claude/maury-state/audit.jsonl`, ≤4 KB lines per ADR-0035 atomicity rule, full schema enforcement). Wiring the event-kind enumeration into each command site (sync, mine, mode bootstrap, etc.) is the remaining Phase 10 work. Push-policy enforcement is a separate followup. |
 | Pluggable repo backends beyond git/github | ⏳ deferred (v1.1+) | Schema in v1; additional adapters per-need. Per [ADR-0016](adr/0016-pluggable-repo-backends.md). |
 | Host-local secrets w/ metadata sync | ⏳ deferred (v1.1) | Per [ADR-0014](adr/0014-host-local-secrets-with-metadata-sync.md). |
 | Background drift watcher | ⏳ deferred (v1.1) | Per [ADR-0017 Followups](adr/0017-drift-detection-and-reconciliation.md#followups). |
