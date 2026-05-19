@@ -355,7 +355,12 @@ def validate_manifest(manifest: Manifest) -> list[str]:
     - inheritance chains must not cycle
     - no two profiles share the same `name`
     - no two hosts share the same `name`
+    - every host.repos URL is syntactically valid for its declared
+      backend (per ADR-0024 + ADR-0016 — each backend supplies a URL
+      validator)
     """
+    from maury.backends import validate_repo_url
+
     errors: list[str] = []
     profile_ids = set(manifest.profiles)
 
@@ -386,6 +391,11 @@ def validate_manifest(manifest: Manifest) -> list[str]:
             errors.append(
                 f"host {hid!r} ({host.name!r}): profile {host.profile!r} not in registry {sorted(profile_ids)}"
             )
+
+        for repo_name, repo_spec in host.repos.items():
+            url_error = validate_repo_url(repo_spec.url, repo_spec.backend)
+            if url_error is not None:
+                errors.append(f"host {hid!r} ({host.name!r}) repo {repo_name!r}: {url_error}")
 
     return errors
 
