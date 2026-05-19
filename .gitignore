@@ -30,6 +30,9 @@ Thumbs.db
 session-state.md
 CLAUDE.local.md
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/.tasks/
+.claude/projects/
 
 # Local logs / scratch
 *.log
