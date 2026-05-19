@@ -3461,6 +3461,20 @@ def repo() -> None:
     help="Don't install the auto-patch-bump post-commit hook (ADR-0038 step 6).",
 )
 @click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    default=None,
+    help="Agency manifest for the owner-only access check (ADR-0038). If omitted, the check is skipped.",
+)
+@click.option(
+    "--no-check-access",
+    "no_check_access",
+    is_flag=True,
+    help="Skip the owner-only access check even when a manifest is available.",
+)
+@click.option(
     "--force",
     is_flag=True,
     help="Re-initialize even if .meta files or a non-maury post-commit hook exist.",
@@ -3475,6 +3489,8 @@ def repo_init(
     initial_tag: str,
     no_git_init: bool,
     no_hook: bool,
+    manifest_file: Path | None,
+    no_check_access: bool,
     force: bool,
 ) -> None:
     """Initialize a new rules repo per ADR-0038.
@@ -3483,6 +3499,11 @@ def repo_init(
     .meta/maury-marker.json (layer=rules, agency_id), creates the
     initial semver tag, and installs the auto-patch-bump post-commit
     hook (each commit gets a vMAJOR.MINOR.(PATCH+1) tag automatically).
+
+    Per ADR-0038 §"Why owner-only", refuses unless the current host
+    has `repo_mode: rw` against this rules repo in the agency
+    manifest. Pass `--manifest-file <path>` to enable the check;
+    omit the flag (or pass `--no-check-access`) to opt out.
 
     Idempotent: refuses if either .meta file exists. --force overwrites.
     """
@@ -3500,6 +3521,8 @@ def repo_init(
             force=force,
             git_init=not no_git_init,
             install_hook=not no_hook,
+            manifest_path=manifest_file,
+            check_access=not no_check_access,
         )
     except RepoInitError as e:
         raise click.ClickException(str(e)) from e
@@ -3523,6 +3546,8 @@ def repo_init(
         click.echo("  post-commit hook: installed (auto-patch-bump on each commit)")
     elif no_hook:
         click.echo("  post-commit hook: skipped (--no-hook)")
+    if summary.access_check_note:
+        click.echo(f"  access check: {summary.access_check_note}")
     if summary.force_used:
         click.echo("  ⚠️ --force used: prior governance/marker overwritten.")
 

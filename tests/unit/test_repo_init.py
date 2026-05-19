@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from maury.ids import new_host_id
 from maury.repo_init import (
     DEFAULT_INITIAL_TAG,
     DEFAULT_PR_TARGET,
@@ -196,3 +197,192 @@ def test_init_repo_no_git_init_skips_all_git(tmp_path: Path) -> None:
     assert summary.git_commit_sha is None
     assert summary.initial_tag is None
     assert not (tmp_path / ".git").exists()
+
+
+# ---- owner-only access check (ADR-0038 §"Why owner-only") ---------------
+
+
+def _seed_manifest_with_repo(
+    tmp_path: Path,
+    *,
+    remote_url: str,
+    mode: str,
+    host_id: str | None = None,
+) -> tuple[Path, str]:
+    """Write a manifest where the current host has `remote_url` registered
+    under the given mode. Also writes ~/.maury-host-id pointing at the
+    host's surrogate ID. Returns (manifest_path, host_id).
+    """
+    import json as _json
+
+    from maury.ids import new_host_id as _new_host_id
+    from maury.ids import new_profile_id as _new_profile_id
+
+    if host_id is None:
+        host_id = _new_host_id()
+    pid = _new_profile_id()
+    manifest_path = tmp_path / "manifest.json"
+    body: dict[str, object] = {
+        "version": 2,
+        "profiles": {pid: {"name": "home", "extends": None}},
+        "hosts": {
+            host_id: {
+                "name": "current-host",
+                "profile": pid,
+                "repos": {
+                    "base": {"url": "git@x:o/base.git", "mode": "rw"},
+                    "rules-target": {"url": remote_url, "mode": mode},
+                },
+            }
+        },
+    }
+    manifest_path.write_text(_json.dumps(body))
+    return manifest_path, host_id
+
+
+def _seed_target_dir_with_remote(tmp_path: Path, *, remote_url: str) -> Path:
+    """Create a target dir that's a git repo with `origin` pointing at remote_url."""
+    target = tmp_path / "target"
+    target.mkdir()
+    if not _git_available():
+        pytest.skip("git not on PATH")
+    subprocess.run(["git", "init", "-q"], cwd=target, check=True)
+    subprocess.run(["git", "remote", "add", "origin", remote_url], cwd=target, check=True)
+    return target
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_init_repo_access_check_passes_when_host_has_rw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """rw entry → access check passes, init proceeds."""
+    remote = "git@github.com:eng-standards/rules-linting.git"
+    target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
+    manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="rw")
+    # Fake ~/.maury-host-id by monkeypatching the constant module-level path.
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text(host_id)
+    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
+
+    summary = init_repo(
+        target,
+        agency_id=AGENCY_ID,
+        owners=["a@b.c"],
+        manifest_path=manifest_path,
+        check_access=True,
+    )
+    assert summary.access_check_note is not None
+    assert "access OK" in summary.access_check_note
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_init_repo_access_check_refuses_when_host_has_ro(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ro entry → access check refuses with a clear message."""
+    remote = "git@github.com:eng-standards/rules-linting.git"
+    target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
+    manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="ro")
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text(host_id)
+    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
+
+    with pytest.raises(RepoInitError, match="requires `rw`"):
+        init_repo(
+            target,
+            agency_id=AGENCY_ID,
+            owners=["a@b.c"],
+            manifest_path=manifest_path,
+            check_access=True,
+        )
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_init_repo_access_check_refuses_when_remote_not_in_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Remote URL not in this host's repos → refuse."""
+    target = _seed_target_dir_with_remote(tmp_path, remote_url="git@x:o/unregistered.git")
+    manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url="git@x:o/different.git", mode="rw")
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text(host_id)
+    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
+
+    with pytest.raises(RepoInitError, match="not in this host's manifest"):
+        init_repo(
+            target,
+            agency_id=AGENCY_ID,
+            owners=["a@b.c"],
+            manifest_path=manifest_path,
+            check_access=True,
+        )
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_init_repo_access_check_refuses_when_host_not_registered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No host registration → refuse."""
+    remote = "git@github.com:eng-standards/rules-linting.git"
+    target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
+    manifest_path, _ = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="rw", host_id=new_host_id())
+    # Host-id file points at a DIFFERENT host than what's in the manifest.
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text(new_host_id())
+    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
+
+    with pytest.raises(RepoInitError, match="current host not registered"):
+        init_repo(
+            target,
+            agency_id=AGENCY_ID,
+            owners=["a@b.c"],
+            manifest_path=manifest_path,
+            check_access=True,
+        )
+
+
+def test_init_repo_access_check_skipped_without_manifest_path(tmp_path: Path) -> None:
+    """No --manifest-file → skip with informational note, init proceeds."""
+    summary = init_repo(
+        tmp_path,
+        agency_id=AGENCY_ID,
+        owners=["a@b.c"],
+        git_init=False,
+        manifest_path=None,
+        check_access=True,
+    )
+    assert summary.access_check_note is not None
+    assert "no --manifest-file" in summary.access_check_note
+
+
+def test_init_repo_access_check_skipped_when_disabled(tmp_path: Path) -> None:
+    """check_access=False explicitly skips even when a manifest path is provided."""
+    manifest_path, _host_id = _seed_manifest_with_repo(tmp_path, remote_url="git@x:o/r.git", mode="ro")
+    summary = init_repo(
+        tmp_path,
+        agency_id=AGENCY_ID,
+        owners=["a@b.c"],
+        git_init=False,
+        manifest_path=manifest_path,
+        check_access=False,
+    )
+    assert summary.access_check_note is not None
+    assert "--no-check-access" in summary.access_check_note
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_init_repo_access_check_skips_when_no_origin_remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No `origin` remote → skip with note, init proceeds (offline scaffolding)."""
+    target = tmp_path / "target"
+    target.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=target, check=True)
+    manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url="git@x:o/something.git", mode="rw")
+    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file.write_text(host_id)
+    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
+
+    summary = init_repo(
+        target,
+        agency_id=AGENCY_ID,
+        owners=["a@b.c"],
+        manifest_path=manifest_path,
+        check_access=True,
+    )
+    assert summary.access_check_note is not None
+    assert "no origin remote" in summary.access_check_note

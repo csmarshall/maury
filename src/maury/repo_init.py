@@ -66,6 +66,10 @@ class RepoInitSummary:
     post_commit_hook_installed: bool = False
     """True iff the auto-patch-bump hook was written to .git/hooks/post-commit."""
 
+    access_check_note: str | None = None
+    """Informational message from the owner-only access check (skip or pass).
+    None when the access check was disabled."""
+
 
 def _build_marker(agency_id: str) -> dict[str, object]:
     return {
@@ -106,6 +110,64 @@ def _tag_exists(target_dir: Path, tag: str) -> bool:
     return rc == 0
 
 
+def _remote_url(target_dir: Path) -> str | None:
+    """Return `git remote get-url origin`, or None if no origin remote."""
+    rc, out = run_git(["git", "remote", "get-url", "origin"], cwd=target_dir)
+    if rc != 0:
+        return None
+    return out.strip() or None
+
+
+def _check_owner_access(
+    *,
+    target_dir: Path,
+    manifest_path: Path,
+) -> tuple[bool, str]:
+    """Per ADR-0038 §"Why owner-only": only hosts with repo_mode=rw against
+    this rules repo may run `maury repo init`.
+
+    Returns (allowed, reason). `reason` is a single-line description
+    of the check outcome — surfaced to the user on refusal or as a
+    skip note when no remote is configured.
+    """
+    from maury.manifest import RepoMode, load_manifest
+
+    remote = _remote_url(target_dir)
+    if remote is None:
+        return (True, "no origin remote on target — skipping access check.")
+
+    try:
+        manifest = load_manifest(manifest_path)
+    except Exception as exc:
+        return (False, f"could not load manifest at {manifest_path}: {exc}")
+
+    found = manifest.host_for_current_machine()
+    if found is None:
+        return (
+            False,
+            "current host not registered in manifest. "
+            f"Register with `maury mode bootstrap --name <host> --mode <mode> --manifest-file {manifest_path}` first.",
+        )
+    _hid, host_spec = found
+
+    matching = [(nickname, spec) for nickname, spec in host_spec.repos.items() if spec.url == remote]
+    if not matching:
+        return (
+            False,
+            f"rules repo {remote!r} is not in this host's manifest entry. Register it as a rw-mode repo first.",
+        )
+    rw_entries = [(nick, spec) for nick, spec in matching if spec.mode is RepoMode.RW]
+    if not rw_entries:
+        modes = ", ".join(spec.mode.value for _nick, spec in matching)
+        return (
+            False,
+            f"host has rules repo {remote!r} with mode(s) {modes}, but `repo init` requires `rw` "
+            '(owner-only per ADR-0038 §"Why owner-only").',
+        )
+    nicknames = ", ".join(repr(nick) for nick, _spec in rw_entries)
+    return (True, f"access OK: host has rw on {remote!r} (entry {nicknames}).")
+
+
 def init_repo(
     target_dir: Path,
     *,
@@ -118,6 +180,8 @@ def init_repo(
     force: bool = False,
     git_init: bool = True,
     install_hook: bool = True,
+    manifest_path: Path | None = None,
+    check_access: bool = True,
 ) -> RepoInitSummary:
     """Initialize a new rules repo rooted at target_dir.
 
@@ -135,9 +199,15 @@ def init_repo(
         git_init: Run git init + stage + commit. Skip with False.
         install_hook: Install the auto-patch-bump post-commit hook
             (ADR-0038 step 6). Requires git_init=True (no-op otherwise).
+        manifest_path: Path to the agency manifest used for the owner-only
+            access check (ADR-0038 §"Why owner-only"). When None, the
+            access check is skipped with an informational note.
+        check_access: If False, skip the owner-only access check even
+            when manifest_path is provided. Default True.
 
     Raises:
-        RepoInitError if validation fails or git operations fail.
+        RepoInitError if validation fails, git operations fail, or
+        the owner-only access check refuses.
     """
     if not owners:
         raise RepoInitError("at least one --owner is required")
@@ -147,6 +217,21 @@ def init_repo(
     target_dir.mkdir(parents=True, exist_ok=True)
     marker_path = target_dir / MARKER_REL_PATH
     governance_path = target_dir / GOVERNANCE_REL_PATH
+
+    # Owner-only access check (ADR-0038 §"Why owner-only"). Fail-fast
+    # before writing any .meta files. Skipped when manifest_path is None
+    # or check_access=False — both paths surface an informational note
+    # rather than silently bypassing.
+    access_note: str | None = None
+    if not check_access:
+        access_note = "access check skipped (--no-check-access)."
+    elif manifest_path is None:
+        access_note = "access check skipped (no --manifest-file provided)."
+    else:
+        allowed, reason = _check_owner_access(target_dir=target_dir, manifest_path=manifest_path)
+        if not allowed:
+            raise RepoInitError(f"owner-only access check refused: {reason}")
+        access_note = reason
 
     if not force:
         if marker_path.exists():
@@ -229,6 +314,7 @@ def init_repo(
         git_commit_sha=commit_sha,
         force_used=force,
         post_commit_hook_installed=hook_installed,
+        access_check_note=access_note,
     )
 
 
