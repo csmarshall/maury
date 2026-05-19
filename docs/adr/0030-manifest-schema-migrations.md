@@ -1,7 +1,21 @@
 # ADR-0030: Manifest schema migrations
 
-**Status:** Accepted
+**Status:** Deferred (2026-05-19) — design preserved; implementation deferred until a v2 schema is genuinely needed
 **Date:** 2026-05-07
+
+> **Deferred (2026-05-19).** Maury hasn't released yet, so there
+> are no users with pre-existing manifests to migrate from.
+> The migration framework this ADR describes (per-version
+> upgrade scripts, refuse-newer-than-supported, etc.) was
+> originally written when v1→v2 was an active concern. With
+> the v1→v2 cleanup of 2026-05-19 (everything currently shipping
+> is `version: 1`), there is no second schema version to migrate
+> to and no users to migrate. This ADR is preserved as the
+> design we'll reach for when a real v2 introduction is on the
+> table; the implementation lands then, not pre-emptively.
+> Until that point, references to "schema migration" in other
+> ADRs should be read as "future work" rather than as shipping
+> machinery.
 
 ## Related tenets
 
@@ -335,4 +349,4 @@ schema is maury-internal; Claude Code is unaware of it.
 
 ## Amendment history
 
-None.
+- 2026-05-19 — status moved to **Deferred**. Pre-release v1→v2 migration tooling was deleted (no users exist to migrate from). Design preserved; implementation lands when a real v2 schema is introduced.

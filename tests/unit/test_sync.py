@@ -27,7 +27,7 @@ def _make_seed_repo(tmp_path: Path, *, hostname: str = "synthetic-host") -> Path
     pid = new_profile_id()
     hid = new_host_id()
     manifest = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

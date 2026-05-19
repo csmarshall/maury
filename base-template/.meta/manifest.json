@@ -1,6 +1,6 @@
 {
   "_comment": "Example seed manifest. Edit hosts, repo URLs, and profile IDs to match your setup. Per ADR-0015 the *_<hex> IDs are surrogate keys; regenerate them when forking this template so audit history stays distinct from upstream.",
-  "version": 2,
+  "version": 1,
   "profiles": {
     "profile_54d9aab2ad0e4b0098e5b4c44ebe434e": {
       "name": "base",

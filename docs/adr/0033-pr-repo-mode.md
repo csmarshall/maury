@@ -197,26 +197,20 @@ the local review-branch name and the destination repo URL;
 the user pushes manually and opens the PR via the GitHub web
 UI.
 
-### Schema migration
+### Schema
 
-Adding `pr` to the enum is a manifest schema bump per
-[ADR-0030](0030-manifest-schema-migrations.md). The migration
-is trivial — existing manifests don't reference `pr`; the
-new schema accepts the additional value. So:
+Adding `pr` to the enum is a `repo_mode` enum extension on the
+v1 schema. Existing v1 manifests written before this ADR don't
+reference `pr`; the schema accepts the additional value without
+a version bump (extending an enum is forward-compatible at the
+JSON layer — older maury versions reading a manifest that
+mentions `pr` would just see an unrecognized enum value).
 
-- v3 manifest (introduced by this ADR) supports `ro | pr | rw`.
-- v2 manifest (current) supports `ro | rw`.
-- v2-aware maury reading a v3 manifest refuses at the
-  `version:` field gate (per ADR-0030 rule 2 — refusing any
-  newer-than-supported version, irrespective of which
-  fields are populated). The engineer must upgrade their
-  maury to a version that supports v3 before they can read
-  the manifest.
-
-The upgrade script `maury manifest upgrade-v2-to-v3` (which
-this ADR ships) is a no-op transformation other than bumping
-the version field; no data changes. Future v3 ADRs can add
-real changes.
+Per the 2026-05-19 cleanup, maury hasn't released yet and there
+is only one shipping schema version (v1). When a v2 schema is
+genuinely introduced, ADR-0030 (currently Deferred) is the
+framework to reach for; for the `pr` extension specifically,
+no migration is needed.
 
 ## Consequences
 

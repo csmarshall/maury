@@ -19,7 +19,7 @@ def _seed(path: Path) -> tuple[str, str]:
     path.write_text(
         json.dumps(
             {
-                "version": 2,
+                "version": 1,
                 "profiles": {pid: {"name": "home", "extends": None}},
                 "hosts": {
                     hid: {

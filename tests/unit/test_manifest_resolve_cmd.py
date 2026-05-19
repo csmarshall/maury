@@ -122,9 +122,9 @@ def test_render_path_empty() -> None:
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")
 def test_fetch_three_way_against_genuine_conflict(tmp_path: Path) -> None:
     """Reads stages 1/2/3 from an actual `git merge` conflict state."""
-    ancestor: dict[str, Any] = {"version": 2, "profiles": {}, "hosts": {}}
-    ours = {"version": 2, "profiles": {}, "hosts": {"h_a": {"name": "alice"}}}
-    theirs = {"version": 2, "profiles": {}, "hosts": {"h_b": {"name": "bob"}}}
+    ancestor: dict[str, Any] = {"version": 1, "profiles": {}, "hosts": {}}
+    ours = {"version": 1, "profiles": {}, "hosts": {"h_a": {"name": "alice"}}}
+    theirs = {"version": 1, "profiles": {}, "hosts": {"h_b": {"name": "bob"}}}
     manifest = _make_repo_in_conflict(tmp_path, ancestor=ancestor, ours=ours, theirs=theirs)
     anc, ours_read, theirs_read = fetch_three_way(manifest)
     assert anc == ancestor
@@ -141,7 +141,7 @@ def test_fetch_three_way_refuses_when_no_conflict(tmp_path: Path) -> None:
     _run_git(["git", "config", "user.name", "t"], cwd=repo)
     _run_git(["git", "config", "user.email", "t@t.invalid"], cwd=repo)
     manifest = repo / "manifest.json"
-    manifest.write_text('{"version": 2}\n')
+    manifest.write_text('{"version": 1}\n')
     _run_git(["git", "add", "manifest.json"], cwd=repo)
     _run_git(["git", "commit", "-q", "-m", "clean"], cwd=repo)
     with pytest.raises(ResolveError, match="no merge conflict detected"):
@@ -164,7 +164,7 @@ def _seed_minimum_v2(name_prefix: str = "alice") -> dict[str, Any]:
     pid = new_profile_id()
     hid = new_host_id()
     return {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": f"{name_prefix}-home", "extends": None}},
         "hosts": {
             hid: {

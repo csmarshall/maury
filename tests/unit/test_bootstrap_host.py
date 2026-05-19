@@ -20,7 +20,7 @@ def _make_manifest(tmp_path: Path, *, with_existing_host: bool = True) -> Path:
     one already-registered host so `bootstrap host` can infer the base URL."""
     pid = new_profile_id()
     payload: dict[str, Any] = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {},
     }

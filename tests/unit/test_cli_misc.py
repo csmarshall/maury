@@ -150,7 +150,7 @@ def test_rules_trace_malformed_manifest_yields_click_exception(tmp_path: Path) -
 
 def test_profile_list_malformed_manifest_yields_click_exception(tmp_path: Path) -> None:
     mpath = tmp_path / "manifest.json"
-    mpath.write_text('{"version": 2, "profiles": "not a dict", "hosts": {}}')
+    mpath.write_text('{"version": 1, "profiles": "not a dict", "hosts": {}}')
     runner = CliRunner()
     result = runner.invoke(main, ["profile", "list", "--manifest-file", str(mpath)])
     assert result.exit_code != 0
@@ -158,7 +158,7 @@ def test_profile_list_malformed_manifest_yields_click_exception(tmp_path: Path) 
 
 def test_profile_hosts_malformed_manifest_yields_click_exception(tmp_path: Path) -> None:
     mpath = tmp_path / "manifest.json"
-    mpath.write_text('{"version": 2, "profiles": {}, "hosts": "not a dict"}')
+    mpath.write_text('{"version": 1, "profiles": {}, "hosts": "not a dict"}')
     runner = CliRunner()
     result = runner.invoke(main, ["profile", "hosts", "--manifest-file", str(mpath)])
     assert result.exit_code != 0
@@ -234,7 +234,7 @@ def test_rules_validate_with_manifest_resolves_profile_set(tmp_path: Path) -> No
     pid = new_profile_id()
     hid = new_host_id()
     body = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

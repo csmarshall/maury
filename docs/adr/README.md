@@ -265,7 +265,7 @@ status).
 - [`0027`](0027-cross-context-promotion-via-shared-root.md) — **SUPERSEDED by 0045** — Cross-context promotion via shared inheritance root
 - [`0028`](0028-offline-behavior.md) — Offline behavior
 - [`0029`](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` layout contract
-- [`0030`](0030-manifest-schema-migrations.md) — Manifest schema migrations
+- [`0030`](0030-manifest-schema-migrations.md) — Manifest schema migrations (**DEFERRED 2026-05-19** — no v2 schema exists yet to migrate to)
 - [`0031`](0031-self-update-path.md) — Self-update path
 - [`0032`](0032-backup-and-disaster-recovery.md) — Backup and disaster recovery
 - [`0033`](0033-pr-repo-mode.md) — `pr` repo mode (gap K part 1)

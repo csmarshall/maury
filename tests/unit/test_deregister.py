@@ -16,7 +16,7 @@ def _write_manifest(path: Path, *, with_host_name: str = "workstation") -> tuple
     hid = new_host_id()
     other_hid = new_host_id()
     body: dict[str, object] = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

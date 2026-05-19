@@ -55,7 +55,7 @@ def _seed_minimum_v2() -> dict[str, Any]:
     pid = new_profile_id()
     hid = new_host_id()
     return {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {
@@ -206,7 +206,7 @@ def test_resolve_refuses_clean_file(tmp_path: Path) -> None:
     _run_git(["git", "config", "user.name", "t"], cwd=repo)
     _run_git(["git", "config", "user.email", "t@t.invalid"], cwd=repo)
     manifest = repo / "manifest.json"
-    manifest.write_text('{"version": 2, "profiles": {}, "hosts": {}}\n')
+    manifest.write_text('{"version": 1, "profiles": {}, "hosts": {}}\n')
     _run_git(["git", "add", "manifest.json"], cwd=repo)
     _run_git(["git", "commit", "-q", "-m", "clean"], cwd=repo)
 

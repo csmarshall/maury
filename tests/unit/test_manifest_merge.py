@@ -28,9 +28,9 @@ def test_both_sides_add_different_keys_at_same_path_keeps_all() -> None:
 
 def test_both_sides_add_top_level_keys() -> None:
     """Additive merge at the top level."""
-    result = compute_merge({"version": 2}, {"version": 2, "x": 1}, {"version": 2, "y": 2})
+    result = compute_merge({"version": 1}, {"version": 1, "x": 1}, {"version": 1, "y": 2})
     assert result.conflicts == ()
-    assert result.resolved == {"version": 2, "x": 1, "y": 2}
+    assert result.resolved == {"version": 1, "x": 1, "y": 2}
 
 
 def test_both_sides_add_same_key_same_content_no_conflict() -> None:
@@ -41,16 +41,16 @@ def test_both_sides_add_same_key_same_content_no_conflict() -> None:
 
 
 def test_both_sides_add_same_key_different_scalar_value_conflicts() -> None:
-    result = compute_merge({}, {"version": 1}, {"version": 2})
+    result = compute_merge({}, {"note": "alpha"}, {"note": "beta"})
     assert len(result.conflicts) == 1
     c = result.conflicts[0]
     assert c.kind is ConflictKind.BOTH_ADDED_SAME_KEY_DIFFERENT_VALUE
-    assert c.path == ("version",)
+    assert c.path == ("note",)
     assert c.ancestor is DELETE_SENTINEL
-    assert c.side_a == 1
-    assert c.side_b == 2
+    assert c.side_a == "alpha"
+    assert c.side_b == "beta"
     # Conflict path is omitted from resolved.
-    assert "version" not in result.resolved
+    assert "note" not in result.resolved
 
 
 # ---- modify cases ---------------------------------------------------------
@@ -81,12 +81,12 @@ def test_both_sides_modify_same_key_to_different_values_conflicts() -> None:
 
 def test_both_sides_make_same_modification_no_conflict() -> None:
     """If both sides made the identical change, no conflict."""
-    ancestor = {"version": 1}
-    a = {"version": 2}
-    b = {"version": 2}
+    ancestor = {"note": "old"}
+    a = {"note": "new"}
+    b = {"note": "new"}
     result = compute_merge(ancestor, a, b)
     assert result.conflicts == ()
-    assert result.resolved == {"version": 2}
+    assert result.resolved == {"note": "new"}
 
 
 def test_disjoint_modifications_to_same_dict_auto_merge() -> None:
@@ -244,12 +244,12 @@ def test_compute_merge_rejects_non_dict_inputs() -> None:
 def test_two_hosts_bootstrapping_concurrently_auto_merges() -> None:
     """The canonical example from the ADR."""
     ancestor: dict[str, Any] = {
-        "version": 2,
+        "version": 1,
         "profiles": {"profile_p1": {"name": "home", "extends": None}},
         "hosts": {},
     }
     side_alice = {
-        "version": 2,
+        "version": 1,
         "profiles": {"profile_p1": {"name": "home", "extends": None}},
         "hosts": {
             "host_alice": {
@@ -260,7 +260,7 @@ def test_two_hosts_bootstrapping_concurrently_auto_merges() -> None:
         },
     }
     side_bob = {
-        "version": 2,
+        "version": 1,
         "profiles": {"profile_p1": {"name": "home", "extends": None}},
         "hosts": {
             "host_bob": {

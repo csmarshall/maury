@@ -72,7 +72,7 @@ unavailable.
 | `maury review` | none | Works as-is. Walks local run branches. |
 | `maury promote --from --to` | git fetch on source repo | **Default: hard refuse on remote-unreachable.** Opt-in via `--offline` to use last-fetched source state (with warning). |
 | `maury verify-cc-contract` *(planned per [status.md](../status.md))* | network fetch of Anthropic docs | **Default: hard refuse.** No fall-forward — verification is moot without network. |
-| `maury reconcile`, `maury hooks`, `maury manifest resolve`, `maury manifest upgrade-v*`, `maury sessions prune`, `maury refactor *`, `maury uninstall` | none | All pure-local. Work as-is offline. |
+| `maury reconcile`, `maury hooks`, `maury manifest resolve`, `maury sessions prune`, `maury refactor *`, `maury uninstall` | none | All pure-local. Work as-is offline. |
 | `maury subscribe <url>` *(planned, gap K)* | git fetch on remote | When implemented, follows the same hard-refuse default + `--offline` opt-in pattern as `sync`. |
 
 ### Detection: opportunistic, not pre-probed

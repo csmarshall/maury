@@ -52,7 +52,7 @@ def _write_minimal_repo(tmp_path: Path, *, hostname: str = "test-host") -> tuple
     pid = new_profile_id()
     hid = new_host_id()
     manifest = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

@@ -30,7 +30,7 @@ def _write_manifest(
     pid = new_profile_id()
     hid = host_id or new_host_id()
     body = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

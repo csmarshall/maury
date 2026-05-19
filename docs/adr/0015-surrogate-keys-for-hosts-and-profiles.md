@@ -231,7 +231,7 @@ splits into two:
 
 ```json
 {
-  "version": 2,
+  "version": 1,
   "profiles": {
     "profile_3f1a...": { "name": "home", "extends": null, "description": "..." },
     "profile_4a2b...": { "name": "work", "extends": null, "description": "..." }
@@ -329,17 +329,12 @@ maury profile rename ...    # same
 Error messages that name an entity always include both:
 "profile 'work' (profile_4a2b...) not found in registry."
 
-#### Migration
+#### Schema version
 
-Bump manifest `version: 1` → `version: 2`. Provide a one-shot upgrade:
-
-```sh
-maury manifest upgrade-v1-to-v2 --in <path>
-```
-
-Generates fresh IDs for every host and profile, rewrites the file,
-and prints a mapping report. Existing seed manifest in
-`base-template/.meta/maury-marker.json` gets regenerated.
+The manifest carries `"version": 1` (the schema introduced by this
+ADR is the first one users ever see; there is no v0 in the wild).
+Migration tooling will land if and when a v2 schema is introduced —
+not pre-emptively.
 
 ### Consequences
 
@@ -458,3 +453,4 @@ keep their existing `id:` slug field. No migration.
 - 2026-05-07 — corrected §"Host self-identification" claim (see top-of-file note).
 - 2026-05-11 — `profile_<32 hex>` renamed to `mode_<32 hex>` throughout. Breaking schema change; migration required per ADR-0030. `host_<32 hex>` unchanged.
 - 2026-05-14 — non-breaking format extension: `host_<hex>` IDs may carry an optional cosmetic tag suffix (`host_<8 hex>_<tag>`). Hex remains immutable identity; tag is freely editable. Existing 32-hex IDs accepted forever; no migration. See top-of-file note + §"Tagged ID format" for grammar (RFC 1123 DNS labels) and §"Mutability split" for the hex/tag invariant separation.
+- 2026-05-19 — `version: 1` is the first schema users will ever see. Pre-release "v1→v2 migration" tooling deleted (no users exist to migrate from). Migration framework lands if/when a v2 is genuinely needed.

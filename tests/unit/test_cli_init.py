@@ -43,7 +43,7 @@ def _make_minimal_repo(
     pid = new_profile_id()
     hid = new_host_id()
     manifest = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

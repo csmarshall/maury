@@ -223,7 +223,7 @@ def _seed_manifest_with_repo(
     pid = _new_profile_id()
     manifest_path = tmp_path / "manifest.json"
     body: dict[str, object] = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             host_id: {

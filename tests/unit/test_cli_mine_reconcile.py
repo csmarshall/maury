@@ -49,7 +49,7 @@ def _write_minimal_manifest(path: Path) -> tuple[str, str]:
     pid = new_profile_id()
     hid = new_host_id()
     body = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {

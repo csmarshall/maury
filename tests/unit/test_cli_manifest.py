@@ -27,7 +27,7 @@ def _write_manifest(path: Path, *, with_invalid: bool = False) -> tuple[str, str
     pid = new_profile_id()
     hid = new_host_id()
     body: dict[str, object] = {
-        "version": 2,
+        "version": 1,
         "profiles": {pid: {"name": "home", "extends": None}},
         "hosts": {
             hid: {
@@ -186,7 +186,7 @@ def test_manifest_show_renders_json(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     # Round-trip: output should re-parse as JSON with the same IDs present.
     body = json.loads(result.output)
-    assert body["version"] == 2
+    assert body["version"] == 1
     assert pid in body["profiles"]
     assert hid in body["hosts"]
 
@@ -224,7 +224,7 @@ def test_profile_list_shows_profiles_with_chain_and_short_id(tmp_path: Path) -> 
 def test_profile_list_empty_manifest_says_no_profiles(tmp_path: Path) -> None:
     """A v2 manifest with empty profiles map → friendly empty message."""
     mpath = tmp_path / "manifest.json"
-    mpath.write_text('{"version": 2, "profiles": {}, "hosts": {}}')
+    mpath.write_text('{"version": 1, "profiles": {}, "hosts": {}}')
     runner = CliRunner()
     result = runner.invoke(main, ["profile", "list", "--manifest-file", str(mpath)])
     assert result.exit_code == 0, result.output
@@ -256,7 +256,7 @@ def test_profile_hosts_shows_hosts_with_profile_resolution(tmp_path: Path) -> No
 
 def test_profile_hosts_empty_manifest_says_no_hosts(tmp_path: Path) -> None:
     mpath = tmp_path / "manifest.json"
-    mpath.write_text('{"version": 2, "profiles": {}, "hosts": {}}')
+    mpath.write_text('{"version": 1, "profiles": {}, "hosts": {}}')
     runner = CliRunner()
     result = runner.invoke(main, ["profile", "hosts", "--manifest-file", str(mpath)])
     assert result.exit_code == 0, result.output

@@ -3,11 +3,11 @@
 Lives at `<base-repo>/.meta/manifest.json` and is replicated to every
 host that has read access to the base repo. Updates are curator actions.
 
-Schema (v2 — see ADR-0015):
+Schema (v1 — see ADR-0015):
 
 ```json
 {
-  "version": 2,
+  "version": 1,
   "profiles": {
     "profile_<32hex>": {
       "name": "base",
@@ -58,7 +58,7 @@ from typing import Any
 
 from .ids import is_host_id, is_profile_id
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 1
 HOST_ID_FILE = Path.home() / ".maury-host-id"
 
 
@@ -226,8 +226,7 @@ def load_manifest(path: str | Path) -> Manifest:
 def parse_manifest(text: str, source: str = "<string>") -> Manifest:
     """Parse a manifest from a JSON string. Strict; unknown keys raise.
 
-    Only schema v2 is accepted. v1 manifests must be upgraded via
-    `maury manifest upgrade-v1-to-v2`.
+    Only the current schema version is accepted.
     """
     try:
         data = json.loads(text)
@@ -237,12 +236,7 @@ def parse_manifest(text: str, source: str = "<string>") -> Manifest:
     if not isinstance(data, dict):
         raise ManifestError(f"{source}: top-level must be an object")
 
-    version = data.get("version", 1)
-    if version == 1:
-        raise ManifestError(
-            f"{source}: manifest is v1; surrogate-key migration required. "
-            f"Run `maury manifest upgrade-v1-to-v2 --in {source}`."
-        )
+    version = data.get("version", CURRENT_VERSION)
     if version != CURRENT_VERSION:
         raise ManifestError(f"{source}: unsupported version {version}")
 

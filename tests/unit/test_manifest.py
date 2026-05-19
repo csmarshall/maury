@@ -33,7 +33,7 @@ H_WORK = "host_00000000000000000000000000000011"
 
 VALID_JSON = f"""
 {{
-  "version": 2,
+  "version": 1,
   "profiles": {{
     "{P_BASE}": {{"name": "base", "extends": null, "description": "Universal"}},
     "{P_HOME}": {{"name": "home", "extends": null}},
@@ -85,12 +85,12 @@ def test_id_collision_resistance() -> None:
     assert len(ids) == 100
 
 
-# ---- v2 parse ----------------------------------------------------------
+# ---- v1 parse ----------------------------------------------------------
 
 
-def test_parse_valid_v2_manifest() -> None:
+def test_parse_valid_v1_manifest() -> None:
     m = parse_manifest(VALID_JSON)
-    assert m.version == 2
+    assert m.version == 1
     assert set(m.profiles) == {P_BASE, P_HOME, P_WORK}
     assert set(m.hosts) == {H_WORKSTATION, H_WORK}
 
@@ -129,7 +129,7 @@ def test_parse_repo_with_backend() -> None:
     import json as _json
 
     payload = {
-        "version": 2,
+        "version": 1,
         "profiles": {P_HOME: {"name": "home", "extends": None}},
         "hosts": {
             H_WORKSTATION: {
@@ -147,7 +147,7 @@ def test_parse_repo_with_backend_config() -> None:
     import json as _json
 
     payload = {
-        "version": 2,
+        "version": 1,
         "profiles": {P_WORK: {"name": "work", "extends": None}},
         "hosts": {
             H_WORK: {
@@ -173,7 +173,7 @@ def test_parse_invalid_backend_config_type_raises() -> None:
     import json as _json
 
     payload = {
-        "version": 2,
+        "version": 1,
         "profiles": {P_HOME: {"name": "home", "extends": None}},
         "hosts": {
             H_WORKSTATION: {
@@ -201,15 +201,7 @@ def test_load_from_file(tmp_path: Path) -> None:
     assert H_WORKSTATION in m.hosts
 
 
-# ---- v1 rejection ------------------------------------------------------
-
-
-def test_v1_manifest_rejected_with_upgrade_message() -> None:
-    v1 = '{"version": 1, "profiles": {}, "hosts": {}}'
-    with pytest.raises(ManifestError) as ei:
-        parse_manifest(v1, source="legacy.json")
-    assert "v1" in str(ei.value)
-    assert "upgrade" in str(ei.value)
+# ---- version validation ------------------------------------------------
 
 
 def test_unsupported_version_rejected() -> None:
@@ -223,7 +215,7 @@ def test_unsupported_version_rejected() -> None:
 
 
 def test_invalid_profile_id_raises() -> None:
-    bad = '{"version": 2, "profiles": {"home": {"name": "home", "extends": null}}, "hosts": {}}'
+    bad = '{"version": 1, "profiles": {"home": {"name": "home", "extends": null}}, "hosts": {}}'
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
     assert "valid profile ID" in str(ei.value)
@@ -231,7 +223,7 @@ def test_invalid_profile_id_raises() -> None:
 
 def test_invalid_host_id_raises() -> None:
     bad = (
-        f'{{"version": 2,'
+        f'{{"version": 1,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
         f' "hosts": {{"workstation": {{"name": "workstation", "profile": "{P_HOME}", "repos": {{}}}}}}}}'
     )
@@ -241,7 +233,7 @@ def test_invalid_host_id_raises() -> None:
 
 
 def test_missing_name_raises() -> None:
-    bad = f'{{"version": 2, "profiles": {{"{P_HOME}": {{"extends": null}}}}, "hosts": {{}}}}'
+    bad = f'{{"version": 1, "profiles": {{"{P_HOME}": {{"extends": null}}}}, "hosts": {{}}}}'
     with pytest.raises(ManifestError) as ei:
         parse_manifest(bad)
     assert "missing 'name'" in str(ei.value)
@@ -249,7 +241,7 @@ def test_missing_name_raises() -> None:
 
 def test_missing_host_profile_raises() -> None:
     bad = (
-        f'{{"version": 2,'
+        f'{{"version": 1,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
         f' "hosts": {{"{H_WORKSTATION}": {{"name": "workstation", "repos": {{}}}}}}}}'
     )
@@ -260,7 +252,7 @@ def test_missing_host_profile_raises() -> None:
 
 def test_invalid_push_policy_raises() -> None:
     bad = (
-        f'{{"version": 2,'
+        f'{{"version": 1,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
         f' "hosts": {{"{H_WORKSTATION}": {{"name": "t", "profile": "{P_HOME}",'
         f' "push_policy": "yolo", "repos": {{}}}}}}}}'
@@ -272,7 +264,7 @@ def test_invalid_push_policy_raises() -> None:
 
 def test_invalid_repo_mode_raises() -> None:
     bad = (
-        f'{{"version": 2,'
+        f'{{"version": 1,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null}}}},'
         f' "hosts": {{"{H_WORKSTATION}": {{"name": "t", "profile": "{P_HOME}",'
         f' "repos": {{"r": {{"url": "git@x:o/r.git", "mode": "wat"}}}}}}}}}}'
@@ -284,7 +276,7 @@ def test_invalid_repo_mode_raises() -> None:
 
 def test_unknown_top_level_keys_raise() -> None:
     bad = (
-        f'{{"version": 2,'
+        f'{{"version": 1,'
         f' "profiles": {{"{P_HOME}": {{"name": "home", "extends": null, "weird": true}}}},'
         f' "hosts": {{}}}}'
     )
@@ -512,13 +504,6 @@ def test_parse_top_level_must_be_object() -> None:
         parse_manifest("[1, 2, 3]")
 
 
-def test_parse_v1_manifest_raises_with_migration_hint() -> None:
-    """v1 manifests are rejected with a pointer at the migration command."""
-    v1 = '{"version": 1, "profiles": {}, "hosts": {}}'
-    with pytest.raises(ManifestError, match="surrogate-key migration required"):
-        parse_manifest(v1, source="legacy.json")
-
-
 def test_parse_unsupported_version_raises() -> None:
     v3 = '{"version": 3, "profiles": {}, "hosts": {}}'
     with pytest.raises(ManifestError, match="unsupported version 3"):
@@ -526,26 +511,26 @@ def test_parse_unsupported_version_raises() -> None:
 
 
 def test_parse_profiles_must_be_object() -> None:
-    bad = '{"version": 2, "profiles": [], "hosts": {}}'
+    bad = '{"version": 1, "profiles": [], "hosts": {}}'
     with pytest.raises(ManifestError, match="'profiles' must be an object"):
         parse_manifest(bad)
 
 
 def test_parse_profile_value_must_be_object() -> None:
-    bad = f'{{"version": 2, "profiles": {{"{P_HOME}": "not-an-object"}}, "hosts": {{}}}}'
+    bad = f'{{"version": 1, "profiles": {{"{P_HOME}": "not-an-object"}}, "hosts": {{}}}}'
     with pytest.raises(ManifestError, match=r"value must be an object"):
         parse_manifest(bad)
 
 
 def test_parse_hosts_must_be_object() -> None:
-    bad = f'{{"version": 2, "profiles": {{"{P_HOME}": {{"name": "home"}}}}, "hosts": []}}'
+    bad = f'{{"version": 1, "profiles": {{"{P_HOME}": {{"name": "home"}}}}, "hosts": []}}'
     with pytest.raises(ManifestError, match="'hosts' must be an object"):
         parse_manifest(bad)
 
 
 def test_parse_host_value_must_be_object() -> None:
     bad = (
-        '{"version": 2, '
+        '{"version": 1, '
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": "not-an-object"}}}}'
     )
@@ -555,7 +540,7 @@ def test_parse_host_value_must_be_object() -> None:
 
 def test_parse_host_unknown_top_level_keys_raise() -> None:
     bad = (
-        '{"version": 2, '
+        '{"version": 1, '
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", "bogus_field": 1, "repos": {{}}'
@@ -567,7 +552,7 @@ def test_parse_host_unknown_top_level_keys_raise() -> None:
 
 def test_parse_repos_must_be_object() -> None:
     bad = (
-        '{"version": 2, '
+        '{"version": 1, '
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", "repos": []'
@@ -579,7 +564,7 @@ def test_parse_repos_must_be_object() -> None:
 
 def test_parse_repo_value_must_be_object() -> None:
     bad = (
-        '{"version": 2, '
+        '{"version": 1, '
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", '
@@ -591,7 +576,7 @@ def test_parse_repo_value_must_be_object() -> None:
 
 def test_parse_repo_unknown_keys_raise() -> None:
     bad = (
-        '{"version": 2, '
+        '{"version": 1, '
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", '
@@ -603,7 +588,7 @@ def test_parse_repo_unknown_keys_raise() -> None:
 
 def test_parse_repo_missing_url_raises() -> None:
     bad = (
-        '{"version": 2, '
+        '{"version": 1, '
         f'"profiles": {{"{P_HOME}": {{"name": "home"}}}}, '
         f'"hosts": {{"{H_WORKSTATION}": {{'
         f'"name": "workstation", "profile": "{P_HOME}", '
@@ -648,7 +633,7 @@ def test_dump_manifest_preserves_backend_config() -> None:
         repos={"base": repo},
     )
     original = Manifest(
-        version=2,
+        version=1,
         profiles={P_HOME: ProfileSpec(name="home", extends=None)},
         hosts={H_WORKSTATION: host},
     )
