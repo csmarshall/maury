@@ -60,8 +60,9 @@ flowchart TD
     P3 --> A0017[0017 Drift detection]
     A0017 --> A0023[0023 Hooks lifecycle]
     A0023 --> A0024[0024 Manifest concurrency]
-    A0024 --> A0025[0025 Mode switching]
-    A0025 --> A0029[0029 maury-state layout]
+    A0024 --> A0025[0025 Active-session detection]
+    A0025 --> A0052[0052 Focus]
+    A0052 --> A0029[0029 maury-state layout]
     A0029 --> A0042[0042 Host-identity guard]
     A0042 --> A0035[0035 Audit log]
 
@@ -287,6 +288,7 @@ status).
 - [`0049`](0049-layer-taxonomy.md) — Three-layer taxonomy (base/mode/rules), render order, override advisory; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 - [`0050`](0050-agency-identity.md) — Agency identity, `agency_id` UUID, membership vs provenance; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 - [`0051`](0051-marker-file-and-distributed-manifest.md) — `.meta/maury-marker.json`, distributed manifest, discovery contract, CLI surface; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
+- [`0052`](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md) — Focus: lightweight intra-trust-boundary mode switching via `maury focus use`; `active_focus` field on `host-identity.json`; statusLine integration. Partial supersession of [`0025`](0025-profile-switching-session-safeguards.md) (decision portion only — the active-session-detection design from `0025` carries forward)
 
 ---
 

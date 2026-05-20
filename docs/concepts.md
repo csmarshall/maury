@@ -165,8 +165,17 @@ The thing that's NEW vs dotfile management:
   fetch the bytes of personal content. Privacy is enforced
   server-side, not by client-side filtering.
 - **Active mode** — at any moment a host is "in" exactly one
-  mode chain. Switching is deliberate (and safeguarded — see
-  [ADR-0025](adr/0025-profile-switching-session-safeguards.md)).
+  mode chain. Changing the registered mode crosses a trust
+  boundary and is the two-step `mode deregister` +
+  `mode bootstrap` per
+  [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md);
+  lightweight intra-trust-boundary movement uses
+  `maury focus use` per
+  [ADR-0052](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).
+  Active-session safeguards (the `active-sessions.jsonl`
+  event log + SessionStart/SessionEnd hooks) carry forward
+  from
+  [ADR-0025](adr/0025-profile-switching-session-safeguards.md).
 
 ### One-line summary of each term
 
@@ -618,17 +627,52 @@ A host's active mode is set by:
 
 - `maury init` (initial assignment, per
   [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)).
-- A planned `maury mode deregister` followed by
-  `maury mode bootstrap` (not yet shipped — see [`status.md`](status.md)
-  for current state; per [ADR-0025](adr/0025-profile-switching-session-safeguards.md)
-  mode change is a two-operation sequence, not a single atomic
-  switch).
+- `maury mode deregister` followed by `maury mode bootstrap` — the
+  two-operation sequence is mandatory per
+  [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md);
+  there is no single-command shortcut. Changing the active mode
+  crosses a trust boundary and gets a fresh `host_<hex>`.
 - Manual edit of the host's marker entry (with all the same
   validation as the above).
 
 If `lock: true` is set on the host's marker entry, mode change
 commands refuse to proceed (per
 [ADR-0001](adr/0001-n-profiles.md)).
+
+#### Focus — the lightweight intra-trust-boundary leaf
+
+When the host's registered mode is itself an ancestor of further
+child modes in the tree (e.g., registered mode is `personal`; the
+tree also contains `personal:consulting` and
+`personal:consulting:acme`), the operator can move between those
+descendants without changing the registered mode. That movement
+is called a **focus switch** and is the lightweight counterpart
+to the heavy mode-change above.
+
+A **focus** is an adjustment of the operator's context (a set of
+conventions and precepts) that's hierarchical by nature. Each
+focus is anchored to a parent mode that determines a trust
+boundary; all foci under that mode share the same trust
+boundary. Structurally a focus *is* a child mode in this tree —
+"focus" is the UX word for the lightweight half of the
+mode-tree mechanism. Per
+[ADR-0052](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md):
+
+- `maury focus use <path>` flips the active leaf. Refuses if the
+  target is outside the host's trust-boundary subtree (points at
+  `mode deregister`+`mode bootstrap`); refuses if active Claude
+  Code sessions are running (override:
+  `--force-active-session`).
+- The active focus pointer is a new field (`active_focus`) on
+  `~/.claude/maury-state/host-identity.json`.
+- Operators see the active mode + focus in Claude Code's prompt
+  via `maury statusline`, wired into `~/.claude/settings.json`'s
+  `statusLine` setting (installed by default at `maury init`,
+  opt out with `--no-statusline`).
+
+Foci share trust boundaries with their parent mode by design.
+Trust-boundary crossings remain heavy and explicit; focus
+switches are light because no access surface changes.
 
 ### 8. Mode-scoped host identity
 

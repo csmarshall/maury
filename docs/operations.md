@@ -21,7 +21,7 @@ is still legible for diagnosis.
 - [`maury mine`](#maury-mine)
 - [`maury review <run-id>`](#maury-review-run-id)
 - [`maury promote --from --to`](#maury-promote---from---to)
-- [`maury mode use <name>`](#maury-mode-use-name)
+- [`maury mode use <name>` (superseded — see `maury focus use`)](#maury-mode-use-name-historical--superseded)
 - [`maury uninstall`](#maury-uninstall)
 
 ---
@@ -273,12 +273,20 @@ flowchart TD
 
 ---
 
-## `maury mode use <name>`
+## `maury mode use <name>` (historical — superseded)
 
-> **Status:** ⏳ planned (Phase 5.x) per [`status.md`](status.md).
-> The flowchart below describes the target UX. Today, mode
-> changes are a two-step `maury mode deregister` + `maury mode
-> bootstrap` (both shipped 2026-05-19 per ADR-0039).
+> **Status:** **Superseded** (2026-05-20). The `maury mode use`
+> command originally proposed in ADR-0025 was retired before
+> implementation. Mode change crosses a trust boundary and is
+> ALWAYS the two-step `maury mode deregister` + `maury mode
+> bootstrap` (shipped 2026-05-19 per
+> [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md)) —
+> there is no single-command shortcut. For lightweight
+> intra-trust-boundary movement (e.g.,
+> `personal:consulting:acme → personal:consulting:exampleco`),
+> see `maury focus use` per
+> [ADR-0052](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).
+> The flowchart below is preserved as historical UX context.
 
 Switch the host's active mode. Re-renders. Hook teardown is
 implicit via the marker scheme.

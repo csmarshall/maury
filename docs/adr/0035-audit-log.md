@@ -132,8 +132,8 @@ require an `**Amended:**` entry on this ADR.
 | `claude_revert` | [ADR-0017](0017-drift-detection-and-reconciliation.md) | When user runs `maury revert <id>` | `{reverted_change_id: "...", path: "..."}` |
 | `manifest_mutated` | [ADR-0024](0024-manifest-concurrency-inclusive-merge.md) | When maury writes a new manifest version | `{changes: [...], git_commit: "..."}` |
 | `manifest_merge_resolved` | [ADR-0024](0024-manifest-concurrency-inclusive-merge.md) | When `maury manifest resolve` completes | `{conflicts_resolved: [...], commit: "..."}` |
-| `mode_switched` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury mode use` succeeds (subsumes the stub `mode-switches.jsonl`) | `{from_mode: "...", to_mode: "...", sessions_state: {...}, forced: bool}` — preserves all fields from ADR-0025's stub schema (`force_flag_used` renamed to `forced` for the new schema; `sessions_state` carried verbatim; `ts`/`host_id` are top-level event fields) |
-| `mode_switch_refused` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury mode use` refuses (any precondition fails) | `{reason: "...", precondition: "..."}` |
+| `focus_switched` | [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md) | When `maury focus use` succeeds | `{from_focus: "..."\|null, to_focus: "...", forced_active_session: bool}` |
+| `focus_switch_refused` | [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md) | When `maury focus use` refuses (any precondition fails — registered? in subtree? no active sessions?) | `{reason: "...", precondition: "...", target: "..."}` |
 | `init_completed` | [ADR-0018](0018-minimum-bootstrap-ux.md) | When `maury init` finishes (first-host-setup or update) | `{from: "dir|tarball", source: "...", host_registered: bool}` |
 | `manifest_upgraded` | [ADR-0030](0030-manifest-schema-migrations.md) | Planned — fires when an `upgrade-vN-to-vN+1` command completes. ADR-0030 is currently Deferred (no v2 schema to migrate to yet); event kind is reserved for when that machinery lands. | `{from_version: int, to_version: int, backup_path: "...", changes: [...]}` |
 | `sessions_pruned` | [ADR-0025](0025-profile-switching-session-safeguards.md) | When `maury sessions prune` removes ghost-session entries | `{pruned_count: int, threshold_age: "..."}` |
@@ -168,16 +168,26 @@ state-changing *events*.
 |---|---|---|
 | `last-render.json` | Drift baseline (current SHAs) | Audit log records `render_applied`; last-render is the *result*, audit is the *event*. |
 | `claude-writes.jsonl` | Drift attribution (which writes are Claude's) | Audit log mirrors as `tool_use_logged` events for cross-cutting queries; claude-writes remains the operational log per ADR-0017's drift-detection mechanics. |
-| `active-context.json` | Current binding | Audit log records `mode_switched`; active-context is the *current state*, audit is the *transition event*. |
+| `active-context.json` | Current binding (current mode/focus pointer) | Audit log records `focus_switched`/`focus_switch_refused` per [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md); active-context is the *current state*, audit is the *transition event*. (Pre-supersession: the original design here referenced `mode_switched`; see 2026-05-20 amendment.) |
 | `active-sessions.jsonl` | Live session lifecycle | Not mirrored — too high-frequency and short-lived. The session-end event is implicitly captured by `session-history.jsonl`. |
 | `session-history.jsonl` | Durable per-session record | Not mirrored — that file IS the per-session audit, audit log records cross-session events. |
-| `mode-switches.jsonl` | Stub for this ADR | **Subsumed.** Once this ADR ships, `mode_switched` events go into `audit.jsonl`; the stub is retired (kept as historical archive but no new writes). |
+| `mode-switches.jsonl` | Stub designed by ADR-0025 | **Historical — never shipped.** ADR-0025's `maury mode use` command was superseded before implementation; no `mode-switches.jsonl` was ever written. See §"Migration" below. |
 
 ### Migration: subsuming `mode-switches.jsonl`
 
-When this ADR's implementation lands (Phase 10):
+**Historical — became a no-op.** When ADR-0035 was originally
+written (pre-2026-05-20), this section described migrating
+existing `mode-switches.jsonl` entries written by ADR-0025's
+`maury mode use` command. ADR-0025's command was superseded
+by ADR-0039 + ADR-0052 (see the 2026-05-20 amendment) before
+implementation, so no `mode-switches.jsonl` was ever written
+in practice. The migration is unreachable; no hosts exist that
+could trigger it. The `migration_completed` event-kind is
+retained as a one-shot marker should a similar migration be
+needed in the future.
 
-1. The first `maury sync` after upgrade migrates existing
+For posterity, the originally-planned migration was:
+1. First `maury sync` after upgrade migrates existing
    `mode-switches.jsonl` entries into `audit.jsonl` as
    `mode_switched` events with `schema_version: 1`.
 2. The migration writes a single `migration_completed` event
@@ -186,10 +196,6 @@ When this ADR's implementation lands (Phase 10):
    `mode-switches.jsonl.migrated-<ts>` and left in place
    as historical archive.
 4. From this point forward, only `audit.jsonl` is written.
-
-The migration is one-shot; if a host already has
-`audit.jsonl` (because it was a fresh install post-Phase 10),
-it skips the migration.
 
 ### Querying the audit log
 
@@ -368,14 +374,22 @@ References used:
   Dry-run paths intentionally suppress audit-log writes —
   `--check` is observation-only and should leave zero state
   side-effects, audit-log included.
-  Remaining event kinds — `mode_switched`, `mode_switch_refused`
-  (owned by the planned `maury mode use` per ADR-0025),
-  `manifest_upgraded` (reserved; ADR-0030 framework deferred),
-  `claude_revert`, `mining_run_created`, `review_completed`,
-  `promotion_started`, `promotion_completed`, `pr_opened`,
-  `subscription_added`, `subscription_pinned`, `backup_created`,
-  `restore_completed`, `tool_use_logged`, and the catch-all `error` —
-  wire up as their owning command sites ship.
-  (`migration_completed` is intentionally not in this list: it is a
-  one-shot subsumption of `mode-switches.jsonl` per §"Migration",
-  not a per-command site that needs wiring.)
+  Remaining event kinds — `focus_switched`, `focus_switch_refused`
+  (owned by the planned `maury focus use` per ADR-0052;
+  `mode_switched`/`mode_switch_refused` are obsolete, see the
+  2026-05-20 line below), `manifest_upgraded` (reserved; ADR-0030
+  framework deferred), `claude_revert`, `mining_run_created`,
+  `review_completed`, `promotion_started`, `promotion_completed`,
+  `pr_opened`, `subscription_added`, `subscription_pinned`,
+  `backup_created`, `restore_completed`, `tool_use_logged`, and
+  the catch-all `error` — wire up as their owning command sites
+  ship. (`migration_completed` is intentionally not in this list:
+  it is a one-shot subsumption of `mode-switches.jsonl` per
+  §"Migration", not a per-command site that needs wiring.)
+- 2026-05-20 — event-kind table updated: `mode_switched` and
+  `mode_switch_refused` removed (ADR-0025's `maury mode use` was
+  superseded by ADR-0039 + ADR-0052; mode change crosses a trust
+  boundary and uses `mode deregister`+`mode bootstrap`, which
+  reuse the existing `init_completed` and `manifest_mutated`
+  kinds). Replaced with `focus_switched` and `focus_switch_refused`
+  per [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).

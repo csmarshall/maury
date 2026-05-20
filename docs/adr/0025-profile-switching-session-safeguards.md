@@ -372,3 +372,25 @@ Code documentation:
 ## Amendment history
 
 - 2026-05-11 — "profile" renamed to "mode" throughout per ADR-0037 doctoral examination. `maury profile use` → `maury mode use`; `profile-switches.jsonl` → `mode-switches.jsonl`; audit schema fields updated (`from_profile`/`to_profile` → `from_mode`/`to_mode`). No semantic changes to safeguard logic.
+- 2026-05-20 — **decision portion superseded.** The
+  `maury mode use` command this ADR designs was implicitly
+  superseded by [ADR-0039 §"Mode change process"](0039-bootstrap-and-host-lifecycle.md)
+  on 2026-05-11, which states *"There is no single `maury mode
+  switch` that wraps both [`mode deregister`, `mode bootstrap`]
+  into a pseudo-transaction."* The contradiction was latent for
+  nine days and surfaced during the focus-concept design
+  conversation. Mode change crosses a trust boundary and stays
+  heavy by design (deregister + re-bootstrap per ADR-0039); a
+  lightweight intra-trust-boundary verb (`maury focus use`)
+  lives in [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).
+  **The active-session-detection design in this ADR carries
+  forward**: the `~/.claude/maury-state/active-sessions.jsonl`
+  event log, the SessionStart/SessionEnd hook scheme, and the
+  precondition cascade (host registered? safe to switch? no
+  live sessions?) are all referenced by ADR-0052 for focus
+  switching. The event names `mode_switched` /
+  `mode_switch_refused` are obsolete; ADR-0052 introduces
+  `focus_switched` / `focus_switch_refused` to replace them
+  per [ADR-0035](0035-audit-log.md)'s event-kind enumeration.
+  Body left unchanged so the design archaeology of the
+  active-session machinery is preserved verbatim.
