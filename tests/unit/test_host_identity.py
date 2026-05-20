@@ -195,3 +195,76 @@ def test_format_change_message_includes_both_hex_values_and_full_id(tmp_path: Pa
     assert "home" in msg  # mode name from baseline
     assert "--confirm-identity-change" in msg
     assert "maury init --reset" in msg
+
+
+# ---- ADR-0052: active_focus field on the baseline -----------------------
+
+
+class TestActiveFocusField:
+    def test_baseline_default_active_focus_is_none(self) -> None:
+        """A baseline constructed without an explicit active_focus has None
+        (registered mode is the active mode; no descendant is selected)."""
+        b = _make_baseline()
+        assert b.active_focus is None
+
+    def test_baseline_roundtrips_active_focus(self, tmp_path: Path) -> None:
+        b = HostIdentityBaseline(
+            schema_version=SCHEMA_VERSION,
+            host_id_hex="24b2a0aa",
+            registered_at="2026-05-20T10:00:00Z",
+            mode_id="mode_3f1a8b2c4d5e6f7081a2b3c4d5e6f708",
+            mode_name_at_bootstrap="personal",
+            active_focus="personal:consulting:acme",
+        )
+        write_baseline(tmp_path, b)
+        loaded = read_baseline(tmp_path)
+        assert loaded is not None
+        assert loaded.active_focus == "personal:consulting:acme"
+        assert loaded == b
+
+    def test_baseline_loads_pre_2026_05_20_file_without_active_focus(self, tmp_path: Path) -> None:
+        """Backwards-compat: a baseline written before active_focus was
+        added (no field on disk) loads cleanly with active_focus=None.
+        Per ADR-0052's 'additive field, no schema bump.'"""
+        legacy = (
+            '{"schema_version": 1, "host_id_hex": "24b2a0aa", '
+            '"registered_at": "2026-05-14T15:42:11Z", '
+            '"mode_id": "mode_3f1a", "mode_name_at_bootstrap": "personal"}'
+        )
+        bp = baseline_path(tmp_path)
+        bp.parent.mkdir(parents=True)
+        bp.write_text(legacy)
+        loaded = read_baseline(tmp_path)
+        assert loaded is not None
+        assert loaded.active_focus is None
+        assert loaded.host_id_hex == "24b2a0aa"
+        assert loaded.mode_name_at_bootstrap == "personal"
+
+    def test_baseline_explicit_null_active_focus_loads_as_none(self, tmp_path: Path) -> None:
+        """A baseline written with `"active_focus": null` is semantically
+        identical to one written without the field."""
+        with_null = (
+            '{"schema_version": 1, "host_id_hex": "24b2a0aa", '
+            '"registered_at": "x", "mode_id": "m", '
+            '"mode_name_at_bootstrap": "personal", "active_focus": null}'
+        )
+        bp = baseline_path(tmp_path)
+        bp.parent.mkdir(parents=True)
+        bp.write_text(with_null)
+        loaded = read_baseline(tmp_path)
+        assert loaded is not None
+        assert loaded.active_focus is None
+
+    def test_to_json_includes_active_focus_when_set(self) -> None:
+        """The serialized form includes the field so it round-trips through
+        write_baseline + read_baseline."""
+        b = HostIdentityBaseline(
+            schema_version=SCHEMA_VERSION,
+            host_id_hex="24b2a0aa",
+            registered_at="2026-05-20T10:00:00Z",
+            mode_id="mode_xxx",
+            mode_name_at_bootstrap="personal",
+            active_focus="personal:consulting:acme",
+        )
+        body = b.to_json()
+        assert '"active_focus": "personal:consulting:acme"' in body

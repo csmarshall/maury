@@ -50,6 +50,12 @@ class HostIdentityBaseline:
 
     The `host_id_hex` field is the load-bearing comparison value;
     everything else is audit metadata for human inspection.
+
+    `active_focus` is the dotted-path pointer to the active mode
+    leaf within the host's trust-boundary subtree (per ADR-0052).
+    None when the active mode IS the registered mode (no
+    descendant has been activated). Optional/additive — pre-2026-05-20
+    baselines lack this field and load with `active_focus=None`.
     """
 
     schema_version: int
@@ -57,6 +63,7 @@ class HostIdentityBaseline:
     registered_at: str
     mode_id: str
     mode_name_at_bootstrap: str
+    active_focus: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, sort_keys=False) + "\n"
@@ -75,6 +82,7 @@ class HostIdentityBaseline:
             registered_at=data.get("registered_at", ""),
             mode_id=data.get("mode_id", ""),
             mode_name_at_bootstrap=data.get("mode_name_at_bootstrap", ""),
+            active_focus=data.get("active_focus"),
         )
 
 
