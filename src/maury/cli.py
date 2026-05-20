@@ -3804,6 +3804,56 @@ def focus_list(manifest_file: Path | None, target_dir: Path) -> None:
         click.echo(f"  {marker} {name}")
 
 
+# ---- statusline (Claude Code statusLine integration per ADR-0052) -------
+
+
+@main.command("statusline")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory holding `maury-state/host-identity.json`.",
+)
+def statusline(target_dir: Path) -> None:
+    """Emit a one-line summary of this host's active mode + focus.
+
+    Wired into Claude Code's `settings.json` `statusLine` setting so
+    operators see their current context in the prompt. Per ADR-0052:
+
+    - With focus set:    `mode:personal focus:personal:consulting:acme`
+    - With no focus:     `mode:personal`
+    - Identity missing:  `(no maury identity)`
+
+    **Never crashes, never exits non-zero.** A maury bug here would
+    break the user's prompt, so this command catches every exception
+    and falls back to a fixed string. Output is ASCII-only and
+    scriptable; color/decoration is v1.1.
+    """
+    try:
+        click.echo(_statusline_text(target_dir.expanduser()))
+    except BaseException:
+        # Catch literally everything: per ADR-0052 a maury bug must not
+        # break the user's prompt. BaseException covers KeyboardInterrupt,
+        # SystemExit, and the usual Exception subtree.
+        click.echo("(maury statusline error)")
+
+
+def _statusline_text(target_dir: Path) -> str:
+    """Compute the statusline output string. Raises on any failure;
+    the click handler catches and falls back to a fixed string."""
+    from maury.host_identity import read_baseline
+
+    baseline = read_baseline(target_dir)
+    if baseline is None:
+        return "(no maury identity)"
+    mode = baseline.mode_name_at_bootstrap or "(no mode)"
+    if baseline.active_focus and baseline.active_focus != mode:
+        return f"mode:{mode} focus:{baseline.active_focus}"
+    return f"mode:{mode}"
+
+
 # ---- audit group ---------------------------------------------------------
 
 
