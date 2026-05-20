@@ -3583,6 +3583,187 @@ def mode_deregister(
         click.echo("(--check; no files were written)")
 
 
+# ---- focus group ---------------------------------------------------------
+#
+# `maury focus use/current/list` — the lightweight intra-trust-boundary
+# mode-switch verbs per ADR-0052. Wrap the pure-logic engine in
+# `maury.focus`. Cross-trust-boundary movement remains the heavy
+# `mode deregister` + `mode bootstrap` flow from ADR-0039.
+
+
+@main.group()
+def focus() -> None:
+    """Switch between modes inside the host's trust boundary (ADR-0052)."""
+
+
+@focus.command("use")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory holding `maury-state/host-identity.json`.",
+)
+@click.option(
+    "--force-active-session",
+    "force_active_session",
+    is_flag=True,
+    help="Override the active-session refusal. Verbose by design — the user is acknowledging working-memory mismatch in the running session.",
+)
+@click.argument("focus_path", required=False)
+def focus_use(
+    manifest_file: Path | None,
+    target_dir: Path,
+    force_active_session: bool,
+    focus_path: str | None,
+) -> None:
+    """Switch this host's active focus to FOCUS_PATH (a dotted mode name).
+
+    Refuses if FOCUS_PATH is outside the host's trust-boundary subtree
+    (pointing at `mode deregister` + `mode bootstrap` per ADR-0039),
+    or if active Claude Code sessions are running (override:
+    `--force-active-session`).
+
+    With no FOCUS_PATH argument, clears any active focus and resumes the
+    registered mode as the active mode.
+    """
+    from maury.focus import (
+        FocusError,
+        FocusUseOutcome,
+        active_focus_set,
+        evaluate_focus_use,
+    )
+
+    target = target_dir.expanduser()
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    if not mpath.exists():
+        raise click.ClickException(f"manifest file not found: {mpath}")
+
+    # No argument → clear focus (resume registered mode).
+    if focus_path is None or focus_path.strip() == "":
+        try:
+            from maury.focus import active_focus_get
+
+            previous = active_focus_get(target)
+            active_focus_set(target, None)
+        except FocusError as e:
+            raise click.ClickException(str(e)) from e
+        if previous is None:
+            click.echo("focus: (already unset; registered mode is active)")
+        else:
+            click.echo(f"focus: {previous} → (cleared; registered mode is active)")
+        return
+
+    try:
+        manifest = load_manifest(mpath)
+    except ManifestError as e:
+        raise click.ClickException(f"manifest failed to load: {e}") from e
+
+    result = evaluate_focus_use(
+        target_dir=target,
+        target_focus=focus_path,
+        manifest=manifest,
+        force_active_session=force_active_session,
+    )
+
+    if result.outcome is FocusUseOutcome.OK:
+        try:
+            active_focus_set(target, focus_path)
+        except FocusError as e:
+            raise click.ClickException(str(e)) from e
+        from_label = result.from_focus or "(registered mode)"
+        click.echo(f"focus: {from_label} → {focus_path}")
+        return
+
+    # Refused. Print the friendly detail and exit non-zero.
+    raise click.ClickException(result.detail)
+
+
+@focus.command("current")
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory holding `maury-state/host-identity.json`.",
+)
+def focus_current(target_dir: Path) -> None:
+    """Print the currently-active focus (or note that none is set)."""
+    from maury.focus import active_focus_get
+    from maury.host_identity import read_baseline
+
+    target = target_dir.expanduser()
+    baseline = read_baseline(target)
+    if baseline is None:
+        raise click.ClickException(
+            f"no host-identity baseline at {target}/maury-state/host-identity.json; run `maury init` first."
+        )
+
+    active = active_focus_get(target)
+    if active is None:
+        click.echo(f"{baseline.mode_name_at_bootstrap} (no focus set; registered mode is active)")
+    else:
+        click.echo(f"{baseline.mode_name_at_bootstrap} → {active}")
+
+
+@focus.command("list")
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar=DEFAULT_MANIFEST_ENV,
+    help="Manifest file. Defaults to ./.meta/manifest.json or $MAURY_MANIFEST_FILE.",
+)
+@click.option(
+    "--target",
+    "target_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default="~/.claude",
+    show_default=True,
+    help="Target directory holding `maury-state/host-identity.json`.",
+)
+def focus_list(manifest_file: Path | None, target_dir: Path) -> None:
+    """List foci reachable from this host's registered mode.
+
+    Order: registered mode first, then its descendants by depth then
+    name. Currently-active focus marked with `*`.
+    """
+    from maury.focus import active_focus_get, list_reachable_modes
+    from maury.host_identity import read_baseline
+
+    target = target_dir.expanduser()
+    baseline = read_baseline(target)
+    if baseline is None:
+        raise click.ClickException(
+            f"no host-identity baseline at {target}/maury-state/host-identity.json; run `maury init` first."
+        )
+
+    mpath = manifest_file or DEFAULT_MANIFEST_PATH
+    if not mpath.exists():
+        raise click.ClickException(f"manifest file not found: {mpath}")
+    try:
+        manifest = load_manifest(mpath)
+    except ManifestError as e:
+        raise click.ClickException(f"manifest failed to load: {e}") from e
+
+    active = active_focus_get(target)
+    reachable = list_reachable_modes(registered_mode_id=baseline.mode_id, manifest=manifest)
+
+    for _mid, name in reachable:
+        is_active = (active is None and name == baseline.mode_name_at_bootstrap) or (active == name)
+        marker = "*" if is_active else " "
+        click.echo(f"  {marker} {name}")
+
+
 # ---- audit group ---------------------------------------------------------
 
 
