@@ -6,6 +6,7 @@ import json
 import socket
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -3660,6 +3661,13 @@ def focus_use(
             click.echo("focus: (already unset; registered mode is active)")
         else:
             click.echo(f"focus: {previous} → (cleared; registered mode is active)")
+            _emit_focus_event(
+                target,
+                "focus_switched",
+                from_focus=previous,
+                to_focus=None,
+                forced_active_session=False,
+            )
         return
 
     try:
@@ -3681,10 +3689,42 @@ def focus_use(
             raise click.ClickException(str(e)) from e
         from_label = result.from_focus or "(registered mode)"
         click.echo(f"focus: {from_label} → {focus_path}")
+        _emit_focus_event(
+            target,
+            "focus_switched",
+            from_focus=result.from_focus,
+            to_focus=focus_path,
+            forced_active_session=force_active_session,
+        )
         return
 
-    # Refused. Print the friendly detail and exit non-zero.
+    # Refused. Emit `focus_switch_refused` + print friendly detail + exit non-zero.
+    _emit_focus_event(
+        target,
+        "focus_switch_refused",
+        reason=result.detail,
+        precondition=result.outcome.value,
+        target_focus=focus_path,
+    )
     raise click.ClickException(result.detail)
+
+
+def _emit_focus_event(target_dir: Path, kind: str, **payload: Any) -> None:
+    """Append a `focus_switched` / `focus_switch_refused` audit event.
+
+    Best-effort per ADR-0035: wraps `log()` in `contextlib.suppress`
+    so an audit-write failure (oversize line, IO error) never aborts
+    the focus operation. `focus_switch_refused` events use
+    `result="failure"` so audit consumers can filter them.
+    """
+    import contextlib
+
+    from maury.audit_log import AuditLogError
+    from maury.audit_log import log as audit_log
+
+    outcome = "failure" if kind == "focus_switch_refused" else "success"
+    with contextlib.suppress(AuditLogError):
+        audit_log(target_dir, kind, result=outcome, **payload)
 
 
 @focus.command("current")

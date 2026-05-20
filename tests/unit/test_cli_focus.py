@@ -285,3 +285,114 @@ def test_focus_list_marker_follows_active_focus(tmp_path: Path) -> None:
     starred = [line for line in result.output.splitlines() if "*" in line]
     assert len(starred) == 1
     assert "personal:consulting:acme" in starred[0]
+
+
+# ---- audit-log integration (ADR-0035 + ADR-0052) -----------------------
+
+
+def test_focus_use_emits_focus_switched_on_success(tmp_path: Path) -> None:
+    """A successful focus use writes `focus_switched` to audit.jsonl."""
+    from maury.audit_log import read_events
+
+    mpath, target, _ = _seed_tree(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["focus", "use", "--manifest-file", str(mpath), "--target", str(target), "personal:consulting:acme"],
+    )
+    assert result.exit_code == 0, result.output
+
+    events = list(read_events(target))
+    kinds = [e.event for e in events]
+    assert "focus_switched" in kinds
+    event = next(e for e in events if e.event == "focus_switched")
+    assert event.details["to_focus"] == "personal:consulting:acme"
+    assert event.details["from_focus"] is None
+    assert event.details["forced_active_session"] is False
+    assert event.result == "success"
+
+
+def test_focus_use_clear_emits_focus_switched(tmp_path: Path) -> None:
+    """Clearing an existing focus (no-arg) emits focus_switched with
+    to_focus=None and the previous focus path as from_focus."""
+    from maury.audit_log import read_events
+
+    mpath, target, _ = _seed_tree(tmp_path)
+    runner = CliRunner()
+    # Set then clear.
+    runner.invoke(
+        main,
+        ["focus", "use", "--manifest-file", str(mpath), "--target", str(target), "personal:consulting:acme"],
+    )
+    # Wipe to isolate the second event.
+    (target / "maury-state" / "audit.jsonl").unlink()
+
+    result = runner.invoke(
+        main,
+        ["focus", "use", "--manifest-file", str(mpath), "--target", str(target)],
+    )
+    assert result.exit_code == 0, result.output
+
+    events = list(read_events(target))
+    assert len(events) == 1
+    event = events[0]
+    assert event.event == "focus_switched"
+    assert event.details["from_focus"] == "personal:consulting:acme"
+    assert event.details["to_focus"] is None
+
+
+def test_focus_use_no_audit_when_clearing_already_unset(tmp_path: Path) -> None:
+    """No-op clear (focus was already unset) emits no audit event —
+    nothing changed."""
+    from maury.audit_log import read_events
+
+    mpath, target, _ = _seed_tree(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["focus", "use", "--manifest-file", str(mpath), "--target", str(target)],
+    )
+    assert result.exit_code == 0, result.output
+    assert list(read_events(target)) == []
+
+
+def test_focus_use_refused_emits_focus_switch_refused(tmp_path: Path) -> None:
+    """Cross-trust-boundary refusal emits focus_switch_refused with
+    result=failure + precondition payload."""
+    from maury.audit_log import read_events
+
+    mpath, target, _ = _seed_tree(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["focus", "use", "--manifest-file", str(mpath), "--target", str(target), "work"],
+    )
+    assert result.exit_code != 0
+
+    events = list(read_events(target))
+    kinds = [e.event for e in events]
+    assert "focus_switch_refused" in kinds
+    event = next(e for e in events if e.event == "focus_switch_refused")
+    assert event.result == "failure"
+    assert event.details["precondition"] == "not_reachable"
+    assert event.details["target_focus"] == "work"
+
+
+def test_focus_use_active_session_refusal_emits_event(tmp_path: Path) -> None:
+    from maury.audit_log import read_events
+
+    mpath, target, _ = _seed_tree(tmp_path)
+    log = target / "maury-state" / "active-sessions.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text('{"event": "session_start", "session_id": "live", "ts": "2026-05-20T10:00:00Z"}\n')
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["focus", "use", "--manifest-file", str(mpath), "--target", str(target), "personal:consulting:acme"],
+    )
+    assert result.exit_code != 0
+
+    events = list(read_events(target))
+    event = next(e for e in events if e.event == "focus_switch_refused")
+    assert event.details["precondition"] == "active_sessions"
