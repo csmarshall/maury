@@ -409,10 +409,51 @@ will not silently rebase mid-review.
   ADR can introduce smarter routing once we have operator
   experience with the staging-file model.
 
-  Remaining Phase 6/7 work:
-  * `maury review <run-id>` — walk the branch with cherry-pick
-    UI per §"Branch lifecycle". Still ⏳ planned.
+  Remaining Phase 6/7 work (shipped 2026-05-21, see next entry):
+  * `maury review <run-id>` — walk the branch with the review UI
+    per §"Branch lifecycle".
   * `Rejected-Content-Hash` writing (the no-op metadata commit
     that lands rejections) — owned by `maury review`.
   * `maury rebase-run <run-id>` for the "main moved between
     mine and review" case. Owned by `maury review` slice.
+
+- 2026-05-21 — **review side shipped** (Phase 7). Module
+  `src/maury/mining/review.py` + CLI verbs `maury review <run-id>`
+  and `maury rebase-run <run-id>`. Three notable refinements to the
+  §"Branch lifecycle" / §"Rejection" design as written:
+
+  1. **Apply-by-reconstruct, not literal `git cherry-pick`.** The
+     ADR body says `maury review` "cherry-picks accepted commits."
+     The V1 single-staging-file model (every finding appends to
+     `mining-findings.md`) makes literal cherry-pick conflict-prone:
+     skipping or rejecting an *earlier* finding then accepting a
+     *later* one leaves the later commit's diff context (the earlier
+     block) absent on the review branch → conflict. The engine
+     instead reconstructs each accepted finding's appended block as
+     `file@sha` minus `file@sha^` and re-appends it, committing with
+     `git commit -C <sha> --cleanup=verbatim` so the original message
+     + `Content-Hash` trailer ride through verbatim. The outcome is
+     identical to what the ADR intends (per-finding commits carrying
+     their trailers land on `maury/review/<run-id>`), but gap-safe
+     and conflict-free. The mermaid diagram in
+     [`workflow.md`](../workflow.md) §3 says "apply accepted commits"
+     for the same reason.
+  2. **Rejection commit only on full-walk completion.** Quitting
+     mid-walk (`q`) keeps accepted/edited commits (real commits →
+     resumable) but discards pending rejections, so there is at most
+     one `Rejected` no-op commit per completed review. Resume scans
+     both `Content-Hash` and `Rejected-Content-Hash` in
+     `git log main..maury/review/<run-id>` to skip already-handled
+     findings without re-prompting.
+  3. **Edit preserves `Content-Hash`.** `[e]dit` opens the block in
+     `$EDITOR` before committing but reuses the original message
+     (`-C`), so the hash — the identity of the *idea Claude
+     surfaced*, not the final wording — is unchanged. A future
+     re-surface of the original phrasing therefore still dedups.
+
+  Audit: `review_completed` (`{run_id, accepted, rejected,
+  merged_to}`; edited counts as accepted, `merged_to` is null since
+  review never merges — the operator merges). No new ADR-0035 event
+  kinds were added. `--accept-all` / `--reject-all [--reason]` batch
+  flags ship for scripted use. 44 tests (20 pure-logic, 13 git-layer,
+  11 CLI).

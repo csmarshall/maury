@@ -109,7 +109,7 @@ flowchart TD
     Propose --> Branch
     Branch[create branch maury/run/RUN-ID with<br/>one commit per finding per ADR-0022] --> Review[user runs maury review RUN-ID]
     Review --> Walk2[walk commits oldest-first<br/>show diff + parsed trailers<br/>accept / reject / edit / skip]
-    Walk2 --> Cherry[cherry-pick accepted commits<br/>onto maury/review/RUN-ID]
+    Walk2 --> Cherry[apply accepted commits<br/>onto maury/review/RUN-ID<br/>Content-Hash trailers preserved]
     Cherry --> RejCommit[append no-op rejection commit<br/>with Rejected-Content-Hash trailers]
     RejCommit --> Merge[merge maury/review/RUN-ID to main<br/>local merge or PR]
     Merge --> Sync[other hosts pull on next maury sync]
@@ -146,7 +146,7 @@ flowchart TD
 |---|---|---|
 | 1. Install + bootstrap | `src/maury/bootstrap/init_cmd.py` | Phase 4 first slice ✅ |
 | 2. Daily session loop | `src/maury/render/`, drift detection (Phase 5.x) | render ✅; drift planned |
-| 3. Mining + crossref + review | `src/maury/mining/{transcripts,extractor,crossref}.py`; review TBD | extractor + crossref ✅; review Phase 7 |
+| 3. Mining + crossref + review | `src/maury/mining/{transcripts,extractor,crossref,run_branch,review}.py` | extractor + crossref + run-branch + review ✅ (Phase 7 shipped 2026-05-21) |
 | 4. Cross-host promotion | promotion module | Phase 9 |
 
 ---
