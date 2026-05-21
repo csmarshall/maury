@@ -372,3 +372,47 @@ will not silently rebase mid-review.
 ## Amendment history
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
+- 2026-05-21 — **implementation shipped** (Phase 6 first slice).
+  Two commits on devel:
+  * `feat(mining): Content-Hash + commit-trailer formatters` (slice 1)
+    — pure-logic module `src/maury/mining/run_branch.py` with
+    `content_hash`, `generate_run_id`, `format_commit_subject`,
+    `format_commit_body`, `format_finding_block`, and
+    `branch_name_for`. 24 unit tests cover the Content-Hash
+    normalization invariants, RFC 822 trailer format, em-dash
+    subject + truncation, and the markdown block for the staging
+    file. `CONTENT_HASH_ALGORITHM_VERSION` pinned at 1 per
+    §Followups.
+  * `feat(mining): write_run_branch + maury mine --write-run-branch`
+    (slices 2-4) — adds `existing_content_hashes(repo_dir)` that
+    runs `git log --all --grep="^Content-Hash:"` and
+    `--grep="^Rejected-Content-Hash:"`, returning the union as
+    the dedup set. Adds `write_run_branch(...)` that validates
+    preconditions (git repo, clean worktree, branch absent),
+    creates the branch off HEAD, appends each non-deduped finding
+    as a section in `mining-findings.md`, and commits each one
+    with the full trailer block. Skips the branch creation
+    entirely when dedup eats every finding (no orphan empty
+    branches). CLI flag `--write-run-branch` on `maury mine`
+    wires it up; requires `--repo` and a host-identity baseline.
+    Emits `mining_run_created` audit event per ADR-0035.
+
+  **V1 simplification: the per-finding diff is an append to
+  `mining-findings.md` at the repo root.** ADR-0022's body says
+  "the diff IS the proposed change to CLAUDE.md / rules.yaml /
+  etc." — that "etc." was doing work. For V1, every finding
+  appends a structured section (`## maury: <kind> — <summary>`
+  + rationale + block-quoted evidence + metadata bullets) to
+  a single file. The reviewer reads the file, cherry-picks
+  accepted findings to main, and refactors bullets into
+  CLAUDE.md/rules.yaml as a separate manual step. A future
+  ADR can introduce smarter routing once we have operator
+  experience with the staging-file model.
+
+  Remaining Phase 6/7 work:
+  * `maury review <run-id>` — walk the branch with cherry-pick
+    UI per §"Branch lifecycle". Still ⏳ planned.
+  * `Rejected-Content-Hash` writing (the no-op metadata commit
+    that lands rejections) — owned by `maury review`.
+  * `maury rebase-run <run-id>` for the "main moved between
+    mine and review" case. Owned by `maury review` slice.

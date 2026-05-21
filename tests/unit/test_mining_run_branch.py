@@ -248,3 +248,267 @@ def test_finding_block_includes_metadata_bullets() -> None:
 
 def test_staging_file_constant() -> None:
     assert STAGING_FILE == "mining-findings.md"
+
+
+# ---- git layer (slice 2 + 3) -------------------------------------------
+
+import json  # noqa: E402
+import subprocess  # noqa: E402
+
+import pytest  # noqa: E402
+
+from maury.mining.run_branch import (  # noqa: E402
+    RunBranchError,
+    existing_content_hashes,
+    write_run_branch,
+)
+
+
+def _git_available() -> bool:
+    try:
+        return subprocess.run(["git", "--version"], capture_output=True, check=False).returncode == 0
+    except OSError:
+        return False
+
+
+def _run(args: list[str], cwd: Path) -> None:
+    subprocess.run(args, cwd=cwd, check=True, capture_output=True)
+
+
+def _seed_repo(tmp_path: Path) -> Path:
+    """Initialize a git repo with one commit on main and a local
+    user.email/user.name (required for `git commit` on CI runners)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(["git", "init", "-q", "-b", "main"], cwd=repo)
+    _run(["git", "config", "user.email", "t@t.invalid"], cwd=repo)
+    _run(["git", "config", "user.name", "t"], cwd=repo)
+    (repo / "README.md").write_text("# repo\n")
+    _run(["git", "add", "README.md"], cwd=repo)
+    _run(["git", "commit", "-q", "-m", "initial"], cwd=repo)
+    return repo
+
+
+# ---- existing_content_hashes -------------------------------------------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_existing_content_hashes_empty_when_no_findings(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    assert existing_content_hashes(repo) == set()
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_existing_content_hashes_picks_up_accepted_hashes(tmp_path: Path) -> None:
+    """A commit with a `Content-Hash:` trailer contributes its hash."""
+    repo = _seed_repo(tmp_path)
+    (repo / "f.md").write_text("hi\n")
+    _run(["git", "add", "f.md"], cwd=repo)
+    subprocess.run(
+        ["git", "commit", "-m", "subject\n\nbody\n\nContent-Hash: aaa111\n", "--cleanup=verbatim"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    assert "aaa111" in existing_content_hashes(repo)
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_existing_content_hashes_picks_up_rejected_hashes(tmp_path: Path) -> None:
+    """The rejection no-op metadata commit's `Rejected-Content-Hash:`
+    trailers contribute too — sub-second dedup across years."""
+    repo = _seed_repo(tmp_path)
+    subprocess.run(
+        [
+            "git",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "maury: rejected during curator review\n\nRejected-Content-Hash: bbb222\nRejected-Content-Hash: ccc333\n",
+            "--cleanup=verbatim",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    hashes = existing_content_hashes(repo)
+    assert "bbb222" in hashes
+    assert "ccc333" in hashes
+
+
+# ---- write_run_branch: preconditions -----------------------------------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_refuses_outside_git_repo(tmp_path: Path) -> None:
+    with pytest.raises(RunBranchError, match="not a git working tree"):
+        write_run_branch(repo_dir=tmp_path, findings=[_finding()], host_hex="aabbccdd")
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_refuses_dirty_worktree(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    (repo / "dirty.txt").write_text("uncommitted\n")
+    with pytest.raises(RunBranchError, match="uncommitted changes"):
+        write_run_branch(repo_dir=repo, findings=[_finding()], host_hex="aabbccdd")
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_refuses_when_branch_already_exists(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    # Pre-create the branch with the exact run-id we'll generate.
+    when = datetime(2026, 5, 21, 16, 0, 0, tzinfo=UTC)
+    rid = "2026-05-21T160000-aabbccdd"
+    _run(["git", "branch", f"maury/run/{rid}"], cwd=repo)
+    with pytest.raises(RunBranchError, match="already exists"):
+        write_run_branch(repo_dir=repo, findings=[_finding()], host_hex="aabbccdd", when=when)
+
+
+# ---- write_run_branch: happy paths -------------------------------------
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_creates_branch_and_one_commit_per_finding(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    findings = [
+        _finding(kind="feedback", text="prefer terse responses"),
+        _finding(kind="preference", text="use Python 3.11+"),
+    ]
+    result = write_run_branch(repo_dir=repo, findings=findings, host_hex="aabbccdd")
+    assert result.commits_written == 2
+    assert result.skipped_dedup == 0
+    assert result.branch == f"maury/run/{result.run_id}"
+
+    # Branch exists and is checked out.
+    rc, out = (
+        subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).returncode,
+        subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout,
+    )
+    assert rc == 0
+    assert out.strip() == result.branch
+
+    # Two commits ahead of main.
+    proc = subprocess.run(
+        ["git", "rev-list", "--count", f"main..{result.branch}"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.stdout.strip() == "2"
+
+    # Staging file present with expected blocks.
+    staging = (repo / "mining-findings.md").read_text()
+    assert "prefer terse responses" in staging
+    assert "use Python 3.11+" in staging
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_commit_trailers_are_grep_indexable(tmp_path: Path) -> None:
+    """The whole point of the trailer format: `git log --grep` finds them."""
+    repo = _seed_repo(tmp_path)
+    write_run_branch(repo_dir=repo, findings=[_finding()], host_hex="aabbccdd")
+    # The new commit should be findable by Content-Hash grep.
+    proc = subprocess.run(
+        ["git", "log", "--all", "--grep=^Content-Hash:"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "Content-Hash:" in proc.stdout
+    expected = content_hash(kind="feedback", scope_hint="base", text="prefer terse responses")
+    assert expected in proc.stdout
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_skips_findings_with_seen_content_hash(tmp_path: Path) -> None:
+    """A finding whose Content-Hash already lives in history is dedup-suppressed."""
+    repo = _seed_repo(tmp_path)
+    # First run lands two findings on main (we simulate by merging the branch).
+    f1 = _finding(kind="feedback", text="prefer terse responses")
+    f2 = _finding(kind="preference", text="use Python 3.11+")
+    first = write_run_branch(repo_dir=repo, findings=[f1, f2], host_hex="aabbccdd")
+    # Merge the run branch into main so its Content-Hash trailers are visible.
+    _run(["git", "checkout", "main"], cwd=repo)
+    _run(["git", "merge", "--no-ff", "-m", "merge first run", first.branch], cwd=repo)
+
+    # Second run with one repeat + one new. Use a later timestamp so
+    # run-ids don't collide.
+    f1_again = _finding(kind="feedback", text="Prefer terse responses.")  # same idea, different wording
+    f3 = _finding(kind="decision", text="adopt monorepo layout")
+    when = datetime(2026, 5, 21, 17, 0, 0, tzinfo=UTC)
+    second = write_run_branch(
+        repo_dir=repo,
+        findings=[f1_again, f3],
+        host_hex="aabbccdd",
+        when=when,
+    )
+    assert second.commits_written == 1
+    assert second.skipped_dedup == 1
+    # The skipped hash is f1's content hash.
+    expected = content_hash(kind="feedback", scope_hint="base", text="prefer terse responses")
+    assert expected in second.skipped_hashes
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_no_branch_when_every_finding_dedup_suppressed(tmp_path: Path) -> None:
+    """If dedup eats every finding, don't leave an empty branch behind."""
+    repo = _seed_repo(tmp_path)
+    f = _finding(kind="feedback", text="prefer terse")
+    first = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd")
+    _run(["git", "checkout", "main"], cwd=repo)
+    _run(["git", "merge", "--no-ff", "-m", "merge first", first.branch], cwd=repo)
+
+    when = datetime(2026, 5, 21, 17, 0, 0, tzinfo=UTC)
+    result = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", when=when)
+    assert result.commits_written == 0
+    assert result.skipped_dedup == 1
+    # No new branch created.
+    rc, _out = (
+        subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{result.branch}"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode,
+        "",
+    )
+    assert rc != 0  # branch absent
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_carries_crossref_state_into_commit(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    write_run_branch(
+        repo_dir=repo,
+        findings=[_finding()],
+        host_hex="aabbccdd",
+        crossref_states={0: "PRESENT_AND_REINFORCED"},
+    )
+    proc = subprocess.run(
+        ["git", "log", "--all", "--grep=^Crossref-State: PRESENT_AND_REINFORCED"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert "PRESENT_AND_REINFORCED" in proc.stdout
+
+
+# Silence unused-import warnings in environments where the file imports
+# are flagged by linters scanning the test file in isolation.
+_unused_for_lint = (json,)

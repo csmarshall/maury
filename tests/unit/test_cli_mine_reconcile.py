@@ -473,3 +473,121 @@ def test_reconcile_baseline_host_not_in_manifest_errors(tmp_path: Path) -> None:
     assert result.exit_code != 0
     combined = result.output + (result.stderr or "")
     assert "no longer in the manifest" in combined or bogus_hid in combined
+
+
+# ---- mine --write-run-branch wiring (ADR-0022 Phase 6 slice 4) -----------
+
+
+def test_emit_mining_run_branch_requires_repo_path(tmp_path: Path) -> None:
+    """The helper refuses without a --repo argument (ClickException);
+    don't try to guess where to write the branch."""
+    import click as _click
+    import pytest
+
+    from maury.cli import _emit_mining_run_branch
+
+    with pytest.raises(_click.ClickException, match="--repo"):
+        _emit_mining_run_branch(
+            repo_path=None,
+            findings=[_make_finding()],
+            target_dir=tmp_path,
+            crossref_summary=None,
+        )
+
+
+def test_emit_mining_run_branch_requires_baseline(tmp_path: Path) -> None:
+    """Without a host-identity baseline the helper can't compute a
+    run-id; errors with a `maury init` pointer."""
+    import subprocess
+
+    import click as _click
+    import pytest
+
+    from maury.cli import _emit_mining_run_branch
+
+    # Set up a real git repo (so the next precondition wouldn't trip).
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, capture_output=True)
+    (repo / "f").write_text("x")
+    subprocess.run(["git", "add", "f"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    target = tmp_path / "target"  # no baseline written
+
+    with pytest.raises(_click.ClickException, match="maury init"):
+        _emit_mining_run_branch(
+            repo_path=repo,
+            findings=[_make_finding()],
+            target_dir=target,
+            crossref_summary=None,
+        )
+
+
+def test_emit_mining_run_branch_writes_branch_and_audit_event(tmp_path: Path) -> None:
+    """End-to-end: with a baseline + clean repo, the helper creates the
+    `maury/run/<run-id>` branch with one commit per finding and emits a
+    `mining_run_created` audit event."""
+    import subprocess
+
+    from maury.audit_log import read_events
+    from maury.cli import _emit_mining_run_branch
+    from maury.host_identity import SCHEMA_VERSION, HostIdentityBaseline, write_baseline
+
+    # Set up the target dir with a baseline (provides host_hex).
+    target = tmp_path / "target"
+    write_baseline(
+        target,
+        HostIdentityBaseline(
+            schema_version=SCHEMA_VERSION,
+            host_id_hex="aabbccdd",
+            registered_at="2026-05-21T10:00:00Z",
+            mode_id="mode_xxx",
+            mode_name_at_bootstrap="personal",
+        ),
+    )
+
+    # Set up the base repo with a clean working tree.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, capture_output=True)
+    (repo / "README.md").write_text("# repo\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    findings = [
+        _make_finding(kind="feedback", text="prefer terse"),
+        _make_finding(kind="preference", text="use Python 3.11+"),
+    ]
+
+    _emit_mining_run_branch(
+        repo_path=repo,
+        findings=findings,
+        target_dir=target,
+        crossref_summary=None,
+    )
+
+    # A branch matching the maury/run/<...>-aabbccdd shape now exists.
+    proc = subprocess.run(
+        ["git", "branch", "--list", "maury/run/*"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "aabbccdd" in proc.stdout
+    # And the mining-findings.md file is present with both findings.
+    staging = (repo / "mining-findings.md").read_text()
+    assert "prefer terse" in staging
+    assert "use Python 3.11+" in staging
+
+    # Audit event landed.
+    events = list(read_events(target))
+    assert any(e.event == "mining_run_created" for e in events)
+    mining_event = next(e for e in events if e.event == "mining_run_created")
+    assert mining_event.details["commit_count"] == 2
+    assert mining_event.details["skipped_dedup"] == 0

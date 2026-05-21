@@ -28,7 +28,10 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -244,15 +247,272 @@ def format_finding_block(finding: Finding, *, run_id: str, crossref_state: str |
     )
 
 
+# ---- git layer (slice 2 + 3) ---------------------------------------------
+
+
+class RunBranchError(RuntimeError):
+    """Raised when a run-branch operation cannot proceed (dirty work tree,
+    branch already exists, git invocation failure, etc.)."""
+
+
+@dataclass(frozen=True)
+class RunBranchResult:
+    """Outcome of `write_run_branch`."""
+
+    run_id: str
+    branch: str
+    commits_written: int
+    """Number of new commits added (one per non-deduped finding)."""
+
+    skipped_dedup: int
+    """Findings suppressed because their Content-Hash already appears in
+    the repo's accepted or rejected history."""
+
+    parent_sha: str
+    """Commit SHA the run branch was created from (typically `main`'s
+    HEAD at run time)."""
+
+    skipped_hashes: tuple[str, ...] = field(default_factory=tuple)
+    """Content-Hash values that matched the dedup set."""
+
+
+# ---- dedup query ---------------------------------------------------------
+
+
+def existing_content_hashes(repo_dir: Path) -> set[str]:
+    """Return every Content-Hash and Rejected-Content-Hash currently in
+    the repo's reachable history.
+
+    Per ADR-0022 §"Dedup at next mining run", the dedup primitive is
+    `git log --all --grep="^Content-Hash:"` (accepted history) plus
+    `git log --all --grep="^Rejected-Content-Hash:"` (rejections that
+    landed via the no-op metadata commit). Sub-second on multi-year
+    history because git's grep is commit-bounded, not tree-bounded.
+
+    Returns an empty set if the repo has no history yet or if the grep
+    invocation fails for any reason (don't break mining on a
+    transient git error).
+    """
+    hashes: set[str] = set()
+    for trailer in (TRAILER_CONTENT_HASH, TRAILER_REJECTED_CONTENT_HASH):
+        rc, out = _run_git(
+            ["git", "log", "--all", f"--grep=^{trailer}:"],
+            cwd=repo_dir,
+        )
+        if rc != 0:
+            continue
+        # Parse each "^{Trailer}: <hash>" line; tolerant of leading
+        # whitespace (git -log indents bodies by 4 spaces).
+        for line in out.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(f"{trailer}:"):
+                value = stripped.split(":", 1)[1].strip()
+                if value:
+                    hashes.add(value)
+    return hashes
+
+
+# ---- branch write --------------------------------------------------------
+
+
+def write_run_branch(
+    *,
+    repo_dir: Path,
+    findings: list[Finding],
+    host_hex: str,
+    crossref_states: dict[int, str] | None = None,
+    when: datetime | None = None,
+) -> RunBranchResult:
+    """Materialize the mining findings as a `maury/run/<run-id>` branch.
+
+    Per ADR-0022:
+      - Create the branch off the current HEAD.
+      - For each finding (after dedup), append its markdown block to
+        `mining-findings.md` and commit with the structured trailer
+        block. One commit per finding.
+      - Skip findings whose Content-Hash already appears in any
+        reachable history (accepted or rejected per the trailers).
+
+    Preconditions:
+      - `repo_dir` is a git working tree (raises RunBranchError otherwise).
+      - The working tree is clean (no uncommitted changes; raises if dirty).
+      - The branch `maury/run/<run-id>` does not yet exist (raises if it
+        does).
+
+    `crossref_states` is an optional dict mapping finding index → state
+    string (NEW / PRESENT_AND_CLEAR / PRESENT_BUT_UNCLEAR /
+    PRESENT_AND_REINFORCED). Missing indices default to NEW.
+
+    Returns a `RunBranchResult` summarizing what was committed. If
+    every finding was dedup-suppressed, the branch is NOT created
+    (no orphan empty branches); `commits_written=0` in that case.
+    """
+    _ensure_git_repo(repo_dir)
+    _ensure_clean_worktree(repo_dir)
+
+    parent_sha = _head_sha(repo_dir)
+    run_id = generate_run_id(host_hex=host_hex, when=when)
+    branch = branch_name_for(run_id)
+    _ensure_branch_absent(repo_dir, branch)
+
+    dedup_set = existing_content_hashes(repo_dir)
+    crossref_states = crossref_states or {}
+
+    # Filter findings to those that are not dedup hits. We compute
+    # hashes once so commits use the same value.
+    queued: list[tuple[Finding, str, str]] = []
+    skipped: list[str] = []
+    for idx, finding in enumerate(findings):
+        h = content_hash(kind=finding.kind, scope_hint=finding.scope_hint, text=finding.text)
+        if h in dedup_set:
+            skipped.append(h)
+            continue
+        state = crossref_states.get(idx, "NEW")
+        queued.append((finding, h, state))
+
+    if not queued:
+        return RunBranchResult(
+            run_id=run_id,
+            branch=branch,
+            commits_written=0,
+            skipped_dedup=len(skipped),
+            parent_sha=parent_sha,
+            skipped_hashes=tuple(skipped),
+        )
+
+    # Create + checkout the run branch.
+    _git_or_raise(["git", "checkout", "-b", branch, parent_sha], cwd=repo_dir, action="create run branch")
+
+    try:
+        staging_path = repo_dir / STAGING_FILE
+        for finding, _hash, state in queued:
+            block = format_finding_block(finding, run_id=run_id, crossref_state=state)
+            # Append; create if absent. The file lives at repo root.
+            _append_staging_block(staging_path, block)
+            _git_or_raise(
+                ["git", "add", STAGING_FILE],
+                cwd=repo_dir,
+                action="stage findings file",
+            )
+            subject = format_commit_subject(finding)
+            body = format_commit_body(finding, run_id=run_id, crossref_state=state)
+            # `--allow-empty-message` is *not* used; we always have a
+            # subject. `--cleanup=verbatim` keeps our trailer formatting.
+            _git_or_raise(
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    subject,
+                    "-m",
+                    body,
+                    "--cleanup=verbatim",
+                ],
+                cwd=repo_dir,
+                action="commit finding",
+            )
+    except RunBranchError:
+        # Best-effort: try to leave the repo on the parent_sha so the
+        # operator isn't stranded on a partial run branch. If even this
+        # cleanup fails, let the original error propagate.
+        _run_git(["git", "checkout", parent_sha], cwd=repo_dir)
+        raise
+
+    return RunBranchResult(
+        run_id=run_id,
+        branch=branch,
+        commits_written=len(queued),
+        skipped_dedup=len(skipped),
+        parent_sha=parent_sha,
+        skipped_hashes=tuple(skipped),
+    )
+
+
+# ---- git helpers ---------------------------------------------------------
+
+
+def _append_staging_block(path: Path, block: str) -> None:
+    """Append `block` to `path`. Create the file (with a header) if absent."""
+    if path.exists():
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(block)
+    else:
+        with path.open("w", encoding="utf-8") as fh:
+            fh.write("# Mining findings\n\nGenerated by `maury mine` per ADR-0022.\n\n")
+            fh.write(block)
+
+
+def _ensure_git_repo(repo_dir: Path) -> None:
+    rc, _ = _run_git(["git", "rev-parse", "--git-dir"], cwd=repo_dir)
+    if rc != 0:
+        raise RunBranchError(f"{repo_dir}: not a git working tree (or git not on PATH)")
+
+
+def _ensure_clean_worktree(repo_dir: Path) -> None:
+    rc, out = _run_git(["git", "status", "--porcelain"], cwd=repo_dir)
+    if rc != 0:
+        raise RunBranchError(f"{repo_dir}: git status failed: {out[:200]}")
+    if out.strip():
+        raise RunBranchError(
+            f"{repo_dir}: working tree has uncommitted changes; "
+            f"commit or stash them before running a mining branch.\n{out[:400]}"
+        )
+
+
+def _ensure_branch_absent(repo_dir: Path, branch: str) -> None:
+    rc, _out = _run_git(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=repo_dir,
+    )
+    if rc == 0:
+        raise RunBranchError(
+            f"{repo_dir}: branch {branch!r} already exists. Delete it (`git branch -D`) or re-run after a clock tick."
+        )
+
+
+def _head_sha(repo_dir: Path) -> str:
+    rc, out = _run_git(["git", "rev-parse", "HEAD"], cwd=repo_dir)
+    if rc != 0:
+        raise RunBranchError(f"{repo_dir}: cannot resolve HEAD: {out[:200]}")
+    return out.strip()
+
+
+def _git_or_raise(cmd: list[str], *, cwd: Path, action: str) -> str:
+    rc, out = _run_git(cmd, cwd=cwd)
+    if rc != 0:
+        raise RunBranchError(f"git failed to {action} (rc={rc}): {out[:400]}")
+    return out
+
+
+def _run_git(cmd: list[str], *, cwd: Path) -> tuple[int, str]:
+    """Run a git command in cwd; return (rc, combined stdout+stderr)."""
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            check=False,
+            cwd=str(cwd),
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return -1, str(e)
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
 __all__ = [
     "CONTENT_HASH_ALGORITHM_VERSION",
     "STAGING_FILE",
     "TRAILER_CONTENT_HASH",
     "TRAILER_REJECTED_CONTENT_HASH",
+    "RunBranchError",
+    "RunBranchResult",
     "branch_name_for",
     "content_hash",
+    "existing_content_hashes",
     "format_commit_body",
     "format_commit_subject",
     "format_finding_block",
     "generate_run_id",
+    "write_run_branch",
 ]

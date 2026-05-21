@@ -1897,6 +1897,16 @@ _DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
         "does NOT update the canonical watermark on success. Per ADR-0043."
     ),
 )
+@click.option(
+    "--write-run-branch",
+    "write_run_branch_flag",
+    is_flag=True,
+    help=(
+        "After extraction, emit findings as a `maury/run/<run-id>` git "
+        "branch in the repo passed to `--repo` (one commit per finding, "
+        "with Content-Hash trailers for dedup). Per ADR-0022."
+    ),
+)
 def mine_cmd(
     projects_dir: Path,
     project_name: str | None,
@@ -1910,6 +1920,7 @@ def mine_cmd(
     cwd_override: Path | None,
     full: bool,
     since: str | None,
+    write_run_branch_flag: bool,
 ) -> None:
     """Mine transcripts for durable preference candidates (Phase 6a + 6c).
 
@@ -2034,6 +2045,91 @@ def mine_cmd(
             highest_mtime=highest_mtime,
             windows_processed=result.windows_processed,
             findings_count=len(result.findings),
+        )
+
+    # Write run-branch per ADR-0022 if requested. Skipped silently when
+    # the flag isn't set or there are no findings to commit.
+    if write_run_branch_flag and result.findings:
+        _emit_mining_run_branch(
+            repo_path=repo_path,
+            findings=result.findings,
+            target_dir=target_dir,
+            crossref_summary=crossref_summary,
+        )
+
+
+def _emit_mining_run_branch(
+    *,
+    repo_path: Path | None,
+    findings: list[Finding],
+    target_dir: Path,
+    crossref_summary: object,
+) -> None:
+    """Wrap the ADR-0022 run-branch emit with CLI messaging + audit.
+
+    Validates `--repo` is set, resolves the host hex from the identity
+    baseline, builds the crossref-state map (when crossref ran), calls
+    `write_run_branch`, prints the result, and emits the
+    `mining_run_created` audit event.
+    """
+    import contextlib
+
+    from maury.audit_log import AuditLogError
+    from maury.audit_log import log as audit_log
+    from maury.host_identity import read_baseline
+    from maury.mining.run_branch import RunBranchError, write_run_branch
+
+    if repo_path is None:
+        raise click.ClickException(
+            "--write-run-branch requires --repo <path-to-base-repo>; the branch is created in that repo."
+        )
+
+    baseline = read_baseline(target_dir)
+    if baseline is None:
+        raise click.ClickException(
+            "no host-identity baseline; run `maury init` first so the "
+            "mining branch can carry the host_hex in its run-id."
+        )
+
+    # Build the crossref-state map (finding index → state string).
+    crossref_states: dict[int, str] = {}
+    if crossref_summary is not None:
+        entries = getattr(crossref_summary, "entries", None) or []
+        for idx, entry in enumerate(entries):
+            state = getattr(getattr(entry, "result", None), "state", None)
+            if state is not None:
+                crossref_states[idx] = str(state)
+
+    try:
+        run_result = write_run_branch(
+            repo_dir=repo_path,
+            findings=findings,
+            host_hex=baseline.host_id_hex,
+            crossref_states=crossref_states,
+        )
+    except RunBranchError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo("")
+    click.echo(f"run-branch: {run_result.branch}")
+    click.echo(f"  commits written: {run_result.commits_written}; skipped (dedup): {run_result.skipped_dedup}")
+    click.echo(f"  parent: {run_result.parent_sha[:8]}")
+    if run_result.commits_written > 0:
+        click.echo(f"  next: `maury review {run_result.run_id}` to walk the findings.")
+    else:
+        click.echo("  (no commits — every finding was already in history)")
+
+    # Audit-log: mining_run_created. Best-effort per the ADR-0035
+    # pattern; an audit-write failure must not abort the mining run.
+    with contextlib.suppress(AuditLogError):
+        audit_log(
+            target_dir,
+            "mining_run_created",
+            host_id=None,
+            run_id=run_result.run_id,
+            branch=run_result.branch,
+            commit_count=run_result.commits_written,
+            skipped_dedup=run_result.skipped_dedup,
         )
 
 
