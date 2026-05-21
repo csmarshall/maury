@@ -65,3 +65,13 @@ jobs:
 
       - name: "smoke - maury probe"
         run: uv run maury probe > /dev/null
+
+      - name: "smoke - maury statusline (must exit 0 even with no identity)"
+        # Per ADR-0052: the statusLine command must NEVER crash and
+        # NEVER exit non-zero, even when there's no maury identity at
+        # all (which is the case in CI). A maury bug here would break
+        # the operator's prompt; CI catches the regression.
+        run: |
+          OUTPUT=$(uv run maury statusline --target /tmp/maury-statusline-smoke)
+          echo "statusline output: $OUTPUT"
+          test "$OUTPUT" = "(no maury identity)"

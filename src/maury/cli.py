@@ -2329,13 +2329,18 @@ def doctor(claude_md: Path, output_format: str, fail_on: str) -> None:
     # Per the 2026-05-18 doctor expansion (Charles's "both" pick on
     # the design call): system-health rules contribute to the same
     # findings list. severity is unified; `--fail-on` aggregates over
-    # content + system-health.
+    # content + system-health. The `manifest_path` is best-effort
+    # (used by the focus-unreachable check from ADR-0052 §Confirmation);
+    # doctor remains usable from outside a base repo where the
+    # manifest is unreachable.
     from maury.bootstrap.init_cmd import current_host_id_file
 
+    candidate_manifest = DEFAULT_MANIFEST_PATH if DEFAULT_MANIFEST_PATH.is_file() else None
     findings.extend(
         run_system_health_checks(
             target_dir=target_dir,
             host_id_file=current_host_id_file(),
+            manifest_path=candidate_manifest,
         )
     )
 
