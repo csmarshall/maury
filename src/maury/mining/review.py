@@ -4,31 +4,51 @@
 finding (see `run_branch.py`). `maury review <run-id>` walks that branch
 oldest-first, prompting accept / reject / edit / skip per finding:
 
-- **accept** → `git cherry-pick` the commit onto `maury/review/<run-id>`.
-- **edit**   → `git cherry-pick -n` then `$EDITOR`, then commit reusing
-  the original message (`Content-Hash` preserved — the hash is the
-  identity of the *idea Claude surfaced*, not the final wording).
+- **accept** → re-append the finding's block and commit it with the
+  original message (`Content-Hash` preserved — the hash is the identity
+  of the *idea Claude surfaced*, not the final wording).
+- **edit**   → same, but the block is opened in `$EDITOR` first.
 - **reject** → accumulate `(content_hash, reason)`; after the walk they
   land as a single trailing no-op metadata commit whose body lists
   `Rejected-Content-Hash` / `Rejected-Reason` trailers.
 - **skip**   → no review-branch effect; the finding re-surfaces next run.
+
+Findings are applied by **reconstructing the appended block**
+(`file@sha` minus `file@sha^`) and re-appending it — *not* by literal
+`git cherry-pick`. ADR-0022 §"Branch lifecycle" says "cherry-pick," but
+the V1 single-staging-file model makes literal cherry-pick conflict-prone:
+each finding appends to `mining-findings.md`, so skipping/rejecting an
+earlier finding then accepting a later one leaves the later commit's diff
+context absent on the review branch. Reconstruct-and-append is gap-safe
+and conflict-free; the outcome is identical (per-finding commits carrying
+their trailers). Recorded in ADR-0022's amendment history.
 
 Review operates only on a repo the operator has **rw** on — their own
 base/mode repo within a single trust boundary (workflow.md Diagram 3).
 Cross-trust-boundary proposal is a *different* command, `maury promote`
 (ADR-0045, Diagram 4); do not rebuild promotion here.
 
-This module ships the **pure-logic** layer (this file, slice 1): branch
-naming, the rejection-commit body formatter, the stale-base predicate,
-and a tolerant trailer parser. The git layer (`review_run`, `rebase_run`)
-and the interactive CLI wrap these in later slices.
+Two layers:
+
+- **Pure logic** — branch naming, the rejection-commit body formatter,
+  the stale-base predicate, and a tolerant trailer parser. No I/O.
+- **Git layer** — `review_run` (walk + apply, decision-provider injected
+  so it is TTY-free and unit-testable) and `rebase_run` (the stale-base
+  fixup). The interactive CLI supplies the prompt-based provider.
 """
 
 from __future__ import annotations
 
+import os
+import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from maury.mining.run_branch import (
+    STAGING_FILE,
     TRAILER_CONTENT_HASH,
     TRAILER_REJECTED_CONTENT_HASH,
     branch_name_for,
@@ -177,6 +197,435 @@ def content_hashes_in_log(log_text: str) -> set[str]:
     return set(parse_trailer_values(log_text, TRAILER_CONTENT_HASH))
 
 
+# ---- git layer (slice 2) -------------------------------------------------
+
+
+class ReviewError(RuntimeError):
+    """Raised when a review operation cannot proceed (run branch missing,
+    stale base, dirty work tree, git invocation failure, etc.)."""
+
+
+class DecisionKind(StrEnum):
+    """The four per-finding verbs plus the loop-terminating QUIT.
+
+    QUIT stops the walk early; accepted/edited commits already on the
+    review branch persist (the next `maury review` resumes), but pending
+    rejections are discarded — the rejection commit is written only when
+    a full walk completes.
+    """
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+    EDIT = "edit"
+    SKIP = "skip"
+    QUIT = "quit"
+
+
+@dataclass(frozen=True)
+class CommitView:
+    """What the decision provider sees for one run-branch finding commit."""
+
+    sha: str
+    subject: str
+    body: str
+    content_hash: str
+    """The finding's Content-Hash trailer (empty string if absent)."""
+
+    block: str
+    """The markdown the commit appended to the staging file — also the
+    diff shown to the operator (it's an append-only model)."""
+
+
+@dataclass(frozen=True)
+class Decision:
+    """A decision provider's verdict on one finding.
+
+    `reason` carries the optional rejection justification (only read when
+    `kind is DecisionKind.REJECT`).
+    """
+
+    kind: DecisionKind
+    reason: str = ""
+
+
+# A decision provider maps a finding to a Decision. The interactive CLI
+# (slice 3) supplies a TTY-prompt provider; tests supply a scripted one.
+DecisionProvider = Callable[[CommitView], Decision]
+
+# An editor opens the given path for the operator to edit in place. The
+# default shells out to $EDITOR; tests inject a programmatic mutator.
+Editor = Callable[[Path], None]
+
+
+@dataclass(frozen=True)
+class ReviewResult:
+    """Outcome of `review_run`."""
+
+    run_id: str
+    review_branch: str
+    parent_sha: str
+    accepted: int = 0
+    edited: int = 0
+    rejected: int = 0
+    skipped: int = 0
+    """Explicit SKIP decisions this session."""
+
+    resumed_skipped: int = 0
+    """Findings already present on the review branch (resume), skipped
+    without prompting."""
+
+    quit_early: bool = False
+    rejection_commit_written: bool = False
+
+    @property
+    def merged_to(self) -> None:
+        """Review never merges; the operator does. Present so audit
+        payload construction can stay uniform."""
+        return None
+
+
+@dataclass(frozen=True)
+class RebaseRunResult:
+    """Outcome of `rebase_run`."""
+
+    run_id: str
+    run_branch: str
+    rebased: bool
+    """False when main had not moved (nothing to do)."""
+
+    new_base_sha: str
+
+
+def _default_editor(path: Path) -> None:
+    """Open `path` in `$EDITOR` (fallback `vi`) for in-place editing."""
+    editor = os.environ.get("EDITOR", "vi")
+    subprocess.run([editor, str(path)], check=True)
+
+
+def review_run(
+    *,
+    repo_dir: Path,
+    run_id: str,
+    curator_host: str,
+    decide: DecisionProvider,
+    editor: Editor = _default_editor,
+    main_ref: str = "main",
+) -> ReviewResult:
+    """Walk `maury/run/<run-id>` and build `maury/review/<run-id>`.
+
+    Per ADR-0022 §"Branch lifecycle". Steps:
+
+      1. Refuse if the run branch is missing, the work tree is dirty, or
+         `main` has moved since mining (stale base → `maury rebase-run`).
+      2. Create `maury/review/<run-id>` off `main` (or RESUME an existing
+         one — already-applied findings are skipped by Content-Hash).
+      3. Walk `git rev-list --reverse main..<run-branch>` oldest-first;
+         for each finding call `decide(view)`:
+           - ACCEPT → re-append the finding's block, commit `-C <sha>`
+             (message + Content-Hash preserved verbatim).
+           - EDIT   → same, but the block is opened in `$EDITOR` first.
+           - REJECT → accumulate `(content_hash, reason)`.
+           - SKIP   → no review-branch effect.
+           - QUIT   → stop the walk (accepted/edited persist; pending
+             rejections discarded).
+      4. On a full walk with ≥1 rejection, append one no-op rejection
+         metadata commit (`--allow-empty`).
+
+    Findings are applied by reconstructing the appended block rather than
+    `git cherry-pick`, because the single-staging-file append model makes
+    literal cherry-pick conflict-prone when earlier findings are skipped.
+    The outcome is identical: per-finding commits carrying their trailers.
+
+    Leaves the operator checked out on the review branch (the deliverable).
+    """
+    _ensure_git_repo(repo_dir)
+    _ensure_clean_worktree(repo_dir)
+
+    run_branch = branch_name_for(run_id)
+    _ensure_branch_exists(repo_dir, run_branch)
+
+    main_sha = _rev_parse(repo_dir, main_ref)
+    merge_base = _merge_base(repo_dir, main_ref, run_branch)
+    if is_stale_base(main_sha=main_sha, merge_base_sha=merge_base):
+        raise ReviewError(
+            f"{main_ref} has moved since {run_branch} was mined "
+            f"(merge-base {merge_base[:12]} != {main_ref} {main_sha[:12]}). "
+            f"Run `maury rebase-run {run_id}` first; review will not silently rebase."
+        )
+
+    review_branch = review_branch_name_for(run_id)
+    _checkout_review_branch(repo_dir, review_branch, main_sha)
+
+    already_done = _applied_hashes(repo_dir, main_ref, review_branch)
+
+    shas = _rev_list_oldest_first(repo_dir, main_ref, run_branch)
+
+    accepted = edited = skipped = resumed = 0
+    rejected: list[RejectedFinding] = []
+    quit_early = False
+
+    for sha in shas:
+        view = _build_commit_view(repo_dir, sha)
+        if view.content_hash and view.content_hash in already_done:
+            resumed += 1
+            continue
+
+        decision = decide(view)
+        if decision.kind is DecisionKind.QUIT:
+            quit_early = True
+            break
+        if decision.kind is DecisionKind.SKIP:
+            skipped += 1
+            continue
+        if decision.kind is DecisionKind.REJECT:
+            rejected.append(RejectedFinding(content_hash=view.content_hash, reason=decision.reason))
+            continue
+        if decision.kind is DecisionKind.EDIT:
+            _apply_finding(repo_dir, view, editor=editor)
+            edited += 1
+            continue
+        # ACCEPT
+        _apply_finding(repo_dir, view, editor=None)
+        accepted += 1
+
+    rejection_written = False
+    if not quit_early and rejected:
+        _write_rejection_commit(
+            repo_dir,
+            run_id=run_id,
+            curator_host=curator_host,
+            rejected=rejected,
+        )
+        rejection_written = True
+
+    return ReviewResult(
+        run_id=run_id,
+        review_branch=review_branch,
+        parent_sha=main_sha,
+        accepted=accepted,
+        edited=edited,
+        rejected=len(rejected),
+        skipped=skipped,
+        resumed_skipped=resumed,
+        quit_early=quit_early,
+        rejection_commit_written=rejection_written,
+    )
+
+
+def rebase_run(
+    *,
+    repo_dir: Path,
+    run_id: str,
+    main_ref: str = "main",
+) -> RebaseRunResult:
+    """Rebase `maury/run/<run-id>` onto current `main` per ADR-0022
+    §"Stale base handling".
+
+    A no-op when `main` has not moved. On a rebase conflict the rebase is
+    aborted and a `ReviewError` is raised pointing the operator at manual
+    resolution — we do not leave the repo mid-rebase.
+    """
+    _ensure_git_repo(repo_dir)
+    _ensure_clean_worktree(repo_dir)
+
+    run_branch = branch_name_for(run_id)
+    _ensure_branch_exists(repo_dir, run_branch)
+
+    main_sha = _rev_parse(repo_dir, main_ref)
+    merge_base = _merge_base(repo_dir, main_ref, run_branch)
+    if not is_stale_base(main_sha=main_sha, merge_base_sha=merge_base):
+        return RebaseRunResult(run_id=run_id, run_branch=run_branch, rebased=False, new_base_sha=main_sha)
+
+    _git_or_raise(["git", "checkout", run_branch], cwd=repo_dir, action="checkout run branch")
+    rc, out = _run_git(["git", "rebase", main_ref], cwd=repo_dir)
+    if rc != 0:
+        # Abort so the operator isn't stranded mid-rebase.
+        _run_git(["git", "rebase", "--abort"], cwd=repo_dir)
+        raise ReviewError(
+            f"rebase of {run_branch} onto {main_ref} conflicted; aborted. "
+            f"Resolve by hand (`git checkout {run_branch} && git rebase {main_ref}`).\n{out[:400]}"
+        )
+    return RebaseRunResult(run_id=run_id, run_branch=run_branch, rebased=True, new_base_sha=main_sha)
+
+
+# ---- git helpers ---------------------------------------------------------
+
+
+def _apply_finding(repo_dir: Path, view: CommitView, *, editor: Editor | None) -> None:
+    """Append the finding's block to the staging file and commit it with
+    the original commit's message (`-C`). For EDIT, the block is opened
+    in `$EDITOR` first and the edited content is what gets appended."""
+    block = view.block
+    if editor is not None:
+        block = _edit_block(block, editor=editor)
+
+    staging_path = repo_dir / STAGING_FILE
+    with staging_path.open("a", encoding="utf-8") as fh:
+        fh.write(block)
+    _git_or_raise(["git", "add", STAGING_FILE], cwd=repo_dir, action="stage finding")
+    _git_or_raise(
+        ["git", "commit", "-C", view.sha, "--cleanup=verbatim"],
+        cwd=repo_dir,
+        action="commit accepted finding",
+    )
+
+
+def _edit_block(block: str, *, editor: Editor) -> str:
+    """Write `block` to a temp file, let the operator edit it, return the
+    edited content."""
+    with NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(block)
+        tmp_path = Path(tmp.name)
+    try:
+        editor(tmp_path)
+        return tmp_path.read_text(encoding="utf-8")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _write_rejection_commit(
+    repo_dir: Path,
+    *,
+    run_id: str,
+    curator_host: str,
+    rejected: list[RejectedFinding],
+) -> None:
+    body = format_rejection_commit_body(run_id=run_id, curator_host=curator_host, rejected=rejected)
+    _git_or_raise(
+        [
+            "git",
+            "commit",
+            "--allow-empty",
+            "-m",
+            REJECTION_COMMIT_SUBJECT,
+            "-m",
+            body,
+            "--cleanup=verbatim",
+        ],
+        cwd=repo_dir,
+        action="write rejection commit",
+    )
+
+
+def _build_commit_view(repo_dir: Path, sha: str) -> CommitView:
+    subject = _git_or_raise(["git", "show", "-s", "--format=%s", sha], cwd=repo_dir, action="read subject").strip()
+    body = _git_or_raise(["git", "show", "-s", "--format=%b", sha], cwd=repo_dir, action="read body")
+    hashes = parse_trailer_values(body, TRAILER_CONTENT_HASH)
+    content_hash = hashes[0] if hashes else ""
+    block = _appended_block(repo_dir, sha)
+    return CommitView(sha=sha, subject=subject, body=body, content_hash=content_hash, block=block)
+
+
+def _appended_block(repo_dir: Path, sha: str) -> str:
+    """Return the text this commit appended to the staging file.
+
+    Each finding commit only appends, so `file@sha = file@sha^ + block`.
+    We compute `block = after[len(before):]` — robust and conflict-free,
+    no diff parsing. `before` is empty when the commit created the file.
+    """
+    after = _file_at_ref(repo_dir, f"{sha}:{STAGING_FILE}")
+    before = _file_at_ref(repo_dir, f"{sha}^:{STAGING_FILE}") or ""
+    if after is None:
+        raise ReviewError(f"commit {sha[:12]} does not touch {STAGING_FILE!r}; not a maury finding commit")
+    return after[len(before) :]
+
+
+def _file_at_ref(repo_dir: Path, ref_path: str) -> str | None:
+    """`git show <ref>:<path>`; None if the path doesn't exist at the ref."""
+    rc, out = _run_git(["git", "show", ref_path], cwd=repo_dir)
+    return out if rc == 0 else None
+
+
+def _applied_hashes(repo_dir: Path, main_ref: str, review_branch: str) -> set[str]:
+    """Content-Hash + Rejected-Content-Hash already recorded on the review
+    branch (`main..review_branch`) — the resume-skip set."""
+    rc, out = _run_git(["git", "log", f"{main_ref}..{review_branch}"], cwd=repo_dir)
+    if rc != 0:
+        return set()
+    applied = set(parse_trailer_values(out, TRAILER_CONTENT_HASH))
+    applied |= set(parse_trailer_values(out, TRAILER_REJECTED_CONTENT_HASH))
+    return applied
+
+
+def _rev_list_oldest_first(repo_dir: Path, main_ref: str, run_branch: str) -> list[str]:
+    out = _git_or_raise(
+        ["git", "rev-list", "--reverse", f"{main_ref}..{run_branch}"],
+        cwd=repo_dir,
+        action="list run-branch commits",
+    )
+    return [line.strip() for line in out.splitlines() if line.strip()]
+
+
+def _checkout_review_branch(repo_dir: Path, review_branch: str, main_sha: str) -> None:
+    """Resume an existing review branch, else create it off `main`."""
+    rc, _ = _run_git(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{review_branch}"], cwd=repo_dir)
+    if rc == 0:
+        _git_or_raise(["git", "checkout", review_branch], cwd=repo_dir, action="resume review branch")
+    else:
+        _git_or_raise(
+            ["git", "checkout", "-b", review_branch, main_sha],
+            cwd=repo_dir,
+            action="create review branch",
+        )
+
+
+def _merge_base(repo_dir: Path, a: str, b: str) -> str:
+    out = _git_or_raise(["git", "merge-base", a, b], cwd=repo_dir, action="compute merge-base")
+    return out.strip()
+
+
+def _rev_parse(repo_dir: Path, ref: str) -> str:
+    rc, out = _run_git(["git", "rev-parse", "--verify", f"{ref}^{{commit}}"], cwd=repo_dir)
+    if rc != 0:
+        raise ReviewError(f"{repo_dir}: cannot resolve ref {ref!r}: {out[:200]}")
+    return out.strip()
+
+
+def _ensure_git_repo(repo_dir: Path) -> None:
+    rc, _ = _run_git(["git", "rev-parse", "--git-dir"], cwd=repo_dir)
+    if rc != 0:
+        raise ReviewError(f"{repo_dir}: not a git working tree (or git not on PATH)")
+
+
+def _ensure_clean_worktree(repo_dir: Path) -> None:
+    rc, out = _run_git(["git", "status", "--porcelain"], cwd=repo_dir)
+    if rc != 0:
+        raise ReviewError(f"{repo_dir}: git status failed: {out[:200]}")
+    if out.strip():
+        raise ReviewError(
+            f"{repo_dir}: working tree has uncommitted changes; commit or stash them before reviewing.\n{out[:400]}"
+        )
+
+
+def _ensure_branch_exists(repo_dir: Path, branch: str) -> None:
+    rc, _ = _run_git(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=repo_dir)
+    if rc != 0:
+        raise ReviewError(f"{repo_dir}: branch {branch!r} does not exist (was it mined? already merged/deleted?)")
+
+
+def _git_or_raise(cmd: list[str], *, cwd: Path, action: str) -> str:
+    rc, out = _run_git(cmd, cwd=cwd)
+    if rc != 0:
+        raise ReviewError(f"git failed to {action} (rc={rc}): {out[:400]}")
+    return out
+
+
+def _run_git(cmd: list[str], *, cwd: Path) -> tuple[int, str]:
+    """Run a git command in cwd; return (rc, combined stdout+stderr)."""
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            check=False,
+            cwd=str(cwd),
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return -1, str(e)
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
 __all__ = [
     "NO_REASON_SENTINEL",
     "REJECTION_COMMIT_SUBJECT",
@@ -184,10 +633,20 @@ __all__ = [
     "TRAILER_ORIGINAL_RUN",
     "TRAILER_REJECTED_COUNT",
     "TRAILER_REJECTED_REASON",
+    "CommitView",
+    "Decision",
+    "DecisionKind",
+    "DecisionProvider",
+    "Editor",
+    "RebaseRunResult",
     "RejectedFinding",
+    "ReviewError",
+    "ReviewResult",
     "content_hashes_in_log",
     "format_rejection_commit_body",
     "is_stale_base",
     "parse_trailer_values",
+    "rebase_run",
     "review_branch_name_for",
+    "review_run",
 ]
