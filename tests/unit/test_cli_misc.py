@@ -3,7 +3,8 @@
 Targets the remaining single-line / small-block gaps in `cli.py`:
 - `verify-cc-projects-dir --check-only` (both branches).
 - `verify-cc-hook-timing --check-only` (both branches).
-- `review` / `promote-review` stubs (raise ClickException).
+- `promote-review` stub (raises ClickException). (`review` is now
+  implemented — see `test_cli_review.py`.)
 - `doctor --fail-on info` with an empty file → exit 1.
 - `render` against a malformed manifest → ClickException.
 """
@@ -58,13 +59,6 @@ def test_verify_cc_hook_timing_check_only_claude_present(monkeypatch: pytest.Mon
 
 
 # ---- unimplemented stubs -----------------------------------------------
-
-
-def test_review_command_is_unimplemented() -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["review"])
-    assert result.exit_code != 0
-    assert "not yet implemented" in result.output
 
 
 def test_promote_review_command_is_unimplemented() -> None:

@@ -6,9 +6,12 @@ import json
 import socket
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
+
+if TYPE_CHECKING:
+    from maury.mining.review import CommitView, Decision
 
 from maury import __version__
 from maury.active_sessions import (
@@ -1777,10 +1780,192 @@ def render_cmd(
         click.echo("(--check; no files written)")
 
 
-@main.command()
-def review() -> None:
-    """Review queued proposals interactively."""
-    raise click.ClickException("not yet implemented")
+@main.command("review")
+@click.argument("run_id")
+@click.option(
+    "--repo",
+    "repo_path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the base/mode repo holding the `maury/run/<run-id>` branch.",
+)
+@click.option(
+    "--accept-all",
+    "accept_all",
+    is_flag=True,
+    help="Accept every finding without prompting (scripted / trust-the-run).",
+)
+@click.option(
+    "--reject-all",
+    "reject_all",
+    is_flag=True,
+    help="Reject every finding without prompting. Pair with --reason.",
+)
+@click.option(
+    "--reason",
+    "reason",
+    default=None,
+    help="Rejection reason recorded for --reject-all (optional).",
+)
+@click.option(
+    "--main-ref",
+    "main_ref",
+    default="main",
+    show_default=True,
+    help="Trunk ref the run branch was forked from / the review branch builds on.",
+)
+def review_cmd(
+    run_id: str,
+    repo_path: Path,
+    accept_all: bool,
+    reject_all: bool,
+    reason: str | None,
+    main_ref: str,
+) -> None:
+    """Walk a mining run's findings and build its review branch (ADR-0022).
+
+    Reviews the `maury/run/<RUN_ID>` branch interactively: for each finding
+    you choose accept / reject / edit / skip / quit. Accepted (and edited)
+    findings are committed onto `maury/review/<RUN_ID>` with their
+    Content-Hash trailers preserved; rejections land as one trailing no-op
+    metadata commit so the next mining run dedups them.
+
+    Quitting mid-walk keeps what you accepted (re-run to resume — already
+    applied findings are skipped). Refuses if `main` moved since mining;
+    run `maury rebase-run <RUN_ID>` first.
+
+    Review is single-trust-boundary, rw self-curation. Cross-boundary
+    proposal is `maury promote` (ADR-0045), not this command.
+    """
+    import contextlib
+
+    from maury.audit_log import AuditLogError, default_target_dir
+    from maury.audit_log import log as audit_log
+    from maury.host_identity import read_baseline
+    from maury.mining.review import (
+        Decision,
+        DecisionKind,
+        DecisionProvider,
+        ReviewError,
+        review_run,
+    )
+
+    if accept_all and reject_all:
+        raise click.ClickException("--accept-all and --reject-all are mutually exclusive.")
+    if reason is not None and not reject_all:
+        raise click.ClickException("--reason only applies with --reject-all.")
+
+    target_dir = default_target_dir()
+    baseline = read_baseline(target_dir)
+    curator_host = baseline.host_id_hex if baseline is not None else "(unknown)"
+
+    provider: DecisionProvider
+    if accept_all:
+        provider = lambda _view: Decision(DecisionKind.ACCEPT)  # noqa: E731
+    elif reject_all:
+        provider = lambda _view: Decision(DecisionKind.REJECT, reason=reason or "")  # noqa: E731
+    else:
+        provider = _interactive_review_provider
+
+    try:
+        result = review_run(
+            repo_dir=repo_path,
+            run_id=run_id,
+            curator_host=curator_host,
+            decide=provider,
+            main_ref=main_ref,
+        )
+    except ReviewError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo("")
+    click.echo(f"review-branch: {result.review_branch}")
+    click.echo(
+        f"  accepted: {result.accepted}; edited: {result.edited}; "
+        f"rejected: {result.rejected}; skipped: {result.skipped}"
+        + (f"; resumed-skipped: {result.resumed_skipped}" if result.resumed_skipped else "")
+    )
+    if result.quit_early:
+        click.echo("  (quit early — re-run `maury review` to resume; accepted findings are kept)")
+    if result.accepted or result.edited or result.rejection_commit_written:
+        click.echo(
+            f"  next: merge {result.review_branch} into {main_ref} "
+            f"(you own this repo), or push it and open a PR if it's team-shared."
+        )
+    else:
+        click.echo("  (nothing accepted — review branch is even with " + main_ref + ")")
+
+    # review_completed: best-effort per the ADR-0035 pattern. Edited
+    # findings count as accepted (they land on the branch).
+    with contextlib.suppress(AuditLogError):
+        audit_log(
+            target_dir,
+            "review_completed",
+            host_id=None,
+            run_id=run_id,
+            accepted=result.accepted + result.edited,
+            rejected=result.rejected,
+            merged_to=None,
+        )
+
+
+def _interactive_review_provider(view: CommitView) -> Decision:
+    """TTY prompt for one finding: accept / reject / edit / skip / quit."""
+    from maury.mining.review import Decision, DecisionKind
+
+    click.echo("")
+    click.echo(click.style(f"── {view.subject}", bold=True))
+    click.echo(view.block.rstrip("\n"))
+    while True:
+        choice = click.prompt("  [a]ccept / [r]eject / [e]dit / [s]kip / [q]uit", default="s").strip().lower()
+        if choice in ("a", "accept"):
+            return Decision(DecisionKind.ACCEPT)
+        if choice in ("e", "edit"):
+            return Decision(DecisionKind.EDIT)
+        if choice in ("s", "skip"):
+            return Decision(DecisionKind.SKIP)
+        if choice in ("q", "quit"):
+            return Decision(DecisionKind.QUIT)
+        if choice in ("r", "reject"):
+            rejection_reason = click.prompt("  reason (optional, blank = none)", default="", show_default=False)
+            return Decision(DecisionKind.REJECT, reason=rejection_reason)
+        click.echo("  please enter one of: a, r, e, s, q")
+
+
+@main.command("rebase-run")
+@click.argument("run_id")
+@click.option(
+    "--repo",
+    "repo_path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Path to the base/mode repo holding the `maury/run/<run-id>` branch.",
+)
+@click.option(
+    "--main-ref",
+    "main_ref",
+    default="main",
+    show_default=True,
+    help="Trunk ref to rebase the run branch onto.",
+)
+def rebase_run_cmd(run_id: str, repo_path: Path, main_ref: str) -> None:
+    """Rebase a mining run branch onto current `main` (ADR-0022).
+
+    Use when `maury review` refuses because `main` moved since the run
+    was mined. A no-op when `main` has not moved. On a rebase conflict the
+    rebase is aborted (no mid-rebase stranding); resolve by hand.
+    """
+    from maury.mining.review import ReviewError, rebase_run
+
+    try:
+        result = rebase_run(repo_dir=repo_path, run_id=run_id, main_ref=main_ref)
+    except ReviewError as e:
+        raise click.ClickException(str(e)) from e
+
+    if result.rebased:
+        click.echo(f"rebased {result.run_branch} onto {main_ref}; now run `maury review {run_id}`.")
+    else:
+        click.echo(f"{result.run_branch} is already current with {main_ref}; nothing to rebase.")
 
 
 @main.command("promote-review")
