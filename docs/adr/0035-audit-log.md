@@ -374,10 +374,7 @@ References used:
   Dry-run paths intentionally suppress audit-log writes —
   `--check` is observation-only and should leave zero state
   side-effects, audit-log included.
-  Remaining event kinds — `focus_switched`, `focus_switch_refused`
-  (owned by the planned `maury focus use` per ADR-0052;
-  `mode_switched`/`mode_switch_refused` are obsolete, see the
-  2026-05-20 line below), `manifest_upgraded` (reserved; ADR-0030
+  Remaining event kinds — `manifest_upgraded` (reserved; ADR-0030
   framework deferred), `claude_revert`, `mining_run_created`,
   `review_completed`, `promotion_started`, `promotion_completed`,
   `pr_opened`, `subscription_added`, `subscription_pinned`,
@@ -393,3 +390,11 @@ References used:
   reuse the existing `init_completed` and `manifest_mutated`
   kinds). Replaced with `focus_switched` and `focus_switch_refused`
   per [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).
+- 2026-05-20 — `focus_switched` and `focus_switch_refused` wiring
+  **shipped** in the `maury focus use` CLI handler per ADR-0052's
+  implementation slice 4. Best-effort emission via
+  `contextlib.suppress(AuditLogError)`; refused events carry
+  `result="failure"` and a `precondition` field naming the
+  failed check (`not_registered` / `unknown_focus` /
+  `not_reachable` / `active_sessions`). Now removed from the
+  "remaining" list above.

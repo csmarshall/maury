@@ -667,8 +667,10 @@ mode-tree mechanism. Per
   `~/.claude/maury-state/host-identity.json`.
 - Operators see the active mode + focus in Claude Code's prompt
   via `maury statusline`, wired into `~/.claude/settings.json`'s
-  `statusLine` setting (installed by default at `maury init`,
-  opt out with `--no-statusline`).
+  `statusLine` setting by pasting a three-line snippet into the
+  base-repo `settings.json` fragment (the originally-proposed
+  `maury init` auto-install was retracted 2026-05-20 — see
+  [ADR-0052 amendment-history](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md#amendment-history)).
 
 Foci share trust boundaries with their parent mode by design.
 Trust-boundary crossings remain heavy and explicit; focus

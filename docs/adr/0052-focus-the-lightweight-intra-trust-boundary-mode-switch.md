@@ -269,7 +269,9 @@ Maury ships `maury statusline` as a subcommand that:
      return non-zero. Claude Code displays whatever was returned;
      a maury bug must not break the statusLine.
 
-The operator wires it into their settings:
+The operator wires it into their base-repo settings.json
+fragment (which gets composed into the rendered
+`~/.claude/settings.json` per `src/maury/render/settings_merge.py`):
 
 ```json
 {
@@ -280,13 +282,11 @@ The operator wires it into their settings:
 }
 ```
 
-`maury init` adds this entry to the rendered `settings.json` by
-default (operator can opt out with `--no-statusline`, mirroring the
-hook-installation pattern from ADR-0023). Existing operator
-`statusLine` settings are preserved if they don't conflict —
-maury's installer refuses to overwrite a non-maury-managed
-`statusLine` and surfaces a warning pointing at `--force` if the
-operator wants the maury one anyway.
+Once present in the layer-merged settings.json, every subsequent
+`maury sync` preserves it (it's part of the render output, not a
+host-local post-mutation). **Manual wire-up by design** — see the
+2026-05-20 amendment-history entry for why the originally-proposed
+`maury init` auto-install was retracted.
 
 **Format is minimal by design.** ASCII only, no color, scriptable
 (other tools can grep the statusLine via `claude --print` or the
@@ -392,12 +392,15 @@ No active-focus pointer at all. Render takes `--focus
 
 ## Build-order placement
 
-- **Phase 5.x.d** (current — extends the Phase 5.x.b manifest-
-  resolve work): ships `maury focus use`, `maury focus current`,
-  `maury focus list`, `maury statusline`, the `active_focus` field
-  on `host-identity.json`, the `focus_switched`/`focus_switch_refused`
-  audit events, the trust-boundary-reachability check, and the
-  `--no-statusline` opt-out flag on `maury init`.
+- **Phase 5.x.d** (shipped 2026-05-20 — extends the Phase 5.x.b
+  manifest-resolve work): ships `maury focus use`,
+  `maury focus current`, `maury focus list`, `maury statusline`,
+  the `active_focus` field on `host-identity.json`, the
+  `focus_switched`/`focus_switch_refused` audit events, and the
+  trust-boundary-reachability check.
+  (The originally-listed `--no-statusline` opt-out flag on
+  `maury init` was retracted 2026-05-20 along with the auto-
+  install of the statusLine entry; see Amendment history.)
 - **Phase 5.x.e** (immediately after): the `maury doctor`
   `focus-unreachable` rule and the CI smoke test for `maury
   statusline`.
@@ -448,4 +451,37 @@ documentation:
 
 ## Amendment history
 
-None.
+- 2026-05-20 — **implementation shipped** (Phase 5.x.d). Five
+  commits on devel:
+  * `feat(host-identity): add active_focus field to baseline` —
+    additive field, no schema bump.
+  * `feat(focus): focus engine + precondition cascade` — pure
+    logic at `src/maury/focus.py`: `is_reachable`,
+    `active_focus_get/set`, `evaluate_focus_use`,
+    `list_reachable_modes`. 21 unit tests.
+  * `feat(cli): focus use/current/list CLI verbs` — three
+    click commands wired to the engine. 13 unit tests.
+  * `feat(focus): emit focus_switched / focus_switch_refused
+    audit events` — best-effort emission via
+    `contextlib.suppress(AuditLogError)`. 5 unit tests.
+  * `feat(statusline): maury statusline subcommand` — one-line
+    output, catches `BaseException` so a maury bug can never
+    break the user's prompt. 9 unit tests.
+
+  **Retracted: the originally-proposed `maury init` auto-install
+  of the statusLine entry into rendered `settings.json`.**
+  Implementation surfaced a real problem: `settings.json` is
+  composed by `settings_merge.py` from layer fragments at every
+  render. A post-mutation by init would be clobbered by the
+  next `maury sync`. Three options were considered (host-local
+  layer fragment as a new state surface; curator-side default
+  baked into `agency init`; document-only manual wire-up).
+  Charles chose the document-only path 2026-05-20: simplest,
+  no new state surface, fits the design philosophy that
+  `settings.json` is rendered (not mutated post-render). The
+  `--no-statusline` flag the ADR body originally proposed is
+  not implemented. The `maury statusline` subcommand itself
+  ships; operators paste the three-line `statusLine` snippet
+  into their base-repo `settings.json` fragment once. §"StatusLine
+  integration" body was updated to describe the manual wire-up
+  path.

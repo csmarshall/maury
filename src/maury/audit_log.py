@@ -10,18 +10,19 @@ command sites that don't carry an explicit target_dir parameter. The
 schema enumeration in ADR-0035 is the authoritative list; this module
 enforces shape but not membership.
 
-Event-kind wiring status (2026-05-19): `sync_started` / `sync_completed`
+Event-kind wiring status (2026-05-20): `sync_started` / `sync_completed`
 / `sync_aborted` / `drift_detected` / `render_applied` (sync.py),
 `init_completed` (bootstrap/init_cmd.py), `manifest_mutated` (mode
 bootstrap + deregister), `manifest_merge_resolved` (manifest_resolve_cmd.py),
 `reconcile_action` (reconcile.py), `sessions_pruned` (cli.py sessions
-prune), `uninstall_completed` (uninstall.py). Remaining ADR-0035 kinds —
-mode_switched, mode_switch_refused (planned `maury mode use`),
-manifest_upgraded (deferred per ADR-0030), claude_revert,
-mining_run_created, review_completed, promotion_started,
-promotion_completed, pr_opened, subscription_added, subscription_pinned,
-backup_created, restore_completed, tool_use_logged, error (catch-all
-not yet wired) — get wired as their owning command sites ship.
+prune), `uninstall_completed` (uninstall.py), `focus_switched` /
+`focus_switch_refused` (cli.py focus use per ADR-0052). Remaining
+ADR-0035 kinds — manifest_upgraded (deferred per ADR-0030),
+claude_revert, mining_run_created, review_completed,
+promotion_started, promotion_completed, pr_opened, subscription_added,
+subscription_pinned, backup_created, restore_completed,
+tool_use_logged, error (catch-all not yet wired) — get wired as their
+owning command sites ship.
 """
 
 from __future__ import annotations

@@ -22,6 +22,8 @@ is still legible for diagnosis.
 - [`maury review <run-id>`](#maury-review-run-id)
 - [`maury promote --from --to`](#maury-promote---from---to)
 - [`maury mode use <name>` (superseded — see `maury focus use`)](#maury-mode-use-name-historical--superseded)
+- [`maury focus use <path>` + sister verbs](#maury-focus-use-path--sister-verbs)
+- [`maury statusline`](#maury-statusline)
 - [`maury uninstall`](#maury-uninstall)
 
 ---
@@ -304,6 +306,99 @@ flowchart TD
     UpdateState --> Push[commit + push marker change to mode repo<br/>so peer hosts see the switch]
     Push --> Done([restart Claude Code to pick up new hooks])
 ```
+
+---
+
+## `maury focus use <path>` + sister verbs
+
+The lightweight intra-trust-boundary mode-switch verb (shipped
+2026-05-20 per
+[ADR-0052](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md)).
+Unlike `mode use`/`mode bootstrap` which cross trust boundaries
+and require deregister+re-bootstrap, `focus use` flips the
+active leaf of the mode tree *within* the host's registered
+trust-boundary subtree.
+
+```sh
+# switch the active focus to a descendant of the registered mode
+maury focus use personal:consulting:acme
+
+# clear the active focus (resumes the registered mode as active)
+maury focus use
+
+# print the active focus (or note that none is set)
+maury focus current
+
+# list reachable foci (descendants of the registered mode)
+maury focus list
+```
+
+Preconditions for `focus use <path>`:
+
+1. The host is registered (`host-identity.json` exists). If
+   not, points the user at `maury init`.
+2. The target path resolves to a known mode in the manifest.
+3. The target mode is reachable from the host's registered
+   mode — i.e., in the same trust-boundary subtree. Crossing a
+   trust boundary refuses with a pointer at `mode deregister` +
+   `mode bootstrap` per
+   [ADR-0039](adr/0039-bootstrap-and-host-lifecycle.md).
+4. No active Claude Code sessions are running (override
+   `--force-active-session`). Reuses the active-sessions log
+   per [ADR-0025](adr/0025-profile-switching-session-safeguards.md).
+
+Successful switches update the `active_focus` field on
+`host-identity.json` and emit a `focus_switched` audit event.
+Refused switches emit `focus_switch_refused` with the failed
+precondition in the payload.
+
+---
+
+## `maury statusline`
+
+A one-line subcommand designed to be wired into Claude Code's
+`statusLine` setting (per [the Claude Code statusLine docs][cc-statusline-doc]).
+Shipped 2026-05-20 per
+[ADR-0052](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).
+
+```
+$ maury statusline
+mode:personal focus:personal:consulting:acme
+```
+
+Output forms:
+
+- With focus set: `mode:<registered-mode> focus:<active-focus>`
+- With no focus: `mode:<registered-mode>`
+- No baseline: `(no maury identity)`
+
+**Crash-resistant by design.** `maury statusline` catches every
+exception (including `BaseException`) and falls back to a fixed
+`(maury statusline error)` string — a maury bug must not break
+the operator's prompt.
+
+### Wiring into Claude Code
+
+Add this to your **base-repo `settings.json` fragment** (which
+gets composed into the rendered `~/.claude/settings.json` per
+`src/maury/render/settings_merge.py`):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "maury statusline"
+  }
+}
+```
+
+Once present in the layer-merged settings.json, every
+subsequent `maury sync` preserves it. Manual wire-up is
+deliberate — the originally-proposed `maury init` auto-install
+was retracted 2026-05-20 (see
+[ADR-0052 amendment-history](adr/0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md#amendment-history)).
+
+[cc-statusline-doc]: https://code.claude.com/docs/en/statusline
 
 ---
 
