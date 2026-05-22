@@ -561,3 +561,66 @@ def test_rebase_run_rebases_when_main_moved_then_review_works(tmp_path: Path) ->
     _run(["git", "checkout", "-q", "main"], cwd=repo)
     result = review_run(repo_dir=repo, run_id=rid, curator_host="h", decide=_scripted([Decision(DecisionKind.ACCEPT)]))
     assert result.accepted == 1
+
+
+# ---- ADR-0053: classify-on-accept auto-placement ------------------------
+
+from maury.manifest import Manifest, ProfileSpec  # noqa: E402
+from maury.rules.schema import Rule, RuleActions, RuleConditions  # noqa: E402
+
+
+def _placement_manifest() -> Manifest:
+    return Manifest(
+        version=1,
+        profiles={
+            "p_base": ProfileSpec(name="base", extends=None),
+            "p_work": ProfileSpec(name="work", extends="p_base"),
+        },
+        hosts={},
+    )
+
+
+@_skip
+def test_review_accept_places_into_classified_fragment(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    rid = _mine(repo, [_gw_finding("prefer terse responses")], source_mode="work")
+    rules = [Rule(id="terse", when=RuleConditions(any_keyword=("terse",)), then=RuleActions(profile="work"))]
+
+    result = review_run(
+        repo_dir=repo,
+        run_id=rid,
+        curator_host="h",
+        decide=_scripted([Decision(DecisionKind.ACCEPT)]),
+        rules=rules,
+        manifest=_placement_manifest(),
+    )
+    assert result.accepted == 1
+    assert result.placed == 1
+    # Landed in the work fragment, carrying provenance — NOT mining-findings.md.
+    frag = repo / "profiles" / "work" / "CLAUDE.md.fragment"
+    assert frag.is_file()
+    text = frag.read_text()
+    assert "prefer terse responses" in text
+    assert "maury: placed from" in text
+    assert not (repo / "mining-findings.md").exists()
+
+
+@_skip
+def test_review_accept_unmatched_falls_to_manual_queue(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    rid = _mine(repo, [_gw_finding("something unrelated")], source_mode="work")
+    # A rule that does NOT match the finding → profile=None → manual queue.
+    rules = [Rule(id="nope", when=RuleConditions(any_keyword=("zzz-no-match",)), then=RuleActions(profile="work"))]
+
+    result = review_run(
+        repo_dir=repo,
+        run_id=rid,
+        curator_host="h",
+        decide=_scripted([Decision(DecisionKind.ACCEPT)]),
+        rules=rules,
+        manifest=_placement_manifest(),
+    )
+    assert result.accepted == 1
+    assert result.placed == 0
+    assert "something unrelated" in (repo / "mining-findings.md").read_text()
+    assert not (repo / "profiles" / "work" / "CLAUDE.md.fragment").exists()

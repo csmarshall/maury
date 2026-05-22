@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import TYPE_CHECKING
 
 from maury.mining.run_branch import (
     STAGING_FILE,
@@ -55,6 +56,12 @@ from maury.mining.run_branch import (
     TRAILER_SOURCE_MODE,
     branch_name_for,
 )
+from maury.placement import place_finding, placement_relpath
+from maury.rules.engine import classify_fragment
+
+if TYPE_CHECKING:
+    from maury.manifest import Manifest
+    from maury.rules.schema import Classification, Rule
 
 # Subject line of the no-op rejection commit, per ADR-0022 §"Rejection: a
 # no-op metadata commit". Stable so a reader (or a future tool) can spot
@@ -249,6 +256,13 @@ class CommitView:
     """The markdown the commit appended to the staging file — also the
     diff shown to the operator (it's an append-only model)."""
 
+    classification: Classification | None = None
+    """The rule engine's classification of this finding (ADR-0053), when
+    `review_run` was given rules + a manifest. `None` when classification
+    wasn't run; `classification.profile is None` means no rule matched
+    (→ manual queue). The provider shows this so the operator can confirm
+    or reclassify."""
+
 
 @dataclass(frozen=True)
 class Decision:
@@ -291,6 +305,11 @@ class ReviewResult:
     quit_early: bool = False
     rejection_commit_written: bool = False
 
+    placed: int = 0
+    """Accepted/edited findings auto-placed into a classified source
+    fragment (ADR-0053). The remainder of accepted/edited went to the
+    manual queue (`mining-findings.md`)."""
+
     @property
     def merged_to(self) -> None:
         """Review never merges; the operator does. Present so audit
@@ -324,6 +343,8 @@ def review_run(
     decide: DecisionProvider,
     editor: Editor = _default_editor,
     main_ref: str = "main",
+    rules: list[Rule] | None = None,
+    manifest: Manifest | None = None,
 ) -> ReviewResult:
     """Walk `maury/run/<run-id>` and build `maury/review/<run-id>`.
 
@@ -374,15 +395,26 @@ def review_run(
 
     shas = _rev_list_oldest_first(repo_dir, main_ref, run_branch)
 
-    accepted = edited = skipped = resumed = 0
+    known_profiles = {spec.name for spec in manifest.profiles.values()} if manifest is not None else set()
+
+    accepted = edited = skipped = resumed = placed = 0
     rejected: list[RejectedFinding] = []
     quit_early = False
 
     for sha in shas:
-        view = _build_commit_view(repo_dir, sha)
+        view = _build_commit_view(repo_dir, sha, rules=rules, known_profiles=known_profiles)
         if view.content_hash and view.content_hash in already_done:
             resumed += 1
             continue
+
+        # ADR-0053: where would this finding auto-place? `None` → the
+        # manual queue (mining-findings.md), which is also the case when
+        # no rules/manifest were supplied or no rule matched.
+        target = (
+            placement_relpath(view.classification, manifest=manifest)
+            if view.classification is not None and manifest is not None
+            else None
+        )
 
         decision = decide(view)
         if decision.kind is DecisionKind.QUIT:
@@ -401,12 +433,14 @@ def review_run(
             )
             continue
         if decision.kind is DecisionKind.EDIT:
-            _apply_finding(repo_dir, view, editor=editor)
+            _apply_finding(repo_dir, view, editor=editor, target_relpath=target, run_id=run_id)
             edited += 1
+            placed += 1 if target is not None else 0
             continue
         # ACCEPT
-        _apply_finding(repo_dir, view, editor=None)
+        _apply_finding(repo_dir, view, editor=None, target_relpath=target, run_id=run_id)
         accepted += 1
+        placed += 1 if target is not None else 0
 
     rejection_written = False
     if not quit_early and rejected:
@@ -429,6 +463,7 @@ def review_run(
         resumed_skipped=resumed,
         quit_early=quit_early,
         rejection_commit_written=rejection_written,
+        placed=placed,
     )
 
 
@@ -471,23 +506,69 @@ def rebase_run(
 # ---- git helpers ---------------------------------------------------------
 
 
-def _apply_finding(repo_dir: Path, view: CommitView, *, editor: Editor | None) -> None:
-    """Append the finding's block to the staging file and commit it with
-    the original commit's message (`-C`). For EDIT, the block is opened
-    in `$EDITOR` first and the edited content is what gets appended."""
+def _apply_finding(
+    repo_dir: Path,
+    view: CommitView,
+    *,
+    editor: Editor | None,
+    target_relpath: str | None = None,
+    run_id: str = "",
+) -> None:
+    """Apply an accepted/edited finding on the review branch and commit it
+    with the original commit's message (`-C`).
+
+    - `target_relpath is None` (no rule matched, or no rules supplied) →
+      append the run-branch block to the manual queue `mining-findings.md`
+      (ADR-0022 behavior / ADR-0004 manual queue).
+    - otherwise (ADR-0053) → place the finding's preference text, with
+      provenance, into the classified source fragment `target_relpath`.
+
+    For EDIT the block is opened in `$EDITOR` first.
+    """
     block = view.block
     if editor is not None:
         block = _edit_block(block, editor=editor)
 
-    staging_path = repo_dir / STAGING_FILE
-    with staging_path.open("a", encoding="utf-8") as fh:
-        fh.write(block)
-    _git_or_raise(["git", "add", STAGING_FILE], cwd=repo_dir, action="stage finding")
+    if target_relpath is None:
+        staging_path = repo_dir / STAGING_FILE
+        with staging_path.open("a", encoding="utf-8") as fh:
+            fh.write(block)
+        rel = STAGING_FILE
+    else:
+        place_finding(
+            repo_dir,
+            relpath=target_relpath,
+            finding_text=_finding_text_from_block(block),
+            content_hash=view.content_hash,
+            source_run=branch_name_for(run_id),
+        )
+        rel = target_relpath
+
+    _git_or_raise(["git", "add", rel], cwd=repo_dir, action="stage finding")
     _git_or_raise(
         ["git", "commit", "-C", view.sha, "--cleanup=verbatim"],
         cwd=repo_dir,
         action="commit accepted finding",
     )
+
+
+def _finding_text_from_block(block: str) -> str:
+    """Extract the finding's preference text from its mining-findings.md
+    block: the paragraph after the `## ` heading, before the evidence
+    block-quote / metadata bullets. Falls back to the whole block if the
+    expected shape isn't found (e.g. a hand-edited block)."""
+    lines = block.splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("## ")), None)
+    if start is None:
+        return block.strip()
+    collected: list[str] = []
+    for ln in lines[start + 1 :]:
+        stripped = ln.strip()
+        if stripped.startswith(">") or stripped.startswith("- "):
+            break
+        collected.append(ln)
+    text = "\n".join(collected).strip()
+    return text or block.strip()
 
 
 def _edit_block(block: str, *, editor: Editor) -> str:
@@ -527,7 +608,13 @@ def _write_rejection_commit(
     )
 
 
-def _build_commit_view(repo_dir: Path, sha: str) -> CommitView:
+def _build_commit_view(
+    repo_dir: Path,
+    sha: str,
+    *,
+    rules: list[Rule] | None = None,
+    known_profiles: set[str] | None = None,
+) -> CommitView:
     subject = _git_or_raise(["git", "show", "-s", "--format=%s", sha], cwd=repo_dir, action="read subject").strip()
     body = _git_or_raise(["git", "show", "-s", "--format=%b", sha], cwd=repo_dir, action="read body")
     hashes = parse_trailer_values(body, TRAILER_CONTENT_HASH)
@@ -535,8 +622,19 @@ def _build_commit_view(repo_dir: Path, sha: str) -> CommitView:
     modes = parse_trailer_values(body, TRAILER_SOURCE_MODE)
     source_mode = modes[0] if modes else ""
     block = _appended_block(repo_dir, sha)
+    # ADR-0053: classify the finding for auto-placement, when rules were
+    # supplied. Classify on the finding's text (not the metadata bullets).
+    classification = None
+    if rules is not None:
+        classification = classify_fragment(_finding_text_from_block(block), rules, known_profiles or set())
     return CommitView(
-        sha=sha, subject=subject, body=body, content_hash=content_hash, source_mode=source_mode, block=block
+        sha=sha,
+        subject=subject,
+        body=body,
+        content_hash=content_hash,
+        source_mode=source_mode,
+        block=block,
+        classification=classification,
     )
 
 
