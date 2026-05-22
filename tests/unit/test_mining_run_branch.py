@@ -241,6 +241,23 @@ def test_finding_block_omits_source_mode_bullet_when_absent() -> None:
     assert "source mode:" not in block
 
 
+def test_finding_block_includes_proposed_rewrite_when_supplied() -> None:
+    block = format_finding_block(_finding(), run_id="rid", proposed_rewrite="Answer in 1-3 sentences.\nNo preamble.")
+    assert "proposed rewrite" in block
+    assert "> Answer in 1-3 sentences." in block
+    assert "> No preamble." in block
+
+
+def test_finding_block_omits_rewrite_section_when_absent() -> None:
+    block = format_finding_block(_finding(), run_id="rid")
+    assert "proposed rewrite" not in block
+
+
+def test_finding_block_omits_rewrite_section_when_blank() -> None:
+    block = format_finding_block(_finding(), run_id="rid", proposed_rewrite="   ")
+    assert "proposed rewrite" not in block
+
+
 # ---- format_finding_block (markdown for staging file) -------------------
 
 
@@ -640,6 +657,28 @@ def test_write_run_branch_omits_source_mode_when_none(tmp_path: Path) -> None:
         check=False,
     )
     assert "Source-Mode:" not in proc.stdout
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_threads_rewrite_by_index(tmp_path: Path) -> None:
+    """Phase 8: the proposed rewrite for finding idx N lands in N's block."""
+    repo = _seed_repo(tmp_path)
+    findings = [
+        _finding(kind="feedback", text="first finding"),
+        _finding(kind="preference", text="second finding"),
+    ]
+    write_run_branch(
+        repo_dir=repo,
+        findings=findings,
+        host_hex="aabbccdd",
+        rewrites={1: "STRENGTHENED wording for the second"},
+    )
+    staging = (repo / "mining-findings.md").read_text()
+    assert "proposed rewrite" in staging
+    assert "STRENGTHENED wording for the second" in staging
+    # The rewrite is attached to the second finding's section, not the first.
+    first_section = staging.split("second finding")[0]
+    assert "proposed rewrite" not in first_section
 
 
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")

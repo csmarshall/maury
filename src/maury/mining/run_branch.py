@@ -225,7 +225,12 @@ def _source_transcript_label(finding: Finding) -> str:
 
 
 def format_finding_block(
-    finding: Finding, *, run_id: str, crossref_state: str | None = None, source_mode: str | None = None
+    finding: Finding,
+    *,
+    run_id: str,
+    crossref_state: str | None = None,
+    source_mode: str | None = None,
+    proposed_rewrite: str | None = None,
 ) -> str:
     """Build the markdown block appended to `mining-findings.md` for this finding.
 
@@ -253,6 +258,15 @@ def format_finding_block(
     evidence_blob = finding.evidence.strip() if finding.evidence else "(no evidence captured)"
     # Block-quote the evidence so markdown viewers render it distinctively.
     evidence_md = "\n".join(f"> {line}" if line else ">" for line in evidence_blob.splitlines())
+
+    # Optional Phase 8 advisory rewrite: a proposed clearer/stronger
+    # wording for an existing rule (PRESENT_BUT_UNCLEAR / REINFORCED). The
+    # operator applies it to the right source file by hand.
+    rewrite_md = ""
+    if proposed_rewrite and proposed_rewrite.strip():
+        quoted = "\n".join(f"> {line}" if line else ">" for line in proposed_rewrite.strip().splitlines())
+        rewrite_md = f"\nproposed rewrite (apply to the existing rule by hand):\n\n{quoted}\n"
+
     return (
         f"## {subject}\n"
         f"\n"
@@ -267,6 +281,7 @@ def format_finding_block(
         + (f"- source mode: {source_mode}\n" if source_mode else "")
         + f"- source: {_source_transcript_label(finding)}\n"
         f"- run: {branch_name_for(run_id)}\n"
+        f"{rewrite_md}"
         f"\n"
     )
 
@@ -456,6 +471,7 @@ def write_run_branch(
     crossref_states: dict[int, str] | None = None,
     when: datetime | None = None,
     source_mode: str | None = None,
+    rewrites: dict[int, str] | None = None,
 ) -> RunBranchResult:
     """Materialize the mining findings as a `maury/run/<run-id>` branch.
 
@@ -491,12 +507,15 @@ def write_run_branch(
 
     dedup_keys = existing_finding_keys(repo_dir)
     crossref_states = crossref_states or {}
+    rewrites = rewrites or {}
 
     # Filter findings to those that are not dedup hits. Per ADR-0026 the
     # dedup key is (Content-Hash, Source-Mode): the same idea mined under
     # a different mode is a distinct proposal and is NOT suppressed. We
-    # compute the hash once so commits reuse the same value.
-    queued: list[tuple[Finding, str, str]] = []
+    # compute the hash once so commits reuse the same value. The
+    # crossref state and (optional) Phase 8 rewrite are looked up by the
+    # finding's ORIGINAL index here, before dedup reorders things.
+    queued: list[tuple[Finding, str, str, str | None]] = []
     skipped: list[str] = []
     for idx, finding in enumerate(findings):
         h = content_hash(kind=finding.kind, scope_hint=finding.scope_hint, text=finding.text)
@@ -504,7 +523,7 @@ def write_run_branch(
             skipped.append(h)
             continue
         state = crossref_states.get(idx, "NEW")
-        queued.append((finding, h, state))
+        queued.append((finding, h, state, rewrites.get(idx)))
 
     if not queued:
         return RunBranchResult(
@@ -521,8 +540,14 @@ def write_run_branch(
 
     try:
         staging_path = repo_dir / STAGING_FILE
-        for finding, _hash, state in queued:
-            block = format_finding_block(finding, run_id=run_id, crossref_state=state, source_mode=source_mode)
+        for finding, _hash, state, rewrite in queued:
+            block = format_finding_block(
+                finding,
+                run_id=run_id,
+                crossref_state=state,
+                source_mode=source_mode,
+                proposed_rewrite=rewrite,
+            )
             # Append; create if absent. The file lives at repo root.
             _append_staging_block(staging_path, block)
             _git_or_raise(
