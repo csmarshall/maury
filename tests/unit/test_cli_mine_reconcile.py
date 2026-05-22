@@ -491,7 +491,8 @@ def test_emit_mining_run_branch_requires_repo_path(tmp_path: Path) -> None:
             repo_path=None,
             findings=[_make_finding()],
             target_dir=tmp_path,
-            crossref_summary=None,
+            crossref_states={},
+            rewrites={},
         )
 
 
@@ -522,7 +523,8 @@ def test_emit_mining_run_branch_requires_baseline(tmp_path: Path) -> None:
             repo_path=repo,
             findings=[_make_finding()],
             target_dir=target,
-            crossref_summary=None,
+            crossref_states={},
+            rewrites={},
         )
 
 
@@ -568,7 +570,8 @@ def test_emit_mining_run_branch_writes_branch_and_audit_event(tmp_path: Path) ->
         repo_path=repo,
         findings=findings,
         target_dir=target,
-        crossref_summary=None,
+        crossref_states={},
+        rewrites={},
     )
 
     # A branch matching the maury/run/<...>-aabbccdd shape now exists.

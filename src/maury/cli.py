@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 import click
 
 if TYPE_CHECKING:
+    from maury.llm import LLMClient
+    from maury.mining.crossref import CrossRefSummary
     from maury.mining.review import CommitView, Decision
     from maury.promotion.promote import PromotionCandidate
     from maury.promotion.proposal import Proposal
@@ -2493,6 +2495,17 @@ _DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
         "with Content-Hash trailers for dedup). Per ADR-0022."
     ),
 )
+@click.option(
+    "--synthesize",
+    "synthesize_enabled",
+    is_flag=True,
+    help=(
+        "For findings the cross-reference flags as rephrase-existing or "
+        "investigate-why-not-followed, generate a proposed CLAUDE.md "
+        "rewrite (one extra LLM call each) and include it in the run-branch "
+        "block. Implies --crossref. Phase 8 path B."
+    ),
+)
 def mine_cmd(
     projects_dir: Path,
     project_name: str | None,
@@ -2507,6 +2520,7 @@ def mine_cmd(
     full: bool,
     since: str | None,
     write_run_branch_flag: bool,
+    synthesize_enabled: bool,
 ) -> None:
     """Mine transcripts for durable preference candidates (Phase 6a + 6c).
 
@@ -2586,9 +2600,10 @@ def mine_cmd(
         on_window_done=_on_window_done,
     )
 
-    # Cross-reference (Phase 6c).
+    # Cross-reference (Phase 6c). --synthesize implies --crossref since
+    # synthesis keys off the cross-reference's suggested_action.
     crossref_summary = None
-    if crossref_enabled and result.findings:
+    if (crossref_enabled or synthesize_enabled) and result.findings:
         from maury.mining import crossref_findings
 
         click.echo("")
@@ -2608,6 +2623,14 @@ def mine_cmd(
             repo_path=repo_path,
             on_progress=_on_xref_progress,
         )
+
+    # Map crossref results (and optional Phase 8 rewrites) back to each
+    # finding's index, for the run-branch emit.
+    crossref_states, rewrites = _crossref_and_rewrite_maps(
+        result.findings, crossref_summary, synthesize=synthesize_enabled, llm=llm
+    )
+    if synthesize_enabled and crossref_summary is not None:
+        click.echo(f"synthesized {len(rewrites)} rewrite proposal(s).")
 
     # Output.
     if output_format == "json":
@@ -2640,8 +2663,46 @@ def mine_cmd(
             repo_path=repo_path,
             findings=result.findings,
             target_dir=target_dir,
-            crossref_summary=crossref_summary,
+            crossref_states=crossref_states,
+            rewrites=rewrites,
         )
+
+
+def _crossref_and_rewrite_maps(
+    findings: list[Finding],
+    crossref_summary: CrossRefSummary | None,
+    *,
+    synthesize: bool,
+    llm: LLMClient,
+) -> tuple[dict[int, str], dict[int, str]]:
+    """Resolve crossref states (and optional Phase 8 rewrites) to
+    per-finding-index maps for the run-branch emit.
+
+    The cross-reference summary groups results by state, so finding
+    indices are recovered by object identity. With `synthesize`, findings
+    whose `suggested_action` is a synthesis trigger (rephrase-existing /
+    investigate-why-not-followed) get one extra LLM call to generate a
+    proposed rewrite. Returns `(crossref_states, rewrites)`.
+    """
+    crossref_states: dict[int, str] = {}
+    rewrites: dict[int, str] = {}
+    if crossref_summary is None:
+        return crossref_states, rewrites
+
+    from maury.mining.synthesize import SYNTHESIS_ACTIONS, synthesize_rewrite
+
+    idx_by_id = {id(f): i for i, f in enumerate(findings)}
+    for bucket in crossref_summary.by_state.values():
+        for finding, xref in bucket:
+            i = idx_by_id.get(id(finding))
+            if i is None:
+                continue
+            crossref_states[i] = xref.state
+            if synthesize and xref.suggested_action in SYNTHESIS_ACTIONS:
+                proposal = synthesize_rewrite(finding, xref, llm=llm)
+                if proposal is not None:
+                    rewrites[i] = proposal.proposed_text
+    return crossref_states, rewrites
 
 
 def _emit_mining_run_branch(
@@ -2649,14 +2710,15 @@ def _emit_mining_run_branch(
     repo_path: Path | None,
     findings: list[Finding],
     target_dir: Path,
-    crossref_summary: object,
+    crossref_states: dict[int, str],
+    rewrites: dict[int, str],
 ) -> None:
     """Wrap the ADR-0022 run-branch emit with CLI messaging + audit.
 
     Validates `--repo` is set, resolves the host hex from the identity
-    baseline, builds the crossref-state map (when crossref ran), calls
-    `write_run_branch`, prints the result, and emits the
-    `mining_run_created` audit event.
+    baseline, calls `write_run_branch` with the per-finding crossref
+    states and (Phase 8) proposed rewrites, prints the result, and emits
+    the `mining_run_created` audit event.
     """
     import contextlib
 
@@ -2677,15 +2739,6 @@ def _emit_mining_run_branch(
             "mining branch can carry the host_hex in its run-id."
         )
 
-    # Build the crossref-state map (finding index → state string).
-    crossref_states: dict[int, str] = {}
-    if crossref_summary is not None:
-        entries = getattr(crossref_summary, "entries", None) or []
-        for idx, entry in enumerate(entries):
-            state = getattr(getattr(entry, "result", None), "state", None)
-            if state is not None:
-                crossref_states[idx] = str(state)
-
     # Per ADR-0026: tag each finding with the mode it was mined under so
     # `maury promote` can graph-check it. Effective mode = the active
     # focus if set, else the registered mode at bootstrap.
@@ -2698,6 +2751,7 @@ def _emit_mining_run_branch(
             host_hex=baseline.host_id_hex,
             crossref_states=crossref_states,
             source_mode=source_mode,
+            rewrites=rewrites,
         )
     except RunBranchError as e:
         raise click.ClickException(str(e)) from e
