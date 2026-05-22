@@ -222,3 +222,39 @@ def test_promote_review_missing_manifest_errors(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["promote-review", "--from", str(src), "--to", str(dest)])
     assert result.exit_code != 0
     assert "manifest not found" in result.output
+
+
+# ---- --open-pr (lightweight PR path, graceful without a remote) ---------
+
+
+@_skip
+def test_promote_open_pr_without_origin_is_graceful(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")  # no 'origin' remote
+    _write_manifest(dest)
+    _mine_source(src, [_finding("universal")], source_mode="work")
+    result = CliRunner().invoke(
+        main,
+        ["promote", "--from", str(src), "--to", str(dest), "--to-mode", "base", "--accept-all", "--open-pr"],
+    )
+    # Promotion still succeeds; PR step degrades to a manual-open message.
+    assert result.exit_code == 0, result.output
+    assert "promoted: 1" in result.output
+    assert "no 'origin' remote" in result.output
+    # The promoted branch was still created locally.
+    branch = _run(["git", "branch", "--list", "maury/promoted/*"], cwd=dest).strip().lstrip("* ").strip()
+    assert branch.startswith("maury/promoted/")
+
+
+@_skip
+def test_promote_review_open_pr_without_origin_is_graceful(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")
+    _write_manifest(dest)
+    write_proposal(src, finding=_finding("universal"), dest_mode="base", source_mode="work", source_host="h")
+    result = CliRunner().invoke(
+        main, ["promote-review", "--from", str(src), "--to", str(dest), "--accept-all", "--open-pr"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "promoted: 1" in result.output
+    assert "no 'origin' remote" in result.output

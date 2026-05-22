@@ -554,8 +554,15 @@ flow already cite. No new `cc-contract:*` entries needed.
     not a dedicated branch/ref; the curator reads them from the source
     repo working tree. A future ADR may revisit the queue's commit/visibility
     semantics.
-  - **`pr` repo-mode promotion (§7) is not implemented** — the code's
-    `RepoMode` enum is `ro`/`rw` only; ADR-0033's `pr` mode isn't in the
-    data model yet. The §7 matrix's pr-mode row is deferred.
-  - **`push_policy: disabled` (§6) is not yet enforced** at proposal-write
-    time. Deferred followup.
+  - **`push_policy: disabled` (§6) is enforced** at proposal-write time
+    (2026-05-22): a host whose manifest entry sets `push_policy: disabled`
+    emits no proposals.
+  - **PR output (§7) ships as a lightweight `--open-pr` flag** (2026-05-22)
+    on `maury promote` / `maury promote-review`: after building
+    `maury/promoted/<id>`, it pushes the branch and runs `gh pr create`,
+    emitting `pr_opened`. Best-effort — a missing `origin`/`gh` degrades to
+    a "open it manually" message. This covers the §7 "dest `pr`" row's
+    *mechanics* (promotion writes a PR) without modeling `pr` as a
+    first-class `RepoMode` tier. **The full `pr` repo-mode** (ADR-0033 —
+    `RepoMode.PR` across the manifest model, validation, sync, and access
+    checks) remains a **v1.0+** effort; `RepoMode` is still `ro`/`rw` only.

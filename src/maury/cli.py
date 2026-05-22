@@ -2002,6 +2002,12 @@ def rebase_run_cmd(run_id: str, repo_path: Path, main_ref: str) -> None:
 @click.option("--reject-all", "reject_all", is_flag=True, help="Reject every eligible finding. Pair with --reason.")
 @click.option("--reason", "reason", default=None, help="Rejection reason recorded for --reject-all.")
 @click.option("--main-ref", "main_ref", default="main", show_default=True, help="Trunk ref in both repos.")
+@click.option(
+    "--open-pr",
+    "open_pr",
+    is_flag=True,
+    help="After promoting, push the promoted branch and open a PR (for PR-only destinations). Best-effort; needs gh + an origin remote.",
+)
 def promote_cmd(
     source_repo: Path,
     dest_repo: Path,
@@ -2011,6 +2017,7 @@ def promote_cmd(
     reject_all: bool,
     reason: str | None,
     main_ref: str,
+    open_pr: bool,
 ) -> None:
     """Promote findings across a trust boundary, up the inheritance graph
     (ADR-0045).
@@ -2090,16 +2097,27 @@ def promote_cmd(
         click.echo(f"  refused: {note}")
     if result.quit_early:
         click.echo("  (quit early — re-run to resume; promoted findings are kept)")
-    if result.promoted or result.edited:
-        click.echo(f"  next: merge {result.promoted_branch} into {main_ref} in the destination repo.")
+    promoted_count = result.promoted + result.edited
+    pr_url: str | None = None
+    if promoted_count:
+        if open_pr:
+            pr_url = _open_promotion_pr(
+                dest_repo=dest_repo,
+                branch=result.promoted_branch,
+                base_ref=main_ref,
+                commit_count=promoted_count,
+                target_dir=target_dir,
+            )
+        else:
+            click.echo(f"  next: merge {result.promoted_branch} into {main_ref} in the destination repo.")
 
     with contextlib.suppress(AuditLogError):
         audit_log(
             target_dir,
             "promotion_completed",
             host_id=None,
-            commits_promoted=result.promoted + result.edited,
-            target_pr=None,
+            commits_promoted=promoted_count,
+            target_pr=pr_url,
         )
 
 
@@ -2125,6 +2143,70 @@ def _interactive_promote_provider(cand: PromotionCandidate, target_mode: str) ->
             rejection_reason = click.prompt("  reason (optional, blank = none)", default="", show_default=False)
             return Decision(DecisionKind.REJECT, reason=rejection_reason)
         click.echo("  please enter one of: a, r, e, s, q")
+
+
+def _open_promotion_pr(
+    *,
+    dest_repo: Path,
+    branch: str,
+    base_ref: str,
+    commit_count: int,
+    target_dir: Path,
+) -> str | None:
+    """Push the promoted branch and open a PR for a PR-only destination
+    (ADR-0045 §7, lightweight `--open-pr` path; full `pr` repo-mode is a
+    v1.0+ ADR-0033 effort).
+
+    Best-effort: a missing `origin` remote, a push failure, or an
+    unavailable/failed `gh` all degrade to a clear "open it manually"
+    message rather than aborting — the promotion already succeeded. On
+    success, emits the `pr_opened` audit event and returns the PR URL.
+    """
+    import contextlib
+    import subprocess
+
+    from maury.audit_log import AuditLogError
+    from maury.audit_log import log as audit_log
+
+    def _git(args: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(args, cwd=str(dest_repo), capture_output=True, text=True, check=False, timeout=60)
+
+    if _git(["git", "remote", "get-url", "origin"]).returncode != 0:
+        click.echo(f"  --open-pr: no 'origin' remote in {dest_repo}; push {branch} and open a PR manually.")
+        return None
+
+    push = _git(["git", "push", "-u", "origin", branch])
+    if push.returncode != 0:
+        click.echo(f"  --open-pr: push failed ({push.stderr.strip()[:160]}); open a PR manually.")
+        return None
+
+    title = f"maury: promote {commit_count} finding(s) to {base_ref}"
+    body = (
+        f"Automated promotion branch `{branch}`. Each commit carries "
+        "Content-Hash / Source-Mode / Promoted-From trailers with rationale and provenance."
+    )
+    try:
+        pr = subprocess.run(
+            ["gh", "pr", "create", "--head", branch, "--base", base_ref, "--title", title, "--body", body],
+            cwd=str(dest_repo),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        click.echo(f"  --open-pr: gh unavailable ({e}); branch pushed — open a PR manually.")
+        return None
+
+    if pr.returncode != 0:
+        click.echo(f"  --open-pr: gh pr create failed ({pr.stderr.strip()[:160]}); branch pushed — open a PR manually.")
+        return None
+
+    url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
+    click.echo(f"  --open-pr: opened {url}")
+    with contextlib.suppress(AuditLogError):
+        audit_log(target_dir, "pr_opened", host_id=None, repo=str(dest_repo), pr_url=url, commit_count=commit_count)
+    return url or None
 
 
 @main.command("promote-review")
@@ -2153,6 +2235,12 @@ def _interactive_promote_provider(cand: PromotionCandidate, target_mode: str) ->
 @click.option("--reject-all", "reject_all", is_flag=True, help="Reject every eligible proposal. Pair with --reason.")
 @click.option("--reason", "reason", default=None, help="Rejection reason recorded for --reject-all.")
 @click.option("--main-ref", "main_ref", default="main", show_default=True, help="Trunk ref in the destination repo.")
+@click.option(
+    "--open-pr",
+    "open_pr",
+    is_flag=True,
+    help="After promoting, push the promoted branch and open a PR (for PR-only destinations). Best-effort; needs gh + an origin remote.",
+)
 def promote_review(
     source_repo: Path,
     dest_repo: Path,
@@ -2161,6 +2249,7 @@ def promote_review(
     reject_all: bool,
     reason: str | None,
     main_ref: str,
+    open_pr: bool,
 ) -> None:
     """Review a source repo's promotion-proposal queue and land approved
     proposals in the destination (ADR-0045 §4).
@@ -2236,16 +2325,27 @@ def promote_review(
         click.echo(f"  refused: {note}")
     if result.quit_early:
         click.echo("  (quit early — re-run to resume; promoted findings are kept)")
-    if result.promoted or result.edited:
-        click.echo(f"  next: merge {result.promoted_branch} into {main_ref} in the destination repo.")
+    promoted_count = result.promoted + result.edited
+    pr_url: str | None = None
+    if promoted_count:
+        if open_pr:
+            pr_url = _open_promotion_pr(
+                dest_repo=dest_repo,
+                branch=result.promoted_branch,
+                base_ref=main_ref,
+                commit_count=promoted_count,
+                target_dir=target_dir,
+            )
+        else:
+            click.echo(f"  next: merge {result.promoted_branch} into {main_ref} in the destination repo.")
 
     with contextlib.suppress(AuditLogError):
         audit_log(
             target_dir,
             "promotion_completed",
             host_id=None,
-            commits_promoted=result.promoted + result.edited,
-            target_pr=None,
+            commits_promoted=promoted_count,
+            target_pr=pr_url,
         )
 
 

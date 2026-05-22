@@ -143,7 +143,7 @@ require an `**Amended:**` entry on this ADR.
 | `review_completed` | [ADR-0022](0022-branch-per-mining-run.md) | When `maury review` finishes | `{run_id: "...", accepted: int, rejected: int, merged_to: "..."}` |
 | `promotion_started` | [ADR-0045](0045-cross-trust-boundary-promotion.md) | When `maury promote` begins | `{from_repo: "...", to_repo: "..."}` |
 | `promotion_completed` | [ADR-0045](0045-cross-trust-boundary-promotion.md) | When promotion succeeds | `{commits_promoted: int, target_pr: "...|null"}` |
-| `pr_opened` | [ADR-0033](0033-pr-repo-mode.md) | When `pr`-mode review pushes a PR | `{repo: "...", pr_url: "...", commit_count: int}` |
+| `pr_opened` | [ADR-0033](0033-pr-repo-mode.md), [ADR-0045](0045-cross-trust-boundary-promotion.md) | When promotion opens a PR — `maury promote --open-pr` (shipped 2026-05-22); also future `pr`-mode review | `{repo: "...", pr_url: "...", commit_count: int}` |
 | `tool_use_logged` | [ADR-0023](0023-hook-installation-and-tool-resolution.md) | One per Claude Edit/Write/MultiEdit call (mirror of `claude-writes.jsonl`) | `{tool: "...", path: "...", before_sha: "...", after_sha: "..."}` |
 | `subscription_added` | [ADR-0038](0038-precept-acquisition-model.md) (mechanics; use-case in [ADR-0034](0034-published-subscribed-profiles.md)) | When a rules sublayer is declared (formerly `maury subscribe`) | `{repo_url: "...", attaches_to: "..."}` |
 | `subscription_pinned` | [ADR-0038](0038-precept-acquisition-model.md) (mechanics; use-case in [ADR-0034](0034-published-subscribed-profiles.md)) | When `--pin` or `subscription update` runs | `{repo: "...", ref: "..."}` |
