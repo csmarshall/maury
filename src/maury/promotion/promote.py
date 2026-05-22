@@ -56,6 +56,11 @@ from maury.promotion.graph import (
     is_valid_promotion_target,
     lowest_common_ancestor,
 )
+from maury.promotion.proposal import (
+    TRAILER_PROMOTE_TO,
+    Proposal,
+    read_proposals,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -243,6 +248,165 @@ def _refusal_note(
     return base
 
 
+def promote_review_run(
+    *,
+    source_repo: Path,
+    dest_repo: Path,
+    manifest: Manifest,
+    promoted_id: str,
+    curator_host: str,
+    decide: Callable[[Proposal], Decision],
+    editor: Editor = _default_editor,
+    dest_main: str = "main",
+) -> PromoteResult:
+    """Walk the source repo's `proposals/promote-to-*/` queue (ADR-0045
+    §4) and land approved proposals on `maury/promoted/<promoted_id>` in
+    the destination repo.
+
+    The proposal-queue analogue of `promote_run`: instead of reading the
+    source's run branches, it reads pre-written proposal files (each one
+    already names its `Promote-To` destination). The graph check still
+    fires per proposal (defensive — a stale/illegal proposal in the queue
+    is refused, never shown). Accepted proposals land with a
+    `Promoted-From: <src>@proposal:<hash>` trailer.
+
+    `target_mode` on the result is left empty — proposals each carry their
+    own destination, so there is no single target mode for the run.
+    """
+    _ensure_git_repo(source_repo, "source")
+    _ensure_git_repo(dest_repo, "destination")
+    _ensure_clean_worktree(dest_repo)
+
+    proposals = read_proposals(source_repo)
+
+    promoted_branch = f"maury/promoted/{promoted_id}"
+    _checkout_promoted_branch(dest_repo, promoted_branch, dest_main)
+    already = _applied_content_hashes(dest_repo, dest_main, promoted_branch)
+    src_label = source_repo.name or str(source_repo)
+
+    promoted = edited = skipped = graph_refused = unresolved = resumed = 0
+    rejected: list[RejectedFinding] = []
+    refused_notes: list[str] = []
+    quit_early = False
+
+    for proposal in proposals:
+        if proposal.content_hash and proposal.content_hash in already:
+            resumed += 1
+            continue
+
+        source_mode_id = manifest.profile_id_by_name(proposal.source_mode) if proposal.source_mode else None
+        target_mode_id = manifest.profile_id_by_name(proposal.dest_mode)
+        if source_mode_id is None or target_mode_id is None:
+            unresolved += 1
+            continue
+
+        if not is_valid_promotion_target(
+            source_mode_id=source_mode_id, target_mode_id=target_mode_id, manifest=manifest
+        ):
+            graph_refused += 1
+            lca = lowest_common_ancestor(mode_a=source_mode_id, mode_b=target_mode_id, manifest=manifest)
+            lca_name = manifest.profiles[lca].name if lca and lca in manifest.profiles else "?"
+            refused_notes.append(
+                f"proposal {proposal.content_hash[:12]}: {proposal.source_mode!r} → "
+                f"{proposal.dest_mode!r} refused; shared ancestor is {lca_name!r}."
+            )
+            continue
+
+        decision = decide(proposal)
+        if decision.kind is DecisionKind.QUIT:
+            quit_early = True
+            break
+        if decision.kind is DecisionKind.SKIP:
+            skipped += 1
+            continue
+        if decision.kind is DecisionKind.REJECT:
+            rejected.append(
+                RejectedFinding(
+                    content_hash=proposal.content_hash, source_mode=proposal.source_mode, reason=decision.reason
+                )
+            )
+            continue
+        if decision.kind is DecisionKind.EDIT:
+            _apply_proposal(dest_repo, proposal, src_label=src_label, editor=editor)
+            edited += 1
+            continue
+        _apply_proposal(dest_repo, proposal, src_label=src_label, editor=None)
+        promoted += 1
+
+    rejection_written = False
+    if not quit_early and rejected:
+        _write_rejection_commit(dest_repo, promoted_id=promoted_id, curator_host=curator_host, rejected=rejected)
+        rejection_written = True
+
+    return PromoteResult(
+        promoted_id=promoted_id,
+        promoted_branch=promoted_branch,
+        target_mode="",
+        promoted=promoted,
+        edited=edited,
+        rejected=len(rejected),
+        skipped=skipped,
+        graph_refused=graph_refused,
+        unresolved_source_mode=unresolved,
+        resumed_skipped=resumed,
+        quit_early=quit_early,
+        rejection_commit_written=rejection_written,
+        graph_refused_notes=tuple(refused_notes),
+    )
+
+
+def _apply_proposal(dest_repo: Path, proposal: Proposal, *, src_label: str, editor: Editor | None) -> None:
+    """Append a proposal's finding block to the destination staging file
+    and commit it with a constructed message + Promoted-From trailer."""
+    block = _proposal_block(proposal.text)
+    if editor is not None:
+        block = _edit_block(block, editor=editor)
+
+    staging_path = dest_repo / STAGING_FILE
+    with staging_path.open("a", encoding="utf-8") as fh:
+        fh.write(block)
+    _git_or_raise(["git", "add", STAGING_FILE], cwd=dest_repo, action="stage promoted proposal")
+
+    subject = _block_subject(block) or f"maury: promoted proposal {proposal.content_hash[:12]}"
+    trailers = [
+        (TRAILER_CONTENT_HASH, proposal.content_hash),
+        (TRAILER_SOURCE_MODE, proposal.source_mode),
+        (TRAILER_PROMOTE_TO, proposal.dest_mode),
+        (PROMOTED_FROM_TRAILER, f"{src_label}@proposal:{proposal.content_hash}"),
+    ]
+    body = "\n".join(f"{k}: {v}" for k, v in trailers if v)
+    with NamedTemporaryFile("w", suffix=".msg", delete=False, encoding="utf-8") as tmp:
+        tmp.write(f"{subject}\n\n{body}\n")
+        msg_path = Path(tmp.name)
+    try:
+        _git_or_raise(
+            ["git", "commit", "-F", str(msg_path), "--cleanup=verbatim"],
+            cwd=dest_repo,
+            action="commit promoted proposal",
+        )
+    finally:
+        msg_path.unlink(missing_ok=True)
+
+
+def _proposal_block(text: str) -> str:
+    """Extract the finding's markdown block (`## …` heading through the
+    last bullet) from a proposal file, dropping the header and trailers."""
+    block_start = text.find("## ")
+    trailer_start = text.find(f"{TRAILER_PROMOTE_TO}:")
+    if block_start == -1:
+        return text
+    end = trailer_start if trailer_start > block_start else len(text)
+    return text[block_start:end].rstrip("\n") + "\n\n"
+
+
+def _block_subject(block: str) -> str | None:
+    """The `## maury: …` heading text (without the `## `), if present."""
+    for line in block.splitlines():
+        if line.startswith("## "):
+            return line[3:].strip()
+    return None
+
+
 # ---- source enumeration -------------------------------------------------
 
 
@@ -427,5 +591,6 @@ __all__ = [
     "PromoteError",
     "PromoteResult",
     "PromotionCandidate",
+    "promote_review_run",
     "promote_run",
 ]

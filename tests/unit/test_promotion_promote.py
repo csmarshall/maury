@@ -20,8 +20,10 @@ from maury.mining.transcripts import TranscriptMessage
 from maury.promotion.promote import (
     PromoteError,
     PromotionCandidate,
+    promote_review_run,
     promote_run,
 )
+from maury.promotion.proposal import Proposal, write_proposal
 
 # Mode tree: base ← {personal ← consulting ← acme, work ← {acme_client, globex_client}}
 _BASE, _PERSONAL, _CONSULTING, _ACME = "p_base", "p_personal", "p_consulting", "p_acme"
@@ -301,3 +303,94 @@ def test_promote_resume_skips_already_promoted(tmp_path: Path) -> None:
     assert second.resumed_skipped == 1
     assert second.promoted == 1
     assert _commit_count(dest, "main..maury/promoted/pid-1") == 2
+
+
+# ---- promote_review_run (proposal queue) -------------------------------
+
+
+def _scripted_proposals(decisions: list[Decision]) -> Callable[[Proposal], Decision]:
+    it = iter(decisions)
+
+    def provider(_p: Proposal) -> Decision:
+        return next(it)
+
+    return provider
+
+
+@_skip
+def test_promote_review_accept_lands_with_promoted_from(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")
+    write_proposal(
+        src,
+        finding=_finding("universal idea"),
+        dest_mode="base",
+        source_mode="work",
+        source_host="host_x",
+    )
+    result = promote_review_run(
+        source_repo=src,
+        dest_repo=dest,
+        manifest=_manifest(),
+        promoted_id="pid-1",
+        curator_host="curator_x",
+        decide=_scripted_proposals([Decision(DecisionKind.ACCEPT)]),
+    )
+    assert result.promoted == 1
+    assert _commit_count(dest, "main..maury/promoted/pid-1") == 1
+    log = _run(["git", "log", "main..maury/promoted/pid-1", "--format=%B"], cwd=dest)
+    assert "Promoted-From: src@proposal:" in log
+    assert "Content-Hash:" in log
+    assert "Promote-To: base" in log
+    staging = (dest / "mining-findings.md").read_text()
+    assert "universal idea" in staging
+
+
+@_skip
+def test_promote_review_graph_refuses_illegal_proposal(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")
+    # A stale/illegal proposal: acme-client → globex-client (siblings).
+    write_proposal(
+        src,
+        finding=_finding("client thing"),
+        dest_mode="work:globex-client",
+        source_mode="work:acme-client",
+        source_host="h",
+    )
+    seen: list[Proposal] = []
+
+    def recording(p: Proposal) -> Decision:
+        seen.append(p)
+        return Decision(DecisionKind.ACCEPT)
+
+    result = promote_review_run(
+        source_repo=src,
+        dest_repo=dest,
+        manifest=_manifest(),
+        promoted_id="pid-1",
+        curator_host="h",
+        decide=recording,
+    )
+    assert result.graph_refused == 1
+    assert result.promoted == 0
+    assert seen == []  # never shown to the curator
+
+
+@_skip
+def test_promote_review_reject_writes_noop(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")
+    write_proposal(src, finding=_finding("noise"), dest_mode="base", source_mode="work", source_host="h")
+    result = promote_review_run(
+        source_repo=src,
+        dest_repo=dest,
+        manifest=_manifest(),
+        promoted_id="pid-1",
+        curator_host="h",
+        decide=_scripted_proposals([Decision(DecisionKind.REJECT, reason="actually no")]),
+    )
+    assert result.rejected == 1
+    log = _run(["git", "log", "main..maury/promoted/pid-1"], cwd=dest)
+    assert "Rejected-Content-Hash:" in log
+    assert "actually no" in log

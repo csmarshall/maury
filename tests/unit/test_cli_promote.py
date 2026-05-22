@@ -20,6 +20,7 @@ from maury.ids import new_profile_id
 from maury.mining.extractor import ExtractionWindow, Finding
 from maury.mining.run_branch import write_run_branch
 from maury.mining.transcripts import TranscriptMessage
+from maury.promotion.proposal import write_proposal
 
 
 def _git_available() -> bool:
@@ -188,3 +189,36 @@ def test_promote_interactive_accept(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert "promoted: 1" in result.output
+
+
+# ---- promote-review (proposal queue) -----------------------------------
+
+
+@_skip
+def test_promote_review_accept_all(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")
+    _write_manifest(dest)
+    write_proposal(
+        src,
+        finding=_finding("universal idea"),
+        dest_mode="base",
+        source_mode="work",
+        source_host="host_x",
+    )
+    result = CliRunner().invoke(main, ["promote-review", "--from", str(src), "--to", str(dest), "--accept-all"])
+    assert result.exit_code == 0, result.output
+    assert "promoted: 1" in result.output
+    branch = _run(["git", "branch", "--list", "maury/promoted/*"], cwd=dest).strip().lstrip("* ").strip()
+    log = _run(["git", "log", f"main..{branch}", "--format=%B"], cwd=dest)
+    assert "Promoted-From: src@proposal:" in log
+
+
+@_skip
+def test_promote_review_missing_manifest_errors(tmp_path: Path) -> None:
+    src = _seed_repo(tmp_path, "src")
+    dest = _seed_repo(tmp_path, "dest")  # no manifest
+    write_proposal(src, finding=_finding("x"), dest_mode="base", source_mode="work", source_host="h")
+    result = CliRunner().invoke(main, ["promote-review", "--from", str(src), "--to", str(dest)])
+    assert result.exit_code != 0
+    assert "manifest not found" in result.output
