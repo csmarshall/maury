@@ -538,45 +538,45 @@ def test_dedup_is_mode_scoped_same_idea_same_mode_suppressed(tmp_path: Path) -> 
 
 
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")
-def test_dedup_legacy_modeless_commit_is_wildcard(tmp_path: Path) -> None:
-    """A commit predating the Source-Mode trailer (hash, no mode) dedups
-    a new finding of ANY mode — ADR-0026 'treat as wildcard'."""
+def test_dedup_modeless_commit_does_not_match_moded_finding(tmp_path: Path) -> None:
+    """The wildcard compat for pre-trailer commits was removed: a
+    mode-less commit (hash, "") is an EXACT key that does NOT dedup a
+    later moded finding. (No such commits exist for real users; mining
+    always writes Source-Mode.)"""
     repo = _seed_repo(tmp_path)
     f = _finding(kind="feedback", text="prefer terse responses")
-    # First run with no source_mode (legacy style).
+    # First run with no source_mode → key (hash, "").
     first = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd")
     _run(["git", "checkout", "main"], cwd=repo)
-    _run(["git", "merge", "--no-ff", "-m", "merge legacy run", first.branch], cwd=repo)
+    _run(["git", "merge", "--no-ff", "-m", "merge modeless run", first.branch], cwd=repo)
 
     when = datetime(2026, 5, 21, 17, 0, 0, tzinfo=UTC)
     second = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", source_mode="work", when=when)
-    assert second.commits_written == 0
-    assert second.skipped_dedup == 1
+    assert second.commits_written == 1  # ("", ...) != ("work", ...) → not suppressed
+    assert second.skipped_dedup == 0
 
 
 def test_finding_keys_contains_logic() -> None:
-    """Unit-level FindingKeys.contains matrix."""
-    keys = FindingKeys(
-        wildcard_hashes=frozenset({"wild"}),
-        mode_pairs=frozenset({("h1", "work"), ("h1", "personal")}),
-    )
-    # wildcard hash matches any mode (or none).
-    assert keys.contains(content_hash="wild", source_mode="anything") is True
-    assert keys.contains(content_hash="wild", source_mode=None) is True
+    """Unit-level FindingKeys.contains matrix — exact (hash, mode) keys,
+    no cross-mode wildcarding."""
+    keys = FindingKeys(pairs=frozenset({("h1", "work"), ("h1", "personal"), ("h2", "")}))
     # exact pair matches.
     assert keys.contains(content_hash="h1", source_mode="work") is True
-    # same hash, unseen mode → not a dup.
+    assert keys.contains(content_hash="h1", source_mode="personal") is True
+    # same hash, unseen mode → not a dup (no wildcard).
     assert keys.contains(content_hash="h1", source_mode="globex") is False
-    # modeless new finding dedups against any prior occurrence of the hash.
-    assert keys.contains(content_hash="h1", source_mode=None) is True
+    # a moded finding does not match the mode-less key.
+    assert keys.contains(content_hash="h2", source_mode="work") is False
+    # mode-less finding matches the mode-less key (None normalizes to "").
+    assert keys.contains(content_hash="h2", source_mode=None) is True
     # unknown hash → not a dup.
     assert keys.contains(content_hash="nope", source_mode="work") is False
 
 
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")
 def test_existing_finding_keys_parses_rejection_source_modes(tmp_path: Path) -> None:
-    """A rejection commit carrying Rejected-Source-Mode contributes a
-    mode-scoped pair; a bare Rejected-Content-Hash is a wildcard."""
+    """A rejection commit's Rejected-Content-Hash pairs with its
+    Rejected-Source-Mode; a bare one gets the "" mode."""
     repo = _seed_repo(tmp_path)
     subprocess.run(
         [
@@ -594,8 +594,8 @@ def test_existing_finding_keys_parses_rejection_source_modes(tmp_path: Path) -> 
         capture_output=True,
     )
     keys = existing_finding_keys(repo)
-    assert ("paired", "work") in keys.mode_pairs
-    assert "bare" in keys.wildcard_hashes
+    assert ("paired", "work") in keys.pairs
+    assert ("bare", "") in keys.pairs
 
 
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")

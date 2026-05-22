@@ -357,27 +357,21 @@ class FindingKeys:
     keyed by (Content-Hash, Source-Mode) per ADR-0026.
 
     A finding is a duplicate of a prior one only if BOTH its content
-    hash AND its source mode match. Commits predating the Source-Mode
-    trailer (or rejections without a Rejected-Source-Mode) contribute
-    *wildcard* hashes that match any mode — backward-compatible per
-    ADR-0026's "treat as wildcard" rule.
+    hash AND its source mode match — exactly. Mining always writes a
+    `Source-Mode` trailer (since 2026-05-22), so a mode-less key is the
+    `""` mode and only matches another mode-less finding; there is no
+    cross-mode wildcarding. (An earlier pre-release "treat trailer-less
+    commits as wildcard" compat path was removed — no such commits exist
+    for any real user.)
     """
 
-    wildcard_hashes: frozenset[str]
-    """Hashes seen with no source mode → match a finding of any mode."""
-
-    mode_pairs: frozenset[tuple[str, str]]
-    """Exact (content_hash, source_mode) pairs seen in history."""
+    pairs: frozenset[tuple[str, str]]
+    """Exact (content_hash, source_mode) identity pairs; source_mode is
+    `""` when absent."""
 
     def contains(self, *, content_hash: str, source_mode: str | None) -> bool:
-        """True if a finding with this (hash, mode) is already in history."""
-        if content_hash in self.wildcard_hashes:
-            return True
-        if source_mode:
-            return (content_hash, source_mode) in self.mode_pairs
-        # New finding carries no mode → wildcard on its own side: any
-        # prior occurrence of this hash (in any mode) dedupes it.
-        return any(h == content_hash for h, _m in self.mode_pairs)
+        """True if a finding with this exact (hash, mode) is in history."""
+        return (content_hash, source_mode or "") in self.pairs
 
 
 def existing_finding_keys(repo_dir: Path) -> FindingKeys:
@@ -385,8 +379,8 @@ def existing_finding_keys(repo_dir: Path) -> FindingKeys:
 
     Parses each commit body for finding identity:
 
-    - **Finding commits** carry one `Content-Hash` and optionally one
-      `Source-Mode`. Paired → `mode_pairs`; hash-only → `wildcard_hashes`.
+    - **Finding commits** carry one `Content-Hash` and a `Source-Mode`
+      (the latter `""` if absent) → one `(hash, mode)` pair.
     - **Rejection commits** carry N `Rejected-Content-Hash` lines, each
       optionally followed (before the next hash) by a
       `Rejected-Source-Mode`. Adjacency-paired the same way.
@@ -395,10 +389,9 @@ def existing_finding_keys(repo_dir: Path) -> FindingKeys:
     must not break on a git hiccup).
     """
     rc, out = _run_git(["git", "log", "--all", "-z", "--format=%b"], cwd=repo_dir)
-    wildcard: set[str] = set()
     pairs: set[tuple[str, str]] = set()
     if rc != 0:
-        return FindingKeys(frozenset(), frozenset())
+        return FindingKeys(frozenset())
 
     for body in out.split("\0"):
         if not body.strip():
@@ -407,15 +400,11 @@ def existing_finding_keys(repo_dir: Path) -> FindingKeys:
         # `startswith("Content-Hash:")` does not match "Rejected-Content-Hash:".
         fh = _first_trailer(body, TRAILER_CONTENT_HASH)
         if fh is not None:
-            fm = _first_trailer(body, TRAILER_SOURCE_MODE)
-            if fm:
-                pairs.add((fh, fm))
-            else:
-                wildcard.add(fh)
+            pairs.add((fh, _first_trailer(body, TRAILER_SOURCE_MODE) or ""))
         # Rejection commit: adjacency-paired Rejected-* trailers.
-        _parse_rejection_pairs(body, wildcard, pairs)
+        _parse_rejection_pairs(body, pairs)
 
-    return FindingKeys(frozenset(wildcard), frozenset(pairs))
+    return FindingKeys(frozenset(pairs))
 
 
 def _first_trailer(body: str, key: str) -> str | None:
@@ -431,20 +420,17 @@ def _first_trailer(body: str, key: str) -> str | None:
     return None
 
 
-def _parse_rejection_pairs(body: str, wildcard: set[str], pairs: set[tuple[str, str]]) -> None:
+def _parse_rejection_pairs(body: str, pairs: set[tuple[str, str]]) -> None:
     """Walk a rejection commit body, pairing each `Rejected-Content-Hash`
     with the `Rejected-Source-Mode` that follows it (before the next
-    hash). Unpaired hashes are wildcards."""
+    hash). An unpaired hash gets the `""` mode."""
     pending_hash: str | None = None
     pending_mode: str | None = None
 
     def flush() -> None:
         nonlocal pending_hash, pending_mode
         if pending_hash is not None:
-            if pending_mode:
-                pairs.add((pending_hash, pending_mode))
-            else:
-                wildcard.add(pending_hash)
+            pairs.add((pending_hash, pending_mode or ""))
         pending_hash = None
         pending_mode = None
 
