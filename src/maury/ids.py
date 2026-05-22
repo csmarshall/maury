@@ -63,7 +63,7 @@ def normalize_tag(raw: str) -> str:
 
     Examples:
         normalize_tag("XADAM___") == "xadam---"
-        normalize_tag("Charles-MBP.local") == "charles-mbp-local"
+        normalize_tag("Jdoe-MBP.local") == "jdoe-mbp-local"
         normalize_tag("a" * 50) == "a" * 32
     """
     lowered = raw.lower()

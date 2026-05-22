@@ -6,16 +6,16 @@ Rule files are YAML with this shape:
 version: 1
 
 rules:
-  - id: hostname-rosa
+  - id: hostname-workstation
     when:
-      pattern: '\\brosa\\b'
+      pattern: '\\bworkstation\\b'
     then:
       profile: home
-      host_overlay: rosa
+      host_overlay: workstation
     confidence: high
     priority: 10
     added: 2026-05-06
-    reason: "Charles's home-network host"
+    reason: "Example: a home-network host"
 ```
 
 Loading is strict: unknown keys raise. Round-tripping preserves comments

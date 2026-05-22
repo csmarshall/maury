@@ -21,9 +21,9 @@ from maury.llm import LLMClient
 
 from .transcripts import TranscriptMessage
 
-# The extraction prompt. Validated end-to-end against Charles's real
-# transcripts in scripts/mining_prototype_llm.py — surfaced 18 real
-# findings from 3 windows of 50 messages.
+# The extraction prompt. Validated end-to-end against real transcripts
+# in scripts/mining_prototype_llm.py — surfaced 18 real findings from 3
+# windows of 50 messages.
 EXTRACTION_PROMPT = dedent(
     """\
     You are reviewing a window of user messages from one user's Claude Code

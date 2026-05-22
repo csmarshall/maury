@@ -3150,7 +3150,7 @@ def doctor(claude_md: Path, output_format: str, fail_on: str) -> None:
     text = claude_md.read_text(encoding="utf-8")
     findings = run_all(text, source_path=str(claude_md))
 
-    # Per the 2026-05-18 doctor expansion (Charles's "both" pick on
+    # Per the 2026-05-18 doctor expansion (the "both" pick on
     # the design call): system-health rules contribute to the same
     # findings list. severity is unified; `--fail-on` aggregates over
     # content + system-health. The `manifest_path` is best-effort

@@ -250,9 +250,10 @@ def detect_security_posture(os_kind: OS) -> tuple[SecurityPosture, str | None, l
 def detect_privileged_writes(os_kind: OS) -> PrivilegedWrites:
     """How should the tool handle privileged writes?
 
-    For v1 we default to AUTO everywhere except FreeBSD, where Charles's
-    workflow on kamek is "Claude writes scripts, I sudo them." Per
-    CLAUDE.md global instructions.
+    For v1 we default to AUTO everywhere except FreeBSD, where the common
+    workflow is "the assistant writes scripts, the operator runs them with
+    elevated privileges" — so privileged writes are surfaced for manual
+    execution rather than attempted automatically.
     """
     if os_kind == OS.FREEBSD:
         return PrivilegedWrites.MANUAL

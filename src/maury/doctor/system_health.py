@@ -9,8 +9,8 @@ Both produce `Finding` objects with the same severity model so
 Why this exists: `maury status` already surfaces the same conditions
 as ⚠️ markers, but status is interactive-diagnostic. Doctor is the
 scripted-CI surface — `maury doctor --fail-on warn` should exit
-non-zero when these conditions land, so CI catches them. Per
-Charles's "both" decision on the 2026-05-18 design call.
+non-zero when these conditions land, so CI catches them. Per the
+"both" decision on the 2026-05-18 design call.
 
 Checks implemented:
 

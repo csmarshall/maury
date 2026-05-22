@@ -47,7 +47,7 @@ class TranscriptMessage:
     be used for watermarking and de-duplication.
     """
 
-    project: str  # e.g., "-Users-charles-work-link-ctl"
+    project: str  # e.g., "-Users-jdoe-work-myproject"
     transcript_path: Path
     session_id: str
     timestamp: str  # ISO-8601 from the JSONL event

@@ -2,13 +2,13 @@
 
 Output format (concise, one rule per line):
 
-    classification: home (host_overlay=rosa, confidence=high)
+    classification: home (host_overlay=workstation, confidence=high)
     forbidden_by: -
 
     rules considered:
-      [hit ] hostname-rosa     classify  pattern /\\brosa\\b/ matched
-      [miss] hostname-kamek    classify  pattern /\\bkamek\\b/ did not match
-      [miss] redact-home-net   forbid    pattern /\\b192\\.168...\\b/ did not match
+      [hit ] hostname-workstation  classify  pattern /\\bworkstation\\b/ matched
+      [miss] hostname-laptop       classify  pattern /\\blaptop\\b/ did not match
+      [miss] redact-home-net       forbid    pattern /\\b192\\.168...\\b/ did not match
 
 A `--verbose` mode (planned) will also dump the rule's reason/added date.
 """

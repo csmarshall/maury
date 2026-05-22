@@ -19,7 +19,7 @@ from .report import Finding, Severity
 
 # Soft / hard length thresholds.
 # The rubric does not give specific numbers; these are conservative defaults
-# Charles can tune. The point is to flag growth, not enforce a hard cap.
+# operators can tune. The point is to flag growth, not enforce a hard cap.
 LINES_WARN = 200
 LINES_ERROR = 400
 CHARS_WARN = 8_000

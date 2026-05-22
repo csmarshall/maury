@@ -40,9 +40,9 @@ from .settings_merge import (
 class LayerSource:
     """One source layer contributing content during render."""
 
-    name: str  # "base" / "profile:home" / "host-overlay:toad"
+    name: str  # "base" / "profile:home" / "host-overlay:workstation"
     repo_root: Path  # absolute path to the repo this layer's content lives in
-    relative_root: str  # subpath within the repo, e.g., "" or "profiles/home" or "profiles/home/hosts/toad"
+    relative_root: str  # subpath within the repo, e.g., "" or "profiles/home" or "profiles/home/hosts/workstation"
 
 
 @dataclass(frozen=True)
