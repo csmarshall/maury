@@ -83,6 +83,29 @@ def test_rejection_body_blank_reason_becomes_sentinel() -> None:
     assert "Rejected-Reason: \n" not in body
 
 
+def test_rejection_body_includes_source_mode_when_set() -> None:
+    """Per ADR-0026: rejection memory is mode-scoped — the rejected
+    finding's Source-Mode rides in the commit between hash and reason."""
+    body = format_rejection_commit_body(
+        run_id="rid",
+        curator_host="h",
+        rejected=[RejectedFinding(content_hash="aaa", source_mode="work:acme-client", reason="nope")],
+    )
+    lines = body.splitlines()
+    idx = lines.index("Rejected-Content-Hash: aaa")
+    assert lines[idx + 1] == "Rejected-Source-Mode: work:acme-client"
+    assert lines[idx + 2] == "Rejected-Reason: nope"
+
+
+def test_rejection_body_omits_source_mode_when_blank() -> None:
+    body = format_rejection_commit_body(
+        run_id="rid",
+        curator_host="h",
+        rejected=[RejectedFinding(content_hash="aaa", reason="nope")],
+    )
+    assert "Rejected-Source-Mode:" not in body
+
+
 def test_rejection_body_default_reason_is_empty_string() -> None:
     """RejectedFinding.reason defaults to '' → sentinel in the body."""
     body = format_rejection_commit_body(
@@ -253,9 +276,9 @@ def _gw_finding(text: str, *, kind: str = "feedback", scope_hint: str = "base") 
     )
 
 
-def _mine(repo: Path, findings: list[Finding], *, when: datetime | None = None) -> str:
+def _mine(repo: Path, findings: list[Finding], *, when: datetime | None = None, source_mode: str | None = None) -> str:
     """Write a run branch; return its run_id. Leaves repo on main."""
-    result = write_run_branch(repo_dir=repo, findings=findings, host_hex="aabbccdd", when=when)
+    result = write_run_branch(repo_dir=repo, findings=findings, host_hex="aabbccdd", when=when, source_mode=source_mode)
     _run(["git", "checkout", "-q", "main"], cwd=repo)
     return result.run_id
 
@@ -366,6 +389,23 @@ def test_review_run_reject_writes_noop_commit(tmp_path: Path) -> None:
     assert "Rejected-Content-Hash:" in log
     assert "too narrow" in log
     assert "rejected during curator review" in log
+
+
+@_skip
+def test_review_run_reject_carries_source_mode_from_finding(tmp_path: Path) -> None:
+    """A finding mined with a Source-Mode trailer rejects with a matching
+    Rejected-Source-Mode in the no-op commit (ADR-0026)."""
+    repo = _seed_repo(tmp_path)
+    rid = _mine(repo, [_gw_finding("noise here")], source_mode="work:acme-client")
+    result = review_run(
+        repo_dir=repo,
+        run_id=rid,
+        curator_host="h",
+        decide=_scripted([Decision(DecisionKind.REJECT, reason="not universal")]),
+    )
+    assert result.rejected == 1
+    log = _run(["git", "log", f"main..{result.review_branch}"], cwd=repo)
+    assert "Rejected-Source-Mode: work:acme-client" in log
 
 
 @_skip

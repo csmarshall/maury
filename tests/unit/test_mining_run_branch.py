@@ -281,8 +281,10 @@ import subprocess  # noqa: E402
 import pytest  # noqa: E402
 
 from maury.mining.run_branch import (  # noqa: E402
+    FindingKeys,
     RunBranchError,
     existing_content_hashes,
+    existing_finding_keys,
     write_run_branch,
 )
 
@@ -485,6 +487,98 @@ def test_write_run_branch_skips_findings_with_seen_content_hash(tmp_path: Path) 
     # The skipped hash is f1's content hash.
     expected = content_hash(kind="feedback", scope_hint="base", text="prefer terse responses")
     assert expected in second.skipped_hashes
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_dedup_is_mode_scoped_same_idea_different_mode_not_suppressed(tmp_path: Path) -> None:
+    """Per ADR-0026: the same finding mined under a different mode is a
+    distinct proposal and must NOT be dedup-suppressed."""
+    repo = _seed_repo(tmp_path)
+    f = _finding(kind="feedback", text="prefer terse responses")
+    first = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", source_mode="work")
+    _run(["git", "checkout", "main"], cwd=repo)
+    _run(["git", "merge", "--no-ff", "-m", "merge work run", first.branch], cwd=repo)
+
+    # Same idea, different mode → not suppressed.
+    when = datetime(2026, 5, 21, 17, 0, 0, tzinfo=UTC)
+    second = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", source_mode="personal", when=when)
+    assert second.commits_written == 1
+    assert second.skipped_dedup == 0
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_dedup_is_mode_scoped_same_idea_same_mode_suppressed(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    f = _finding(kind="feedback", text="prefer terse responses")
+    first = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", source_mode="work")
+    _run(["git", "checkout", "main"], cwd=repo)
+    _run(["git", "merge", "--no-ff", "-m", "merge work run", first.branch], cwd=repo)
+
+    when = datetime(2026, 5, 21, 17, 0, 0, tzinfo=UTC)
+    second = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", source_mode="work", when=when)
+    assert second.commits_written == 0
+    assert second.skipped_dedup == 1
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_dedup_legacy_modeless_commit_is_wildcard(tmp_path: Path) -> None:
+    """A commit predating the Source-Mode trailer (hash, no mode) dedups
+    a new finding of ANY mode — ADR-0026 'treat as wildcard'."""
+    repo = _seed_repo(tmp_path)
+    f = _finding(kind="feedback", text="prefer terse responses")
+    # First run with no source_mode (legacy style).
+    first = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd")
+    _run(["git", "checkout", "main"], cwd=repo)
+    _run(["git", "merge", "--no-ff", "-m", "merge legacy run", first.branch], cwd=repo)
+
+    when = datetime(2026, 5, 21, 17, 0, 0, tzinfo=UTC)
+    second = write_run_branch(repo_dir=repo, findings=[f], host_hex="aabbccdd", source_mode="work", when=when)
+    assert second.commits_written == 0
+    assert second.skipped_dedup == 1
+
+
+def test_finding_keys_contains_logic() -> None:
+    """Unit-level FindingKeys.contains matrix."""
+    keys = FindingKeys(
+        wildcard_hashes=frozenset({"wild"}),
+        mode_pairs=frozenset({("h1", "work"), ("h1", "personal")}),
+    )
+    # wildcard hash matches any mode (or none).
+    assert keys.contains(content_hash="wild", source_mode="anything") is True
+    assert keys.contains(content_hash="wild", source_mode=None) is True
+    # exact pair matches.
+    assert keys.contains(content_hash="h1", source_mode="work") is True
+    # same hash, unseen mode → not a dup.
+    assert keys.contains(content_hash="h1", source_mode="globex") is False
+    # modeless new finding dedups against any prior occurrence of the hash.
+    assert keys.contains(content_hash="h1", source_mode=None) is True
+    # unknown hash → not a dup.
+    assert keys.contains(content_hash="nope", source_mode="work") is False
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_existing_finding_keys_parses_rejection_source_modes(tmp_path: Path) -> None:
+    """A rejection commit carrying Rejected-Source-Mode contributes a
+    mode-scoped pair; a bare Rejected-Content-Hash is a wildcard."""
+    repo = _seed_repo(tmp_path)
+    subprocess.run(
+        [
+            "git",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "maury: rejected during curator review\n\n"
+            "Rejected-Content-Hash: paired\nRejected-Source-Mode: work\nRejected-Reason: x\n"
+            "Rejected-Content-Hash: bare\nRejected-Reason: y\n",
+            "--cleanup=verbatim",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    keys = existing_finding_keys(repo)
+    assert ("paired", "work") in keys.mode_pairs
+    assert "bare" in keys.wildcard_hashes
 
 
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")

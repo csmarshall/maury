@@ -59,6 +59,10 @@ TRAILER_MINING_RUN = "Mining-Run"
 # Optional for backward-compat: commits mined before this trailer existed
 # simply omit it.
 TRAILER_SOURCE_MODE = "Source-Mode"
+# Per-rejected-finding source mode in the no-op rejection commit (ADR-0026,
+# written by `maury review`). Paired by adjacency with each
+# `Rejected-Content-Hash:` so dedup stays mode-scoped across rejections.
+TRAILER_REJECTED_SOURCE_MODE = "Rejected-Source-Mode"
 
 # Target staging file. The "diff IS the proposed change" per ADR-0022;
 # in V1 every finding's diff is an append to this file at the repo root.
@@ -332,6 +336,115 @@ def existing_content_hashes(repo_dir: Path) -> set[str]:
     return hashes
 
 
+@dataclass(frozen=True)
+class FindingKeys:
+    """The set of existing finding identities in the repo's history,
+    keyed by (Content-Hash, Source-Mode) per ADR-0026.
+
+    A finding is a duplicate of a prior one only if BOTH its content
+    hash AND its source mode match. Commits predating the Source-Mode
+    trailer (or rejections without a Rejected-Source-Mode) contribute
+    *wildcard* hashes that match any mode — backward-compatible per
+    ADR-0026's "treat as wildcard" rule.
+    """
+
+    wildcard_hashes: frozenset[str]
+    """Hashes seen with no source mode → match a finding of any mode."""
+
+    mode_pairs: frozenset[tuple[str, str]]
+    """Exact (content_hash, source_mode) pairs seen in history."""
+
+    def contains(self, *, content_hash: str, source_mode: str | None) -> bool:
+        """True if a finding with this (hash, mode) is already in history."""
+        if content_hash in self.wildcard_hashes:
+            return True
+        if source_mode:
+            return (content_hash, source_mode) in self.mode_pairs
+        # New finding carries no mode → wildcard on its own side: any
+        # prior occurrence of this hash (in any mode) dedupes it.
+        return any(h == content_hash for h, _m in self.mode_pairs)
+
+
+def existing_finding_keys(repo_dir: Path) -> FindingKeys:
+    """Return the mode-aware dedup keys for the repo's reachable history.
+
+    Parses each commit body for finding identity:
+
+    - **Finding commits** carry one `Content-Hash` and optionally one
+      `Source-Mode`. Paired → `mode_pairs`; hash-only → `wildcard_hashes`.
+    - **Rejection commits** carry N `Rejected-Content-Hash` lines, each
+      optionally followed (before the next hash) by a
+      `Rejected-Source-Mode`. Adjacency-paired the same way.
+
+    Empty `FindingKeys` on a fresh repo or a transient git error (mining
+    must not break on a git hiccup).
+    """
+    rc, out = _run_git(["git", "log", "--all", "-z", "--format=%b"], cwd=repo_dir)
+    wildcard: set[str] = set()
+    pairs: set[tuple[str, str]] = set()
+    if rc != 0:
+        return FindingKeys(frozenset(), frozenset())
+
+    for body in out.split("\0"):
+        if not body.strip():
+            continue
+        # Finding commit: single Content-Hash (+ optional Source-Mode).
+        # `startswith("Content-Hash:")` does not match "Rejected-Content-Hash:".
+        fh = _first_trailer(body, TRAILER_CONTENT_HASH)
+        if fh is not None:
+            fm = _first_trailer(body, TRAILER_SOURCE_MODE)
+            if fm:
+                pairs.add((fh, fm))
+            else:
+                wildcard.add(fh)
+        # Rejection commit: adjacency-paired Rejected-* trailers.
+        _parse_rejection_pairs(body, wildcard, pairs)
+
+    return FindingKeys(frozenset(wildcard), frozenset(pairs))
+
+
+def _first_trailer(body: str, key: str) -> str | None:
+    """First value of trailer `key` in `body`, or None. Tolerant of the
+    4-space indent `git log` adds to commit bodies."""
+    prefix = f"{key}:"
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            value = stripped.split(":", 1)[1].strip()
+            if value:
+                return value
+    return None
+
+
+def _parse_rejection_pairs(body: str, wildcard: set[str], pairs: set[tuple[str, str]]) -> None:
+    """Walk a rejection commit body, pairing each `Rejected-Content-Hash`
+    with the `Rejected-Source-Mode` that follows it (before the next
+    hash). Unpaired hashes are wildcards."""
+    pending_hash: str | None = None
+    pending_mode: str | None = None
+
+    def flush() -> None:
+        nonlocal pending_hash, pending_mode
+        if pending_hash is not None:
+            if pending_mode:
+                pairs.add((pending_hash, pending_mode))
+            else:
+                wildcard.add(pending_hash)
+        pending_hash = None
+        pending_mode = None
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{TRAILER_REJECTED_CONTENT_HASH}:"):
+            flush()
+            pending_hash = stripped.split(":", 1)[1].strip() or None
+        elif stripped.startswith(f"{TRAILER_REJECTED_SOURCE_MODE}:"):
+            value = stripped.split(":", 1)[1].strip()
+            if value:
+                pending_mode = value
+    flush()
+
+
 # ---- branch write --------------------------------------------------------
 
 
@@ -376,16 +489,18 @@ def write_run_branch(
     branch = branch_name_for(run_id)
     _ensure_branch_absent(repo_dir, branch)
 
-    dedup_set = existing_content_hashes(repo_dir)
+    dedup_keys = existing_finding_keys(repo_dir)
     crossref_states = crossref_states or {}
 
-    # Filter findings to those that are not dedup hits. We compute
-    # hashes once so commits use the same value.
+    # Filter findings to those that are not dedup hits. Per ADR-0026 the
+    # dedup key is (Content-Hash, Source-Mode): the same idea mined under
+    # a different mode is a distinct proposal and is NOT suppressed. We
+    # compute the hash once so commits reuse the same value.
     queued: list[tuple[Finding, str, str]] = []
     skipped: list[str] = []
     for idx, finding in enumerate(findings):
         h = content_hash(kind=finding.kind, scope_hint=finding.scope_hint, text=finding.text)
-        if h in dedup_set:
+        if dedup_keys.contains(content_hash=h, source_mode=source_mode):
             skipped.append(h)
             continue
         state = crossref_states.get(idx, "NEW")
@@ -526,12 +641,15 @@ __all__ = [
     "STAGING_FILE",
     "TRAILER_CONTENT_HASH",
     "TRAILER_REJECTED_CONTENT_HASH",
+    "TRAILER_REJECTED_SOURCE_MODE",
     "TRAILER_SOURCE_MODE",
+    "FindingKeys",
     "RunBranchError",
     "RunBranchResult",
     "branch_name_for",
     "content_hash",
     "existing_content_hashes",
+    "existing_finding_keys",
     "format_commit_body",
     "format_commit_subject",
     "format_finding_block",

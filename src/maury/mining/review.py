@@ -51,6 +51,8 @@ from maury.mining.run_branch import (
     STAGING_FILE,
     TRAILER_CONTENT_HASH,
     TRAILER_REJECTED_CONTENT_HASH,
+    TRAILER_REJECTED_SOURCE_MODE,
+    TRAILER_SOURCE_MODE,
     branch_name_for,
 )
 
@@ -87,12 +89,16 @@ class RejectedFinding:
     """One finding the curator rejected during review.
 
     `content_hash` is the finding's ADR-0022 Content-Hash (carried from
-    the run-branch commit's trailer); `reason` is the operator's optional
-    free-text justification. An empty/blank reason renders as
-    `NO_REASON_SENTINEL` in the commit body.
+    the run-branch commit's trailer); `source_mode` is the mode it was
+    mined under (ADR-0026), so rejection memory stays mode-scoped; `reason`
+    is the operator's optional free-text justification. An empty/blank
+    reason renders as `NO_REASON_SENTINEL` in the commit body; an empty
+    `source_mode` simply omits the `Rejected-Source-Mode` line (the
+    rejected hash then dedups as a wildcard across modes).
     """
 
     content_hash: str
+    source_mode: str = ""
     reason: str = ""
 
 
@@ -112,13 +118,15 @@ def format_rejection_commit_body(
         Rejected-Count: <N>
 
         Rejected-Content-Hash: <hash>
+        Rejected-Source-Mode: <mode>          (omitted if not known)
         Rejected-Reason: <reason or (none)>
         Rejected-Content-Hash: <hash>
         Rejected-Reason: <reason or (none)>
 
-    Each `Rejected-Content-Hash:` line is immediately followed by its
-    `Rejected-Reason:` line so the pairing is unambiguous. The trailers
-    use the same `<Key>: <value>` (single colon, single space) form as
+    Each `Rejected-Content-Hash:` line is followed by its optional
+    `Rejected-Source-Mode:` (ADR-0026, so rejection memory is mode-scoped)
+    and its `Rejected-Reason:` line. The trailers use the same
+    `<Key>: <value>` (single colon, single space) form as
     `run_branch.format_commit_body`, so `git interpret-trailers` parses
     them and `git log --grep="^Rejected-Content-Hash:"` indexes them for
     the next mining run's dedup scan.
@@ -137,6 +145,8 @@ def format_rejection_commit_body(
     for rf in rejected:
         reason = rf.reason.strip() or NO_REASON_SENTINEL
         pair_lines.append(f"{TRAILER_REJECTED_CONTENT_HASH}: {rf.content_hash}")
+        if rf.source_mode.strip():
+            pair_lines.append(f"{TRAILER_REJECTED_SOURCE_MODE}: {rf.source_mode.strip()}")
         pair_lines.append(f"{TRAILER_REJECTED_REASON}: {reason}")
 
     if not pair_lines:
@@ -230,6 +240,10 @@ class CommitView:
     body: str
     content_hash: str
     """The finding's Content-Hash trailer (empty string if absent)."""
+
+    source_mode: str
+    """The finding's Source-Mode trailer (ADR-0026; empty if absent).
+    Carried into the rejection record so rejection memory is mode-scoped."""
 
     block: str
     """The markdown the commit appended to the staging file — also the
@@ -378,7 +392,13 @@ def review_run(
             skipped += 1
             continue
         if decision.kind is DecisionKind.REJECT:
-            rejected.append(RejectedFinding(content_hash=view.content_hash, reason=decision.reason))
+            rejected.append(
+                RejectedFinding(
+                    content_hash=view.content_hash,
+                    source_mode=view.source_mode,
+                    reason=decision.reason,
+                )
+            )
             continue
         if decision.kind is DecisionKind.EDIT:
             _apply_finding(repo_dir, view, editor=editor)
@@ -512,8 +532,12 @@ def _build_commit_view(repo_dir: Path, sha: str) -> CommitView:
     body = _git_or_raise(["git", "show", "-s", "--format=%b", sha], cwd=repo_dir, action="read body")
     hashes = parse_trailer_values(body, TRAILER_CONTENT_HASH)
     content_hash = hashes[0] if hashes else ""
+    modes = parse_trailer_values(body, TRAILER_SOURCE_MODE)
+    source_mode = modes[0] if modes else ""
     block = _appended_block(repo_dir, sha)
-    return CommitView(sha=sha, subject=subject, body=body, content_hash=content_hash, block=block)
+    return CommitView(
+        sha=sha, subject=subject, body=body, content_hash=content_hash, source_mode=source_mode, block=block
+    )
 
 
 def _appended_block(repo_dir: Path, sha: str) -> str:
