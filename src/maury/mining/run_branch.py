@@ -52,6 +52,13 @@ TRAILER_CROSSREF_STATE = "Crossref-State"
 TRAILER_SOURCE_TRANSCRIPT = "Source-Transcript"
 TRAILER_SOURCE_WINDOW = "Source-Window"
 TRAILER_MINING_RUN = "Mining-Run"
+# Per ADR-0026: the mode this finding was mined under. Carries the mode
+# NAME (a colon-path like `personal:consulting:acme` is fine). Used by
+# `maury promote` to graph-check each finding's source mode against the
+# target (ADR-0045), and by the (Content-Hash, Source-Mode) dedup tuple.
+# Optional for backward-compat: commits mined before this trailer existed
+# simply omit it.
+TRAILER_SOURCE_MODE = "Source-Mode"
 
 # Target staging file. The "diff IS the proposed change" per ADR-0022;
 # in V1 every finding's diff is an append to this file at the repo root.
@@ -137,6 +144,7 @@ def format_commit_body(
     *,
     run_id: str,
     crossref_state: str | None = None,
+    source_mode: str | None = None,
 ) -> str:
     """Build the structured commit body for one finding per ADR-0022.
 
@@ -150,9 +158,14 @@ def format_commit_body(
         Confidence:         <confidence>
         Crossref-State:     <state or NEW>
         Content-Hash:       <sha256>
+        Source-Mode:        <mode name>          (omitted if not supplied)
         Source-Transcript:  <jsonl path>
         Source-Window:      messages <start>-<end>
         Mining-Run:         maury/run/<run-id>
+
+    `source_mode` is the mode the finding was mined under (ADR-0026),
+    used by `maury promote` for the per-finding graph check. When None
+    the `Source-Mode` trailer is omitted entirely (backward-compatible).
 
     The trailers MUST be in this exact form (key, colon, single space,
     value, newline) so `git interpret-trailers` parses them cleanly and
@@ -169,6 +182,10 @@ def format_commit_body(
         (TRAILER_CONFIDENCE, finding.confidence),
         (TRAILER_CROSSREF_STATE, crossref_state or "NEW"),
         (TRAILER_CONTENT_HASH, hash_value),
+    ]
+    if source_mode:
+        trailers.append((TRAILER_SOURCE_MODE, source_mode))
+    trailers += [
         (TRAILER_SOURCE_TRANSCRIPT, _source_transcript_label(finding)),
         (TRAILER_SOURCE_WINDOW, window_range),
         (TRAILER_MINING_RUN, branch_name_for(run_id)),
@@ -203,7 +220,9 @@ def _source_transcript_label(finding: Finding) -> str:
     return str(getattr(first, "transcript_path", "(unknown)"))
 
 
-def format_finding_block(finding: Finding, *, run_id: str, crossref_state: str | None = None) -> str:
+def format_finding_block(
+    finding: Finding, *, run_id: str, crossref_state: str | None = None, source_mode: str | None = None
+) -> str:
     """Build the markdown block appended to `mining-findings.md` for this finding.
 
     Each finding lands as a self-contained `## <heading>` section so an
@@ -241,7 +260,8 @@ def format_finding_block(finding: Finding, *, run_id: str, crossref_state: str |
         f"- scope hint: {finding.scope_hint}\n"
         f"- confidence: {finding.confidence}\n"
         f"- crossref state: {state}\n"
-        f"- source: {_source_transcript_label(finding)}\n"
+        + (f"- source mode: {source_mode}\n" if source_mode else "")
+        + f"- source: {_source_transcript_label(finding)}\n"
         f"- run: {branch_name_for(run_id)}\n"
         f"\n"
     )
@@ -322,6 +342,7 @@ def write_run_branch(
     host_hex: str,
     crossref_states: dict[int, str] | None = None,
     when: datetime | None = None,
+    source_mode: str | None = None,
 ) -> RunBranchResult:
     """Materialize the mining findings as a `maury/run/<run-id>` branch.
 
@@ -386,7 +407,7 @@ def write_run_branch(
     try:
         staging_path = repo_dir / STAGING_FILE
         for finding, _hash, state in queued:
-            block = format_finding_block(finding, run_id=run_id, crossref_state=state)
+            block = format_finding_block(finding, run_id=run_id, crossref_state=state, source_mode=source_mode)
             # Append; create if absent. The file lives at repo root.
             _append_staging_block(staging_path, block)
             _git_or_raise(
@@ -395,7 +416,7 @@ def write_run_branch(
                 action="stage findings file",
             )
             subject = format_commit_subject(finding)
-            body = format_commit_body(finding, run_id=run_id, crossref_state=state)
+            body = format_commit_body(finding, run_id=run_id, crossref_state=state, source_mode=source_mode)
             # `--allow-empty-message` is *not* used; we always have a
             # subject. `--cleanup=verbatim` keeps our trailer formatting.
             _git_or_raise(
@@ -505,6 +526,7 @@ __all__ = [
     "STAGING_FILE",
     "TRAILER_CONTENT_HASH",
     "TRAILER_REJECTED_CONTENT_HASH",
+    "TRAILER_SOURCE_MODE",
     "RunBranchError",
     "RunBranchResult",
     "branch_name_for",

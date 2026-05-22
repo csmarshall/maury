@@ -2285,12 +2285,18 @@ def _emit_mining_run_branch(
             if state is not None:
                 crossref_states[idx] = str(state)
 
+    # Per ADR-0026: tag each finding with the mode it was mined under so
+    # `maury promote` can graph-check it. Effective mode = the active
+    # focus if set, else the registered mode at bootstrap.
+    source_mode = baseline.active_focus or baseline.mode_name_at_bootstrap
+
     try:
         run_result = write_run_branch(
             repo_dir=repo_path,
             findings=findings,
             host_hex=baseline.host_id_hex,
             crossref_states=crossref_states,
+            source_mode=source_mode,
         )
     except RunBranchError as e:
         raise click.ClickException(str(e)) from e

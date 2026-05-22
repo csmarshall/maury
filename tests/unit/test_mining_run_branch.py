@@ -218,6 +218,29 @@ def test_commit_body_includes_mining_run_branch_name() -> None:
     assert "Mining-Run: maury/run/2026-05-21T161234-aabbccdd" in body
 
 
+def test_commit_body_omits_source_mode_when_not_supplied() -> None:
+    """Backward-compat: pre-ADR-0026 commits carry no Source-Mode."""
+    body = format_commit_body(_finding(), run_id="rid")
+    assert "Source-Mode:" not in body
+
+
+def test_commit_body_includes_source_mode_when_supplied() -> None:
+    body = format_commit_body(_finding(), run_id="rid", source_mode="personal:consulting:acme")
+    assert "Source-Mode: personal:consulting:acme" in body
+    # Ordered before Source-Transcript (a finding-context trailer).
+    assert body.index("Source-Mode:") < body.index("Source-Transcript:")
+
+
+def test_finding_block_includes_source_mode_bullet_when_supplied() -> None:
+    block = format_finding_block(_finding(), run_id="rid", source_mode="work:acme-client")
+    assert "- source mode: work:acme-client" in block
+
+
+def test_finding_block_omits_source_mode_bullet_when_absent() -> None:
+    block = format_finding_block(_finding(), run_id="rid")
+    assert "source mode:" not in block
+
+
 # ---- format_finding_block (markdown for staging file) -------------------
 
 
@@ -488,6 +511,41 @@ def test_write_run_branch_no_branch_when_every_finding_dedup_suppressed(tmp_path
         "",
     )
     assert rc != 0  # branch absent
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_carries_source_mode_into_commit(tmp_path: Path) -> None:
+    """Per ADR-0026: the Source-Mode trailer rides on each finding commit
+    and is grep-indexable for `maury promote`."""
+    repo = _seed_repo(tmp_path)
+    write_run_branch(
+        repo_dir=repo,
+        findings=[_finding()],
+        host_hex="aabbccdd",
+        source_mode="work:acme-client",
+    )
+    proc = subprocess.run(
+        ["git", "log", "--all", "--grep=^Source-Mode: work:acme-client"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert "Source-Mode: work:acme-client" in proc.stdout
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_write_run_branch_omits_source_mode_when_none(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    write_run_branch(repo_dir=repo, findings=[_finding()], host_hex="aabbccdd")
+    proc = subprocess.run(
+        ["git", "log", "--all", "--format=%b"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert "Source-Mode:" not in proc.stdout
 
 
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")
