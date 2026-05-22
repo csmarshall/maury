@@ -265,7 +265,7 @@ def format_finding_block(
     rewrite_md = ""
     if proposed_rewrite and proposed_rewrite.strip():
         quoted = "\n".join(f"> {line}" if line else ">" for line in proposed_rewrite.strip().splitlines())
-        rewrite_md = f"\nproposed rewrite (apply to the existing rule by hand):\n\n{quoted}\n"
+        rewrite_md = f"\nproposed rewrite (apply to the existing rule in your CLAUDE.md by hand):\n\n{quoted}\n"
 
     return (
         f"## {subject}\n"
