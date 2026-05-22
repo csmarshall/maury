@@ -521,3 +521,41 @@ flow already cite. No new `cc-contract:*` entries needed.
   ADR. No semantic changes from the consolidation — the two
   layers were always read as one design; this consolidation
   reflects that operationally.
+
+- 2026-05-22 — **implementation shipped (Phase 9).** Both mechanisms,
+  graph-first:
+  * **Graph constraint** — `src/maury/promotion/graph.py`:
+    `is_valid_promotion_target` + `lowest_common_ancestor` +
+    `base_mode_id`, exactly per §2/§8. Adapts to the live manifest API
+    (ids are profile IDs; `inheritance_chain` is root-first inclusive so
+    ancestors are `chain[:-1]`).
+  * **Branch-fetch promotion** — `maury promote --from <src> --to <dest>
+    --to-mode <name>` (`promotion/promote.py::promote_run`). Reads the
+    source's `maury/run/*` findings read-only, graph-checks each, runs
+    the ADR-0022 review loop, lands accepts on `maury/promoted/<id>` with
+    a `Promoted-From: <src>@<sha>` trailer (the source message is
+    *copied* — the SHA isn't reachable in the dest — so `Content-Hash` /
+    `Source-Mode` ride through; reconstruct-and-append, not cherry-pick,
+    matching the ADR-0022 review amendment).
+  * **Proposal queue** — `proposals/promote-to-<dest>/<id>.md` written at
+    mine time (`promotion/proposal.py`, wired into `maury mine
+    --write-run-branch`) when a finding's destination is outside the
+    host's writable subtree; `maury promote-review --from --to`
+    (`promote_review_run`) walks the queue with the same loop. The
+    "writable subtree" test is **graph-only** (`needs_promotion_proposal`:
+    the host's mode must be an ancestor-or-self of the destination) — no
+    separate repo-access-map is modeled; rw-on-own-subtree / ro-on-
+    ancestors is the deploy-key reality (ADR-0003).
+  * **Source mode** travels per-finding via the `Source-Mode` trailer
+    (ADR-0026), resolved name→id against the manifest for the graph check.
+
+  **V1 scope notes:**
+  - **Proposals are committed on the run branch** (one trailing commit),
+    not a dedicated branch/ref; the curator reads them from the source
+    repo working tree. A future ADR may revisit the queue's commit/visibility
+    semantics.
+  - **`pr` repo-mode promotion (§7) is not implemented** — the code's
+    `RepoMode` enum is `ro`/`rw` only; ADR-0033's `pr` mode isn't in the
+    data model yet. The §7 matrix's pr-mode row is deferred.
+  - **`push_policy: disabled` (§6) is not yet enforced** at proposal-write
+    time. Deferred followup.

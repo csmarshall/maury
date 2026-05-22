@@ -372,6 +372,7 @@ will not silently rebase mid-review.
 ## Amendment history
 
 - 2026-05-11 — "profile" vocabulary renamed to "mode" per ADR-0037 doctoral examination. References to "profile" in this ADR now read "mode"; no semantic changes.
+- 2026-05-22 — **the `(Content-Hash, Source-Mode)` dedup tuple promised by the 2026-05-07 amendment shipped**, and **§"Cross-repo promotion" was implemented** as `maury promote` (per [ADR-0045](0045-cross-trust-boundary-promotion.md)). Dedup now keys on `(Content-Hash, Source-Mode)` via `run_branch.FindingKeys` (wildcard back-compat for trailer-less commits); see [ADR-0026 2026-05-22 amendment](0026-profile-aware-mining.md#amendment-history). The promotion flow's cross-repo apply reconstructs-and-appends (the source SHA isn't reachable in the destination), copying the source commit message and appending a `Promoted-From: <src>@<sha>` trailer — `Content-Hash` rides through as this ADR intends.
 - 2026-05-21 — **implementation shipped** (Phase 6 first slice).
   Two commits on devel:
   * `feat(mining): Content-Hash + commit-trailer formatters` (slice 1)
