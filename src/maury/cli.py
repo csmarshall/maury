@@ -2481,6 +2481,76 @@ def _emit_mining_run_branch(
             skipped_dedup=run_result.skipped_dedup,
         )
 
+    # Promotion proposals (ADR-0045 §1): findings destined for a mode
+    # outside this host's writable subtree get a proposal in the host's
+    # own repo for a curator to `maury promote-review` later. Only when a
+    # run branch was actually created (we're on it, tree clean).
+    if run_result.commits_written > 0:
+        _emit_promotion_proposals(
+            repo_path=repo_path,
+            findings=findings,
+            host_mode_id=baseline.mode_id,
+            source_mode=source_mode,
+            source_host=baseline.host_id_hex,
+        )
+
+
+def _emit_promotion_proposals(
+    *,
+    repo_path: Path,
+    findings: list[Finding],
+    host_mode_id: str,
+    source_mode: str,
+    source_host: str,
+) -> int:
+    """Write + commit promotion proposals for findings whose destination
+    mode is outside the host's writable subtree (ADR-0045 §1).
+
+    Loads the manifest from `<repo>/.meta/manifest.json` for the graph
+    check; silently no-ops if there's no manifest (nothing to graph-check
+    against). Proposals are committed on the current branch (the run
+    branch) so they travel with it. Returns the number written.
+    """
+    import subprocess
+
+    from maury.manifest import ManifestError, load_manifest
+    from maury.promotion.proposal import PROPOSALS_DIR, needs_promotion_proposal, write_proposal
+
+    manifest_path = repo_path / ".meta" / "manifest.json"
+    if not manifest_path.is_file():
+        return 0
+    try:
+        manifest = load_manifest(manifest_path)
+    except (ManifestError, OSError, ValueError):
+        return 0
+
+    written = 0
+    for finding in findings:
+        dest_mode_id = manifest.profile_id_by_name(finding.scope_hint)
+        if dest_mode_id is None:
+            continue  # scope_hint isn't a mode (e.g. host-/project-specific)
+        if not needs_promotion_proposal(dest_mode_id=dest_mode_id, host_mode_id=host_mode_id, manifest=manifest):
+            continue  # within the host's own writable subtree
+        write_proposal(
+            repo_path,
+            finding=finding,
+            dest_mode=finding.scope_hint,
+            source_mode=source_mode,
+            source_host=source_host,
+        )
+        written += 1
+
+    if written:
+        subprocess.run(["git", "add", PROPOSALS_DIR], cwd=str(repo_path), check=False, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", f"maury: {written} promotion proposal(s)", "--allow-empty"],
+            cwd=str(repo_path),
+            check=False,
+            capture_output=True,
+        )
+        click.echo(f"  promotion proposals: {written} written under {PROPOSALS_DIR}/ (commit on the run branch)")
+    return written
+
 
 def _resolve_mining_project(
     *,
