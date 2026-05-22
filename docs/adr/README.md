@@ -56,6 +56,7 @@ flowchart TD
     A0026 --> A0045a[0045 Cross-trust-boundary promotion]
     A0045a --> A0043[0043 Incremental mining]
     A0043 --> A0044[0044 Strict transcript parser]
+    A0022 --> A0053[0053 Rule-driven auto-placement]
 
     P3 --> A0017[0017 Drift detection]
     A0017 --> A0023[0023 Hooks lifecycle]
@@ -289,6 +290,7 @@ status).
 - [`0050`](0050-agency-identity.md) — Agency identity, `agency_id` UUID, membership vs provenance; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 - [`0051`](0051-marker-file-and-distributed-manifest.md) — `.meta/maury-marker.json`, distributed manifest, discovery contract, CLI surface; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 - [`0052`](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md) — Focus: lightweight intra-trust-boundary mode switching via `maury focus use`; `active_focus` field on `host-identity.json`; statusLine integration. Partial supersession of [`0025`](0025-profile-switching-session-safeguards.md) (decision portion only — the active-session-detection design from `0025` carries forward)
+- [`0053`](0053-rule-driven-auto-placement.md) — Rule-driven auto-placement: `maury review` classifies each finding and `accept` auto-places it into the classified source file; reclassification synthesizes a `classify` rule into `rules.yaml` (the learning loop). Builds [`0004`](0004-rule-engine-classification.md)'s Phase 8 path A; supersedes [`0022`](0022-branch-per-mining-run.md)'s single-staging-file model for matched findings (Proposed)
 
 ---
 
