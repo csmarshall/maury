@@ -12,6 +12,7 @@ import click
 
 if TYPE_CHECKING:
     from maury.mining.review import CommitView, Decision
+    from maury.promotion.promote import PromotionCandidate
 
 from maury import __version__
 from maury.active_sessions import (
@@ -1966,6 +1967,163 @@ def rebase_run_cmd(run_id: str, repo_path: Path, main_ref: str) -> None:
         click.echo(f"rebased {result.run_branch} onto {main_ref}; now run `maury review {run_id}`.")
     else:
         click.echo(f"{result.run_branch} is already current with {main_ref}; nothing to rebase.")
+
+
+@main.command("promote")
+@click.option(
+    "--from",
+    "source_repo",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Source repo (read-only) whose maury/run/* findings are promoted.",
+)
+@click.option(
+    "--to",
+    "dest_repo",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Destination repo (write) that receives the maury/promoted/<id> branch.",
+)
+@click.option(
+    "--to-mode",
+    "to_mode",
+    required=True,
+    help="Target mode name the findings are promoted into (must be the source mode or an ancestor).",
+)
+@click.option(
+    "--manifest-file",
+    "manifest_file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Manifest for the graph check. Default: <dest-repo>/.meta/manifest.json.",
+)
+@click.option("--accept-all", "accept_all", is_flag=True, help="Promote every eligible finding without prompting.")
+@click.option("--reject-all", "reject_all", is_flag=True, help="Reject every eligible finding. Pair with --reason.")
+@click.option("--reason", "reason", default=None, help="Rejection reason recorded for --reject-all.")
+@click.option("--main-ref", "main_ref", default="main", show_default=True, help="Trunk ref in both repos.")
+def promote_cmd(
+    source_repo: Path,
+    dest_repo: Path,
+    to_mode: str,
+    manifest_file: Path | None,
+    accept_all: bool,
+    reject_all: bool,
+    reason: str | None,
+    main_ref: str,
+) -> None:
+    """Promote findings across a trust boundary, up the inheritance graph
+    (ADR-0045).
+
+    Reads the source repo's `maury/run/*` findings read-only and walks the
+    eligible ones through the same accept/reject/edit/skip/quit review as
+    `maury review`. A finding may only land in its source mode or an
+    ancestor (`--to-mode`); siblings/unrelated targets are refused before
+    you see them. Accepted findings land on `maury/promoted/<id>` in the
+    destination repo with a `Promoted-From` trailer; merge that branch to
+    the destination's main yourself.
+    """
+    import contextlib
+
+    from maury.audit_log import AuditLogError, default_target_dir
+    from maury.audit_log import log as audit_log
+    from maury.host_identity import read_baseline
+    from maury.manifest import ManifestError, load_manifest
+    from maury.mining.review import Decision, DecisionKind
+    from maury.mining.run_branch import generate_run_id
+    from maury.promotion.promote import PromoteError, promote_run
+
+    if accept_all and reject_all:
+        raise click.ClickException("--accept-all and --reject-all are mutually exclusive.")
+    if reason is not None and not reject_all:
+        raise click.ClickException("--reason only applies with --reject-all.")
+
+    manifest_path = manifest_file if manifest_file is not None else dest_repo / ".meta" / "manifest.json"
+    if not manifest_path.is_file():
+        raise click.ClickException(
+            f"manifest not found at {manifest_path}; pass --manifest-file <path> for the promotion graph check."
+        )
+    try:
+        manifest = load_manifest(manifest_path)
+    except (ManifestError, OSError, ValueError) as e:
+        raise click.ClickException(f"could not load manifest {manifest_path}: {e}") from e
+
+    target_dir = default_target_dir()
+    baseline = read_baseline(target_dir)
+    curator_host = baseline.host_id_hex if baseline is not None else "(unknown)"
+    promoted_id = generate_run_id(host_hex=baseline.host_id_hex if baseline is not None else "unknown")
+
+    def _decide(cand: PromotionCandidate) -> Decision:
+        if accept_all:
+            return Decision(DecisionKind.ACCEPT)
+        if reject_all:
+            return Decision(DecisionKind.REJECT, reason=reason or "")
+        return _interactive_promote_provider(cand, to_mode)
+
+    with contextlib.suppress(AuditLogError):
+        audit_log(target_dir, "promotion_started", host_id=None, from_repo=str(source_repo), to_repo=str(dest_repo))
+
+    try:
+        result = promote_run(
+            source_repo=source_repo,
+            dest_repo=dest_repo,
+            target_mode_name=to_mode,
+            manifest=manifest,
+            promoted_id=promoted_id,
+            curator_host=curator_host,
+            decide=_decide,
+            source_main=main_ref,
+            dest_main=main_ref,
+        )
+    except PromoteError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo("")
+    click.echo(f"promoted-branch: {result.promoted_branch}  (target mode: {result.target_mode})")
+    click.echo(
+        f"  promoted: {result.promoted}; edited: {result.edited}; rejected: {result.rejected}; "
+        f"skipped: {result.skipped}; graph-refused: {result.graph_refused}; "
+        f"unresolved-source-mode: {result.unresolved_source_mode}"
+        + (f"; resumed-skipped: {result.resumed_skipped}" if result.resumed_skipped else "")
+    )
+    for note in result.graph_refused_notes:
+        click.echo(f"  refused: {note}")
+    if result.quit_early:
+        click.echo("  (quit early — re-run to resume; promoted findings are kept)")
+    if result.promoted or result.edited:
+        click.echo(f"  next: merge {result.promoted_branch} into {main_ref} in the destination repo.")
+
+    with contextlib.suppress(AuditLogError):
+        audit_log(
+            target_dir,
+            "promotion_completed",
+            host_id=None,
+            commits_promoted=result.promoted + result.edited,
+            target_pr=None,
+        )
+
+
+def _interactive_promote_provider(cand: PromotionCandidate, target_mode: str) -> Decision:
+    """TTY prompt for one promotion candidate: a/r/e/s/q."""
+    from maury.mining.review import Decision, DecisionKind
+
+    click.echo("")
+    click.echo(click.style(f"── {cand.subject}", bold=True))
+    click.echo(f"   {cand.source_mode or '(no source mode)'} → {target_mode}   [from {cand.src_branch}]")
+    click.echo(cand.block.rstrip("\n"))
+    while True:
+        choice = click.prompt("  [a]ccept / [r]eject / [e]dit / [s]kip / [q]uit", default="s").strip().lower()
+        if choice in ("a", "accept"):
+            return Decision(DecisionKind.ACCEPT)
+        if choice in ("e", "edit"):
+            return Decision(DecisionKind.EDIT)
+        if choice in ("s", "skip"):
+            return Decision(DecisionKind.SKIP)
+        if choice in ("q", "quit"):
+            return Decision(DecisionKind.QUIT)
+        if choice in ("r", "reject"):
+            rejection_reason = click.prompt("  reason (optional, blank = none)", default="", show_default=False)
+            return Decision(DecisionKind.REJECT, reason=rejection_reason)
+        click.echo("  please enter one of: a, r, e, s, q")
 
 
 @main.command("promote-review")
