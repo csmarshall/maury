@@ -34,7 +34,7 @@ def _run(args: list[str], cwd: Path) -> str:
     return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True).stdout
 
 
-def _repo_with_manifest(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+def _repo_with_manifest(tmp_path: Path, *, hosts: dict[str, object] | None = None) -> tuple[Path, dict[str, str]]:
     """base ← {personal, work}. Returns (repo, name→id)."""
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -53,7 +53,7 @@ def _repo_with_manifest(tmp_path: Path) -> tuple[Path, dict[str, str]]:
                     personal: {"name": "personal", "extends": base},
                     work: {"name": "work", "extends": base},
                 },
-                "hosts": {},
+                "hosts": hosts or {},
             }
         )
     )
@@ -150,3 +150,57 @@ def test_no_manifest_is_silent_noop(tmp_path: Path) -> None:
         source_host="h",
     )
     assert written == 0
+
+
+@_skip
+def test_push_policy_disabled_skips_proposals(tmp_path: Path) -> None:
+    """ADR-0045 §6: a host with push_policy: disabled emits no proposals."""
+    from maury.ids import new_host_id, new_profile_id
+    from maury.manifest import load_manifest
+
+    # Build a manifest whose work host is push_policy: disabled, with a
+    # host id whose 8-hex prefix we can hand to the helper as source_host.
+    base, work = new_profile_id(), new_profile_id()
+    hid = new_host_id("workbox")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(["git", "init", "-q", "-b", "main"], cwd=repo)
+    _run(["git", "config", "user.email", "t@t.invalid"], cwd=repo)
+    _run(["git", "config", "user.name", "t"], cwd=repo)
+    meta = repo / ".meta"
+    meta.mkdir()
+    (meta / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "profiles": {
+                    base: {"name": "base", "extends": None},
+                    work: {"name": "work", "extends": base},
+                },
+                "hosts": {
+                    hid: {
+                        "name": "workbox",
+                        "profile": work,
+                        "push_policy": "disabled",
+                        "repos": {"work": {"url": "git@github.com:acme-corp/work.git", "mode": "rw"}},
+                    }
+                },
+            }
+        )
+    )
+    _run(["git", "add", "."], cwd=repo)
+    _run(["git", "commit", "-q", "-m", "init"], cwd=repo)
+
+    from maury.ids import host_id_hex_prefix
+
+    written = _emit_promotion_proposals(
+        repo_path=repo,
+        findings=[_finding("universal preference", scope="base")],  # would normally propose to base
+        host_mode_id=work,
+        source_mode="work",
+        source_host=host_id_hex_prefix(hid),
+    )
+    assert written == 0
+    assert read_proposals(repo) == []
+    # Sanity: the manifest really did parse with the disabled policy.
+    assert load_manifest(meta / "manifest.json").hosts[hid].push_policy.value == "disabled"

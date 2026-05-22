@@ -2651,12 +2651,15 @@ def _emit_promotion_proposals(
 
     Loads the manifest from `<repo>/.meta/manifest.json` for the graph
     check; silently no-ops if there's no manifest (nothing to graph-check
-    against). Proposals are committed on the current branch (the run
-    branch) so they travel with it. Returns the number written.
+    against). Skips entirely when the host's `push_policy` is `disabled`
+    (ADR-0045 §6 — regulated hosts emit no proposals). Proposals are
+    committed on the current branch (the run branch) so they travel with
+    it. Returns the number written.
     """
     import subprocess
 
-    from maury.manifest import ManifestError, load_manifest
+    from maury.ids import host_id_hex_prefix
+    from maury.manifest import ManifestError, PushPolicy, load_manifest
     from maury.promotion.proposal import PROPOSALS_DIR, needs_promotion_proposal, write_proposal
 
     manifest_path = repo_path / ".meta" / "manifest.json"
@@ -2666,6 +2669,15 @@ def _emit_promotion_proposals(
         manifest = load_manifest(manifest_path)
     except (ManifestError, OSError, ValueError):
         return 0
+
+    # ADR-0045 §6: a host with push_policy: disabled produces no
+    # proposals — fragments for unreachable destinations stay local
+    # (quarantine), never written to git. Match this host's manifest
+    # entry by its 8-hex prefix; absent entry → default (write).
+    for hid, hspec in manifest.hosts.items():
+        if host_id_hex_prefix(hid) == source_host and hspec.push_policy is PushPolicy.DISABLED:
+            click.echo("  promotion proposals: skipped (host push_policy: disabled)")
+            return 0
 
     written = 0
     for finding in findings:
