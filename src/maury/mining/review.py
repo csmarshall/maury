@@ -2,15 +2,23 @@
 
 `maury mine` writes a `maury/run/<run-id>` branch with one commit per
 finding (see `run_branch.py`). `maury review <run-id>` walks that branch
-oldest-first, prompting accept / reject / edit / skip per finding:
+oldest-first, prompting per finding:
 
-- **accept** → re-append the finding's block and commit it with the
-  original message (`Content-Hash` preserved — the hash is the identity
-  of the *idea Claude surfaced*, not the final wording).
-- **edit**   → same, but the block is opened in `$EDITOR` first.
-- **reject** → accumulate `(content_hash, reason)`; after the walk they
-  land as a single trailing no-op metadata commit whose body lists
-  `Rejected-Content-Hash` / `Rejected-Reason` trailers.
+- **accept** → land the finding. When `review_run` was given rules + a
+  manifest (ADR-0053), the finding is classified and auto-placed into the
+  classified source file (base `CLAUDE.md` / `profiles/<mode>/
+  CLAUDE.md.fragment` / host fragment) via `maury.placement`; with no
+  rules, or no rule matched (`profile=None`), it falls to the manual queue
+  `mining-findings.md`. Committed `-C` so the `Content-Hash` trailer (the
+  identity of the *idea Claude surfaced*) rides through.
+- **reclassify** → place the finding into an operator-chosen target *and*,
+  when an LLM is supplied, synthesize a `classify` rule into
+  `.meta/rules.yaml` so future similar fragments auto-route (ADR-0053 /
+  ADR-0004 Phase 8 path A). Placement + rule ride one commit.
+- **edit**   → same as accept, but the block is opened in `$EDITOR` first.
+- **reject** → accumulate `(content_hash, source_mode, reason)`; after the
+  walk they land as a single trailing no-op metadata commit whose body
+  lists `Rejected-Content-Hash` / `Rejected-Source-Mode` / `Rejected-Reason`.
 - **skip**   → no review-branch effect; the finding re-surfaces next run.
 
 Findings are applied by **reconstructing the appended block**

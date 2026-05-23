@@ -418,6 +418,34 @@ Sliced build (after this ADR lands):
 ## Amendment history
 
 - 2026-05-22 — initial publication.
+- 2026-05-22 — **implementation shipped** (Status remains Proposed pending
+  maintainer acceptance). Built in slices, all CI-green on devel:
+  * `src/maury/placement.py` — `placement_relpath` (Classification →
+    target file) + `place_finding` (append-with-provenance).
+  * `src/maury/rules/synthesize.py` — `synthesize_classify_rule` (LLM
+    proposes a `when`; the rule is validated by round-tripping through
+    the loader) + `loader.append_rule_to_file` (comment-preserving
+    ruamel append to `.meta/rules.yaml`).
+  * `review_run` reshaped: loads rules + manifest, classifies each
+    finding, **accept** auto-places into the classified target (manual
+    queue for `profile=None`), **reclassify** places into the operator's
+    target *and* synthesizes a `classify` rule appended to `rules.yaml`
+    on the review branch (placement + rule ride one commit). `maury
+    review` CLI loads rules/manifest/LLM, shows the classification, and
+    offers the reclassify verb.
+  * **Refinement vs the design:** confidence gating is realized by the
+    interactive prompt itself (the operator confirms every accept and can
+    reclassify any finding) rather than a separate confirm step; the trace
+    + target are shown before each accept. `--accept-all` places matched
+    findings as documented. **Synthesis is best-effort**: a configured-
+    but-unusable LLM backend (e.g. `claude` absent) degrades to
+    place-without-synthesize rather than failing the review.
+  * **No new audit kind** was added (per the Followup): `review_completed`
+    counts edited + reclassified as accepted. Placement/synthesis counts
+    surface in the CLI summary.
+  Backward-compatible: a repo with no `.meta/rules.yaml` / manifest
+  classifies nothing → every accept falls to the manual queue, exactly
+  the prior ADR-0022 behavior.
 
 ## Related ADRs
 
