@@ -26,10 +26,13 @@ design pass in session-state.
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass
 from string import Template
 from textwrap import dedent
 from typing import TYPE_CHECKING
+
+from maury.llm import BackendUnavailableError
 
 if TYPE_CHECKING:
     from maury.llm import LLMClient
@@ -135,7 +138,10 @@ def synthesize_rewrite(
         finding_text=finding.text,
         evidence=finding.evidence or "(no evidence captured)",
     )
-    raw = llm.call(prompt, timeout=timeout)
+    try:
+        raw = llm.call(prompt, timeout=timeout)
+    except (BackendUnavailableError, OSError, subprocess.SubprocessError):
+        return None  # backend unusable at call time → no rewrite (best-effort)
     proposed, rationale = _parse_rewrite(raw)
     if not proposed:
         return None

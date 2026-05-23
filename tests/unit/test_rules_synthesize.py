@@ -3,6 +3,7 @@ reclassification (ADR-0053 / ADR-0004 Phase 8 path A). Stub LLM."""
 
 from __future__ import annotations
 
+from maury.llm import LLMClient
 from maury.rules.loader import parse_rules
 from maury.rules.schema import RuleKind
 from maury.rules.synthesize import RuleProposal, synthesize_classify_rule
@@ -21,7 +22,7 @@ class _StubLLM:
 
 
 def _synth(
-    llm: _StubLLM,
+    llm: LLMClient,
     *,
     finding_text: str = "always run ruff and mypy before committing",
     finding_kind: str = "workflow",
@@ -109,6 +110,20 @@ def test_when_missing_yields_none() -> None:
 
 def test_unparseable_response_yields_none() -> None:
     assert _synth(_StubLLM("no json here")) is None
+
+
+def test_backend_failure_at_call_time_yields_none() -> None:
+    """A backend configured but unusable at call time (e.g. `claude` not on
+    PATH) degrades to None — synthesis is best-effort."""
+    from maury.llm import BackendUnavailableError
+
+    class _BrokenLLM:
+        name = "broken"
+
+        def call(self, prompt: str, *, timeout: float = 120.0) -> str:
+            raise BackendUnavailableError("claude not found")
+
+    assert _synth(_BrokenLLM()) is None
 
 
 def test_blank_keywords_filtered_to_none() -> None:

@@ -21,12 +21,14 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from string import Template
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
+from maury.llm import BackendUnavailableError
 from maury.rules.loader import RuleParseError, dump_rules, parse_rules
 from maury.rules.schema import Confidence, Rule, RuleActions, RuleConditions
 
@@ -101,7 +103,13 @@ def synthesize_classify_rule(
     a rule that won't round-trip is discarded, never returned.
     """
     prompt = _PROMPT.substitute(target=target_profile, kind=finding_kind, text=finding_text.strip())
-    raw = llm.call(prompt, timeout=timeout)
+    try:
+        raw = llm.call(prompt, timeout=timeout)
+    except (BackendUnavailableError, OSError, subprocess.SubprocessError):
+        # Backend configured but unusable at call time (e.g. `claude` not on
+        # PATH). Synthesis is best-effort: the reclassify still re-files the
+        # finding; we just don't grow the ruleset this time.
+        return None
     parsed = _parse_proposal(raw)
     if parsed is None:
         return None

@@ -268,13 +268,22 @@ def test_review_accept_all_auto_places_matched_finding(tmp_path: Path) -> None:
 
 
 @_skip
-def test_review_interactive_reclassify_places_into_chosen_mode(tmp_path: Path) -> None:
+def test_review_interactive_reclassify_places_into_chosen_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _seed_repo(tmp_path)
     _write_meta(repo, rules_yaml=_RULE_EMPTY)  # nothing matches → manual queue suggested
     rid = _mine(repo, [_finding("some unmatched preference")])
 
-    # reclassify → work, blank host overlay. (No LLM backend in CI → places
-    # but doesn't synthesize a rule; the engine path is covered elsewhere.)
+    # Force "no backend" so the test is hermetic (never shells out to a real
+    # `claude`): reclassify then places but doesn't synthesize a rule. The
+    # synthesis-with-backend path is covered in test_mining_review.py.
+    from maury.llm import BackendUnavailableError
+
+    def _no_backend(_name: object) -> object:
+        raise BackendUnavailableError("no backend in test")
+
+    monkeypatch.setattr("maury.llm.get_backend", _no_backend)
+
+    # reclassify → work, blank host overlay.
     result = CliRunner().invoke(main, ["review", rid, "--repo", str(repo)], input="c\nwork\n\n")
     assert result.exit_code == 0, result.output
     assert "reclassified: 1" in result.output
