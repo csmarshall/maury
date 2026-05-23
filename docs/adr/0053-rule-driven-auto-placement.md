@@ -4,7 +4,7 @@
 > sections preserved. See [`docs/process/adr-format.md`](../process/adr-format.md)
 > for the full specification.
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-22
 
 ## Related tenets
@@ -418,8 +418,9 @@ Sliced build (after this ADR lands):
 ## Amendment history
 
 - 2026-05-22 — initial publication.
-- 2026-05-22 — **implementation shipped** (Status remains Proposed pending
-  maintainer acceptance). Built in slices, all CI-green on devel:
+- 2026-05-22 — **implementation shipped + accepted.** Built in slices, all
+  CI-green on devel; Status flipped Proposed → Accepted on maintainer
+  sign-off the same day:
   * `src/maury/placement.py` — `placement_relpath` (Classification →
     target file) + `place_finding` (append-with-provenance).
   * `src/maury/rules/synthesize.py` — `synthesize_classify_rule` (LLM

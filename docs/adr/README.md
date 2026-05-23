@@ -290,7 +290,7 @@ status).
 - [`0050`](0050-agency-identity.md) — Agency identity, `agency_id` UUID, membership vs provenance; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 - [`0051`](0051-marker-file-and-distributed-manifest.md) — `.meta/maury-marker.json`, distributed manifest, discovery contract, CLI surface; sub-ADR of [`0037`](0037-layer-taxonomy-and-repo-discovery.md)
 - [`0052`](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md) — Focus: lightweight intra-trust-boundary mode switching via `maury focus use`; `active_focus` field on `host-identity.json`; statusLine integration. Partial supersession of [`0025`](0025-profile-switching-session-safeguards.md) (decision portion only — the active-session-detection design from `0025` carries forward)
-- [`0053`](0053-rule-driven-auto-placement.md) — Rule-driven auto-placement: `maury review` classifies each finding and `accept` auto-places it into the classified source file; reclassification synthesizes a `classify` rule into `rules.yaml` (the learning loop). Builds [`0004`](0004-rule-engine-classification.md)'s Phase 8 path A; supersedes [`0022`](0022-branch-per-mining-run.md)'s single-staging-file model for matched findings (Proposed)
+- [`0053`](0053-rule-driven-auto-placement.md) — Rule-driven auto-placement: `maury review` classifies each finding and `accept` auto-places it into the classified source file; reclassification synthesizes a `classify` rule into `rules.yaml` (the learning loop). Builds [`0004`](0004-rule-engine-classification.md)'s Phase 8 path A; supersedes [`0022`](0022-branch-per-mining-run.md)'s single-staging-file model for matched findings (Accepted, shipped 2026-05-22)
 
 ---
 
