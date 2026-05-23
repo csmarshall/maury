@@ -227,6 +227,7 @@ from maury.mining.review import (  # noqa: E402
     DecisionKind,
     DecisionProvider,
     RebaseRunResult,
+    ReclassifyTarget,
     ReviewError,
     rebase_run,
     review_run,
@@ -624,3 +625,68 @@ def test_review_accept_unmatched_falls_to_manual_queue(tmp_path: Path) -> None:
     assert result.placed == 0
     assert "something unrelated" in (repo / "mining-findings.md").read_text()
     assert not (repo / "profiles" / "work" / "CLAUDE.md.fragment").exists()
+
+
+# ---- ADR-0053: reclassify → place + synthesize classify rule -----------
+
+
+class _SynthLLM:
+    name = "stub"
+
+    def __init__(self, response: str) -> None:
+        self.response = response
+
+    def call(self, prompt: str, *, timeout: float = 120.0) -> str:
+        return self.response
+
+
+@_skip
+def test_reclassify_places_and_synthesizes_rule(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    rid = _mine(repo, [_gw_finding("prefer terse responses")], source_mode="work")
+    # No rule matches → engine would route to manual queue; operator
+    # reclassifies to `work`, which both places AND synthesizes a rule.
+    llm = _SynthLLM('{"id": "terse-rule", "when": {"any_keyword": ["terse"]}, "reason": "terseness"}')
+
+    result = review_run(
+        repo_dir=repo,
+        run_id=rid,
+        curator_host="h",
+        decide=_scripted([Decision(DecisionKind.RECLASSIFY, target=ReclassifyTarget(profile="work"))]),
+        rules=[],  # nothing matches
+        manifest=_placement_manifest(),
+        llm=llm,
+    )
+    assert result.reclassified == 1
+    assert result.synthesized == 1
+    assert result.placed == 1
+    # Placed into the work fragment.
+    assert "prefer terse responses" in (repo / "profiles" / "work" / "CLAUDE.md.fragment").read_text()
+    # A classify rule was appended to .meta/rules.yaml on the review branch.
+    from maury.rules.loader import load_rules
+
+    landed = load_rules(repo / ".meta" / "rules.yaml")
+    assert any(r.then.profile == "work" and "terse" in r.when.any_keyword for r in landed)
+    # The placement + the rule rode a single commit.
+    log = _run(["git", "show", "--stat", "--format=", "HEAD"], cwd=repo)
+    assert "rules.yaml" in log
+    assert "CLAUDE.md.fragment" in log
+
+
+@_skip
+def test_reclassify_without_llm_places_but_does_not_synthesize(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    rid = _mine(repo, [_gw_finding("prefer terse responses")], source_mode="work")
+    result = review_run(
+        repo_dir=repo,
+        run_id=rid,
+        curator_host="h",
+        decide=_scripted([Decision(DecisionKind.RECLASSIFY, target=ReclassifyTarget(profile="work"))]),
+        rules=[],
+        manifest=_placement_manifest(),
+        llm=None,
+    )
+    assert result.reclassified == 1
+    assert result.synthesized == 0
+    assert result.placed == 1
+    assert not (repo / ".meta" / "rules.yaml").exists()

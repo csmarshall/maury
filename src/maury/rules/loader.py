@@ -164,6 +164,37 @@ def dump_rules(rules: list[Rule]) -> str:
     return buf.getvalue()
 
 
+def append_rule_to_file(path: str | Path, rule: Rule) -> None:
+    """Append `rule` to a rules.yaml file, preserving the existing file's
+    comments and formatting via a ruamel round-trip (per ADR-0053's
+    classify-rule synthesis, which appends operator-approved rules).
+
+    Creates the file (with `version: 1`) if it doesn't exist. The result
+    is validated by re-parsing before it is written, so a malformed append
+    never lands. Raises `RuleParseError` on a structurally invalid file.
+    """
+    p = Path(path)
+    yaml = _yaml()
+    if p.exists():
+        data = yaml.load(p.read_text(encoding="utf-8")) or {}
+    else:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+    if not isinstance(data, dict):
+        raise RuleParseError(f"{p}: top-level must be a mapping")
+    data.setdefault("version", 1)
+    rules = data.setdefault("rules", [])
+    if not isinstance(rules, list):
+        raise RuleParseError(f"{p}: 'rules' must be a list")
+    rules.append(_rule_to_dict(rule))
+
+    buf = StringIO()
+    yaml.dump(data, buf)
+    text = buf.getvalue()
+    parse_rules(text, source=str(p))  # validate the round-trip before writing
+    p.write_text(text, encoding="utf-8")
+
+
 def _rule_to_dict(rule: Rule) -> dict[str, Any]:
     """Serialize a Rule to dict; omit empty optional fields and default values."""
     when: dict[str, Any] = {}

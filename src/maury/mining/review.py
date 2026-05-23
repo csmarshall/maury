@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING
 from maury.mining.run_branch import (
     STAGING_FILE,
     TRAILER_CONTENT_HASH,
+    TRAILER_KIND,
     TRAILER_REJECTED_CONTENT_HASH,
     TRAILER_REJECTED_SOURCE_MODE,
     TRAILER_SOURCE_MODE,
@@ -58,10 +59,17 @@ from maury.mining.run_branch import (
 )
 from maury.placement import place_finding, placement_relpath
 from maury.rules.engine import classify_fragment
+from maury.rules.loader import append_rule_to_file
+from maury.rules.schema import Classification, Confidence
+from maury.rules.synthesize import synthesize_classify_rule
 
 if TYPE_CHECKING:
+    from maury.llm import LLMClient
     from maury.manifest import Manifest
-    from maury.rules.schema import Classification, Rule
+    from maury.rules.schema import Rule
+
+# Rules file path relative to the base repo root.
+RULES_RELPATH = ".meta/rules.yaml"
 
 # Subject line of the no-op rejection commit, per ADR-0022 §"Rejection: a
 # no-op metadata commit". Stable so a reader (or a future tool) can spot
@@ -236,6 +244,7 @@ class DecisionKind(StrEnum):
     EDIT = "edit"
     SKIP = "skip"
     QUIT = "quit"
+    RECLASSIFY = "reclassify"
 
 
 @dataclass(frozen=True)
@@ -265,15 +274,27 @@ class CommitView:
 
 
 @dataclass(frozen=True)
+class ReclassifyTarget:
+    """Where the operator wants a reclassified finding to go (ADR-0053)."""
+
+    profile: str
+    """Target mode name (or the base mode's name)."""
+
+    host_overlay: str | None = None
+
+
+@dataclass(frozen=True)
 class Decision:
     """A decision provider's verdict on one finding.
 
     `reason` carries the optional rejection justification (only read when
-    `kind is DecisionKind.REJECT`).
+    `kind is DecisionKind.REJECT`); `target` carries the operator's chosen
+    destination (only read when `kind is DecisionKind.RECLASSIFY`).
     """
 
     kind: DecisionKind
     reason: str = ""
+    target: ReclassifyTarget | None = None
 
 
 # A decision provider maps a finding to a Decision. The interactive CLI
@@ -310,6 +331,13 @@ class ReviewResult:
     fragment (ADR-0053). The remainder of accepted/edited went to the
     manual queue (`mining-findings.md`)."""
 
+    reclassified: int = 0
+    """Findings the operator reclassified to a different target (ADR-0053)."""
+
+    synthesized: int = 0
+    """Reclassifications that produced a `classify` rule appended to
+    `.meta/rules.yaml`."""
+
     @property
     def merged_to(self) -> None:
         """Review never merges; the operator does. Present so audit
@@ -345,6 +373,7 @@ def review_run(
     main_ref: str = "main",
     rules: list[Rule] | None = None,
     manifest: Manifest | None = None,
+    llm: LLMClient | None = None,
 ) -> ReviewResult:
     """Walk `maury/run/<run-id>` and build `maury/review/<run-id>`.
 
@@ -397,7 +426,7 @@ def review_run(
 
     known_profiles = {spec.name for spec in manifest.profiles.values()} if manifest is not None else set()
 
-    accepted = edited = skipped = resumed = placed = 0
+    accepted = edited = skipped = resumed = placed = reclassified = synthesized = 0
     rejected: list[RejectedFinding] = []
     quit_early = False
 
@@ -432,6 +461,20 @@ def review_run(
                 )
             )
             continue
+        if decision.kind is DecisionKind.RECLASSIFY and decision.target is not None and manifest is not None:
+            rc_target, did_synth = _apply_reclassify(
+                repo_dir,
+                view,
+                target=decision.target,
+                run_id=run_id,
+                manifest=manifest,
+                rules=rules,
+                llm=llm,
+            )
+            reclassified += 1
+            placed += 1 if rc_target is not None else 0
+            synthesized += 1 if did_synth else 0
+            continue
         if decision.kind is DecisionKind.EDIT:
             _apply_finding(repo_dir, view, editor=editor, target_relpath=target, run_id=run_id)
             edited += 1
@@ -464,6 +507,8 @@ def review_run(
         quit_early=quit_early,
         rejection_commit_written=rejection_written,
         placed=placed,
+        reclassified=reclassified,
+        synthesized=synthesized,
     )
 
 
@@ -506,6 +551,55 @@ def rebase_run(
 # ---- git helpers ---------------------------------------------------------
 
 
+def _apply_reclassify(
+    repo_dir: Path,
+    view: CommitView,
+    *,
+    target: ReclassifyTarget,
+    run_id: str,
+    manifest: Manifest,
+    rules: list[Rule] | None,
+    llm: LLMClient | None,
+) -> tuple[str | None, bool]:
+    """Place a reclassified finding into the operator's chosen target and,
+    when an LLM is available, synthesize + append a `classify` rule so
+    future similar fragments auto-route there (ADR-0053 / Phase 8 path A).
+
+    The placement and the synthesized rule (if any) ride one commit.
+    Returns (target_relpath, synthesized?).
+    """
+    relpath = placement_relpath(
+        Classification(
+            profile=target.profile,
+            host_overlay=target.host_overlay,
+            confidence=Confidence.MEDIUM,
+            trace=(),
+            forbidden_by=(),
+        ),
+        manifest=manifest,
+    )
+
+    also_stage: tuple[str, ...] = ()
+    synthesized = False
+    if llm is not None:
+        kinds = parse_trailer_values(view.body, TRAILER_KIND)
+        proposal = synthesize_classify_rule(
+            finding_text=_finding_text_from_block(view.block),
+            finding_kind=kinds[0] if kinds else "preference",
+            target_profile=target.profile,
+            host_overlay=target.host_overlay,
+            source_run=branch_name_for(run_id),
+            llm=llm,
+        )
+        if proposal is not None:
+            append_rule_to_file(repo_dir / RULES_RELPATH, proposal.rule)
+            also_stage = (RULES_RELPATH,)
+            synthesized = True
+
+    _apply_finding(repo_dir, view, editor=None, target_relpath=relpath, run_id=run_id, also_stage=also_stage)
+    return relpath, synthesized
+
+
 def _apply_finding(
     repo_dir: Path,
     view: CommitView,
@@ -513,6 +607,7 @@ def _apply_finding(
     editor: Editor | None,
     target_relpath: str | None = None,
     run_id: str = "",
+    also_stage: tuple[str, ...] = (),
 ) -> None:
     """Apply an accepted/edited finding on the review branch and commit it
     with the original commit's message (`-C`).
@@ -544,7 +639,7 @@ def _apply_finding(
         )
         rel = target_relpath
 
-    _git_or_raise(["git", "add", rel], cwd=repo_dir, action="stage finding")
+    _git_or_raise(["git", "add", rel, *also_stage], cwd=repo_dir, action="stage finding")
     _git_or_raise(
         ["git", "commit", "-C", view.sha, "--cleanup=verbatim"],
         cwd=repo_dir,
