@@ -205,3 +205,79 @@ def test_rebase_run_missing_branch_errors(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["rebase-run", "2026-01-01T000000-deadbeef", "--repo", str(repo)])
     assert result.exit_code != 0
     assert "does not exist" in result.output
+
+
+# ---- ADR-0053: classify-on-accept placement + reclassify (CLI) ----------
+
+import json  # noqa: E402
+
+from maury.ids import new_profile_id  # noqa: E402
+
+
+def _write_meta(repo: Path, *, rules_yaml: str) -> None:
+    """Write committed .meta/manifest.json (base ← work) + rules.yaml."""
+    meta = repo / ".meta"
+    meta.mkdir(exist_ok=True)
+    base, work = new_profile_id(), new_profile_id()
+    (meta / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "profiles": {
+                    base: {"name": "base", "extends": None},
+                    work: {"name": "work", "extends": base},
+                },
+                "hosts": {},
+            }
+        )
+    )
+    (meta / "rules.yaml").write_text(rules_yaml)
+    _run(["git", "add", ".meta"], cwd=repo)
+    _run(["git", "commit", "-q", "-m", "add meta"], cwd=repo)
+
+
+_RULE_MATCHES_TERSE = """\
+version: 1
+rules:
+  - id: terse-rule
+    when:
+      any_keyword: [terse]
+    then:
+      profile: work
+    confidence: high
+    priority: 5
+    added: 2026-05-22
+    reason: "route terseness prefs to work"
+"""
+
+_RULE_EMPTY = "version: 1\nrules: []\n"
+
+
+@_skip
+def test_review_accept_all_auto_places_matched_finding(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    _write_meta(repo, rules_yaml=_RULE_MATCHES_TERSE)
+    rid = _mine(repo, [_finding("prefer terse responses")])
+
+    result = CliRunner().invoke(main, ["review", rid, "--repo", str(repo), "--accept-all"])
+    assert result.exit_code == 0, result.output
+    assert "auto-placed into source files: 1" in result.output
+    frag = repo / "profiles" / "work" / "CLAUDE.md.fragment"
+    assert frag.is_file()
+    assert "prefer terse responses" in frag.read_text()
+
+
+@_skip
+def test_review_interactive_reclassify_places_into_chosen_mode(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    _write_meta(repo, rules_yaml=_RULE_EMPTY)  # nothing matches → manual queue suggested
+    rid = _mine(repo, [_finding("some unmatched preference")])
+
+    # reclassify → work, blank host overlay. (No LLM backend in CI → places
+    # but doesn't synthesize a rule; the engine path is covered elsewhere.)
+    result = CliRunner().invoke(main, ["review", rid, "--repo", str(repo)], input="c\nwork\n\n")
+    assert result.exit_code == 0, result.output
+    assert "reclassified: 1" in result.output
+    frag = repo / "profiles" / "work" / "CLAUDE.md.fragment"
+    assert frag.is_file()
+    assert "some unmatched preference" in frag.read_text()

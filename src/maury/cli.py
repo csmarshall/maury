@@ -13,7 +13,7 @@ import click
 if TYPE_CHECKING:
     from maury.llm import LLMClient
     from maury.mining.crossref import CrossRefSummary
-    from maury.mining.review import CommitView, Decision
+    from maury.mining.review import CommitView, Decision, DecisionProvider
     from maury.promotion.promote import PromotionCandidate
     from maury.promotion.proposal import Proposal
 
@@ -1826,33 +1826,41 @@ def review_cmd(
     reason: str | None,
     main_ref: str,
 ) -> None:
-    """Walk a mining run's findings and build its review branch (ADR-0022).
+    """Walk a mining run's findings and build its review branch (ADR-0022,
+    ADR-0053).
 
-    Reviews the `maury/run/<RUN_ID>` branch interactively: for each finding
-    you choose accept / reject / edit / skip / quit. Accepted (and edited)
-    findings are committed onto `maury/review/<RUN_ID>` with their
-    Content-Hash trailers preserved; rejections land as one trailing no-op
-    metadata commit so the next mining run dedups them.
+    Reviews the `maury/run/<RUN_ID>` branch interactively. When the repo
+    carries `.meta/rules.yaml` + `.meta/manifest.json`, each finding is
+    classified by the rule engine and shown its auto-placement target; on
+    accept the finding is placed into that source file (base `CLAUDE.md` /
+    a mode fragment / a host fragment). Per-finding verbs: accept /
+    reclassify / reject / edit / skip / quit. **reclassify** files the
+    finding into a target you choose and synthesizes a `classify` rule into
+    `rules.yaml` so similar fragments auto-route next time (needs an LLM
+    backend). Findings with no matching rule fall to the manual queue
+    `mining-findings.md` (the permanent escape hatch). With no rules/
+    manifest, every accept goes to the manual queue (the ADR-0022 model).
 
-    Quitting mid-walk keeps what you accepted (re-run to resume — already
-    applied findings are skipped). Refuses if `main` moved since mining;
-    run `maury rebase-run <RUN_ID>` first.
-
-    Review is single-trust-boundary, rw self-curation. Cross-boundary
-    proposal is `maury promote` (ADR-0045), not this command.
+    Rejections land as one trailing no-op commit so the next mining run
+    dedups them. Quitting mid-walk keeps what you accepted (re-run to
+    resume). Refuses if `main` moved since mining; run `maury rebase-run
+    <RUN_ID>` first. Single-trust-boundary, rw self-curation — cross-
+    boundary is `maury promote` (ADR-0045).
     """
     import contextlib
 
     from maury.audit_log import AuditLogError, default_target_dir
     from maury.audit_log import log as audit_log
     from maury.host_identity import read_baseline
+    from maury.llm import BackendUnavailableError, get_backend
+    from maury.manifest import ManifestError, load_manifest
     from maury.mining.review import (
         Decision,
         DecisionKind,
-        DecisionProvider,
         ReviewError,
         review_run,
     )
+    from maury.rules.loader import RuleParseError, load_rules
 
     if accept_all and reject_all:
         raise click.ClickException("--accept-all and --reject-all are mutually exclusive.")
@@ -1863,13 +1871,40 @@ def review_cmd(
     baseline = read_baseline(target_dir)
     curator_host = baseline.host_id_hex if baseline is not None else "(unknown)"
 
+    # ADR-0053: load the classification ruleset + manifest from the repo,
+    # if present. Absent → classification off → everything to the manual
+    # queue (the ADR-0022 behavior).
+    rules = None
+    rules_path = repo_path / ".meta" / "rules.yaml"
+    if rules_path.is_file():
+        try:
+            rules = load_rules(rules_path)
+        except RuleParseError as e:
+            raise click.ClickException(f"could not load {rules_path}: {e}") from e
+    manifest = None
+    manifest_path = repo_path / ".meta" / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = load_manifest(manifest_path)
+        except (ManifestError, OSError, ValueError) as e:
+            raise click.ClickException(f"could not load {manifest_path}: {e}") from e
+    known_modes = {spec.name for spec in manifest.profiles.values()} if manifest is not None else set()
+
+    llm = None
     provider: DecisionProvider
     if accept_all:
         provider = lambda _view: Decision(DecisionKind.ACCEPT)  # noqa: E731
     elif reject_all:
         provider = lambda _view: Decision(DecisionKind.REJECT, reason=reason or "")  # noqa: E731
     else:
-        provider = _interactive_review_provider
+        provider = _make_interactive_review_provider(known_modes)
+        # Synthesis (on reclassify) needs a backend — best-effort. The
+        # backend object is cheap; the actual LLM call only fires on a
+        # reclassify.
+        try:
+            llm = get_backend(None)
+        except (BackendUnavailableError, ValueError):
+            click.echo("  note: no LLM backend available; reclassify will re-file but not synthesize a rule.")
 
     try:
         result = review_run(
@@ -1878,6 +1913,9 @@ def review_cmd(
             curator_host=curator_host,
             decide=provider,
             main_ref=main_ref,
+            rules=rules,
+            manifest=manifest,
+            llm=llm,
         )
     except ReviewError as e:
         raise click.ClickException(str(e)) from e
@@ -1886,12 +1924,16 @@ def review_cmd(
     click.echo(f"review-branch: {result.review_branch}")
     click.echo(
         f"  accepted: {result.accepted}; edited: {result.edited}; "
-        f"rejected: {result.rejected}; skipped: {result.skipped}"
+        f"reclassified: {result.reclassified}; rejected: {result.rejected}; skipped: {result.skipped}"
         + (f"; resumed-skipped: {result.resumed_skipped}" if result.resumed_skipped else "")
     )
+    if result.placed or result.synthesized:
+        click.echo(
+            f"  auto-placed into source files: {result.placed}; classify rules synthesized: {result.synthesized}"
+        )
     if result.quit_early:
         click.echo("  (quit early — re-run `maury review` to resume; accepted findings are kept)")
-    if result.accepted or result.edited or result.rejection_commit_written:
+    if result.accepted or result.edited or result.reclassified or result.rejection_commit_written:
         click.echo(
             f"  next: merge {result.review_branch} into {main_ref} "
             f"(you own this repo), or push it and open a PR if it's team-shared."
@@ -1899,41 +1941,66 @@ def review_cmd(
     else:
         click.echo("  (nothing accepted — review branch is even with " + main_ref + ")")
 
-    # review_completed: best-effort per the ADR-0035 pattern. Edited
-    # findings count as accepted (they land on the branch).
+    # review_completed: best-effort per the ADR-0035 pattern. Edited +
+    # reclassified findings count as accepted (they land on the branch).
     with contextlib.suppress(AuditLogError):
         audit_log(
             target_dir,
             "review_completed",
             host_id=None,
             run_id=run_id,
-            accepted=result.accepted + result.edited,
+            accepted=result.accepted + result.edited + result.reclassified,
             rejected=result.rejected,
             merged_to=None,
         )
 
 
-def _interactive_review_provider(view: CommitView) -> Decision:
-    """TTY prompt for one finding: accept / reject / edit / skip / quit."""
-    from maury.mining.review import Decision, DecisionKind
+def _make_interactive_review_provider(known_modes: set[str]) -> DecisionProvider:
+    """Build the TTY prompt provider for `maury review`. Shows each
+    finding's classification + auto-placement target and offers
+    accept / reclassify / reject / edit / skip / quit. `known_modes`
+    validates a reclassify target."""
+    from maury.mining.review import Decision, DecisionKind, ReclassifyTarget
 
-    click.echo("")
-    click.echo(click.style(f"── {view.subject}", bold=True))
-    click.echo(view.block.rstrip("\n"))
-    while True:
-        choice = click.prompt("  [a]ccept / [r]eject / [e]dit / [s]kip / [q]uit", default="s").strip().lower()
-        if choice in ("a", "accept"):
-            return Decision(DecisionKind.ACCEPT)
-        if choice in ("e", "edit"):
-            return Decision(DecisionKind.EDIT)
-        if choice in ("s", "skip"):
-            return Decision(DecisionKind.SKIP)
-        if choice in ("q", "quit"):
-            return Decision(DecisionKind.QUIT)
-        if choice in ("r", "reject"):
-            rejection_reason = click.prompt("  reason (optional, blank = none)", default="", show_default=False)
-            return Decision(DecisionKind.REJECT, reason=rejection_reason)
-        click.echo("  please enter one of: a, r, e, s, q")
+    def _provider(view: CommitView) -> Decision:
+        click.echo("")
+        click.echo(click.style(f"── {view.subject}", bold=True))
+        cls = view.classification
+        if cls is not None and cls.profile:
+            tgt = cls.profile + (f" +{cls.host_overlay}" if cls.host_overlay else "")
+            click.echo(f"  → would place in: {tgt}  (confidence: {cls.confidence})")
+        elif cls is not None:
+            click.echo("  → no rule matched → manual queue (mining-findings.md)")
+        click.echo(view.block.rstrip("\n"))
+        while True:
+            choice = (
+                click.prompt("  [a]ccept / re[c]lassify / [r]eject / [e]dit / [s]kip / [q]uit", default="s")
+                .strip()
+                .lower()
+            )
+            if choice in ("a", "accept"):
+                return Decision(DecisionKind.ACCEPT)
+            if choice in ("c", "reclassify"):
+                mode = click.prompt("    target mode").strip()
+                if known_modes and mode not in known_modes:
+                    click.echo(f"    unknown mode {mode!r}; known: {', '.join(sorted(known_modes))}")
+                    continue
+                host = click.prompt("    host overlay (optional, blank = none)", default="", show_default=False).strip()
+                return Decision(
+                    DecisionKind.RECLASSIFY, target=ReclassifyTarget(profile=mode, host_overlay=host or None)
+                )
+            if choice in ("e", "edit"):
+                return Decision(DecisionKind.EDIT)
+            if choice in ("s", "skip"):
+                return Decision(DecisionKind.SKIP)
+            if choice in ("q", "quit"):
+                return Decision(DecisionKind.QUIT)
+            if choice in ("r", "reject"):
+                rejection_reason = click.prompt("  reason (optional, blank = none)", default="", show_default=False)
+                return Decision(DecisionKind.REJECT, reason=rejection_reason)
+            click.echo("  please enter one of: a, c, r, e, s, q")
+
+    return _provider
 
 
 @main.command("rebase-run")
