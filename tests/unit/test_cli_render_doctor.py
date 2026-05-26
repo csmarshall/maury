@@ -8,10 +8,11 @@ resolution, error paths, exit codes, output format selection.
 ADR-0042's identity guard fires in `render` and `doctor` against
 the default `~/.claude/` target. These tests don't exercise that
 guard (test_cli_sync.py + a few cases at the bottom of this file
-do); the autouse fixture below points `maury.bootstrap.init_cmd.
-HOST_ID_FILE` at a tmp file that doesn't exist, so the guard
-silently returns without writing a baseline into the test's
-target dir.
+do); the conftest `_isolate_xdg_roots` fixture points the host-id
+file (`paths.host_id_file()`) at a fresh tmp config root where it
+doesn't exist, so the guard silently returns without writing a
+baseline into the test's target dir. The guard-firing tests at the
+bottom write to `paths.host_id_file()` explicitly to make it fire.
 """
 
 from __future__ import annotations
@@ -22,20 +23,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 from maury.ids import new_host_id, new_profile_id
-
-
-@pytest.fixture(autouse=True)
-def _disable_identity_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Redirect the host-id file to a nonexistent path so the identity
-    guard returns silently for every test in this file. Per-test
-    overrides (the guard-firing tests at the bottom of this file)
-    re-patch the attribute explicitly."""
-    monkeypatch.setattr(
-        "maury.bootstrap.init_cmd.HOST_ID_FILE",
-        tmp_path / ".no-such-host-id",
-    )
 
 
 def _write_minimal_repo(tmp_path: Path, *, hostname: str = "test-host") -> tuple[Path, str, str]:
@@ -329,9 +319,8 @@ def test_doctor_surfaces_system_health_findings(tmp_path: Path, monkeypatch: pyt
     absent) surfaces a warn-level baseline-missing finding."""
     # Confine HOME so the host_id_file path resolves under tmp_path.
     monkeypatch.setenv("HOME", str(tmp_path))
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_24b2a0aa_laptop\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     # Also need an identity baseline for the guard to NOT abort; the
     # baseline matches the host_id so the guard passes, then doctor's
     # system-health check fires on a *different* condition we set up.
@@ -382,9 +371,8 @@ def test_doctor_fail_on_warn_trips_on_system_health(tmp_path: Path, monkeypatch:
     """`--fail-on warn` returns exit 1 when a system-health rule
     fires at warn severity, even if the content rules are clean."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_24b2a0aa_laptop\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     from maury.host_identity import HostIdentityBaseline, write_baseline
     from maury.mining_state import (
         MINING_ALGORITHM_VERSION,
@@ -431,9 +419,8 @@ def test_render_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch
     from maury.host_identity import HostIdentityBaseline, write_baseline
 
     target = tmp_path / "target"
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_swapped\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     write_baseline(
         target,
         HostIdentityBaseline(
@@ -473,9 +460,8 @@ def test_doctor_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch
     so an identity swap would make the report misleading."""
     from maury.host_identity import HostIdentityBaseline, write_baseline
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_swapped\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     # The doctor guard checks against the default target Path.home() /
     # ".claude" rather than a flag, so we patch HOME too.
     monkeypatch.setenv("HOME", str(tmp_path))

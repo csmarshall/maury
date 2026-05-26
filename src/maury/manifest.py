@@ -57,9 +57,9 @@ from pathlib import Path
 from typing import Any
 
 from .ids import is_host_id, is_profile_id
+from .paths import host_id_file as _host_id_file
 
 CURRENT_VERSION = 1
-HOST_ID_FILE = Path.home() / ".maury-host-id"
 
 
 class PushPolicy(StrEnum):
@@ -161,12 +161,14 @@ class Manifest:
         """Look up the manifest entry for the host this code is running on.
 
         Resolution order (per ADR-0015):
-        1. Read `~/.maury-host-id` if present — that's the canonical ID.
+        1. Read the host-id file (`paths.host_id_file()`) if present — that's
+           the canonical ID.
         2. Fall back to `socket.gethostname()` matched against `name`.
         Returns None if the current host isn't registered.
         """
-        if HOST_ID_FILE.exists():
-            host_id = HOST_ID_FILE.read_text(encoding="utf-8").strip()
+        host_id_path = _host_id_file()
+        if host_id_path.exists():
+            host_id = host_id_path.read_text(encoding="utf-8").strip()
             if host_id in self.hosts:
                 return host_id, self.hosts[host_id]
             return None
@@ -458,7 +460,6 @@ def known_profile_names_from(manifest: Manifest | None) -> set[str]:
 
 __all__ = [
     "CURRENT_VERSION",
-    "HOST_ID_FILE",
     "HostSpec",
     "Manifest",
     "ManifestError",

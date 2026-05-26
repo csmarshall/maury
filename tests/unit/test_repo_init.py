@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.ids import new_host_id
 from maury.repo_init import (
     DEFAULT_INITIAL_TAG,
@@ -257,10 +258,9 @@ def test_init_repo_access_check_passes_when_host_has_rw(tmp_path: Path, monkeypa
     remote = "git@github.com:eng-standards/rules-linting.git"
     target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
     manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="rw")
-    # Fake ~/.maury-host-id by monkeypatching the constant module-level path.
-    host_id_file = tmp_path / ".maury-host-id"
+    # Pre-write the host-id file (isolated to a tmp config root via conftest).
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(host_id)
-    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
 
     summary = init_repo(
         target,
@@ -279,9 +279,8 @@ def test_init_repo_access_check_refuses_when_host_has_ro(tmp_path: Path, monkeyp
     remote = "git@github.com:eng-standards/rules-linting.git"
     target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
     manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="ro")
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(host_id)
-    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
 
     with pytest.raises(RepoInitError, match="requires `rw`"):
         init_repo(
@@ -300,9 +299,8 @@ def test_init_repo_access_check_refuses_when_remote_not_in_manifest(
     """Remote URL not in this host's repos → refuse."""
     target = _seed_target_dir_with_remote(tmp_path, remote_url="git@x:o/unregistered.git")
     manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url="git@x:o/different.git", mode="rw")
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(host_id)
-    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
 
     with pytest.raises(RepoInitError, match="not in this host's manifest"):
         init_repo(
@@ -323,9 +321,8 @@ def test_init_repo_access_check_refuses_when_host_not_registered(
     target = _seed_target_dir_with_remote(tmp_path, remote_url=remote)
     manifest_path, _ = _seed_manifest_with_repo(tmp_path, remote_url=remote, mode="rw", host_id=new_host_id("h"))
     # Host-id file points at a DIFFERENT host than what's in the manifest.
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(new_host_id("h"))
-    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
 
     with pytest.raises(RepoInitError, match="current host not registered"):
         init_repo(
@@ -373,9 +370,8 @@ def test_init_repo_access_check_skips_when_no_origin_remote(tmp_path: Path, monk
     target.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=target, check=True)
     manifest_path, host_id = _seed_manifest_with_repo(tmp_path, remote_url="git@x:o/something.git", mode="rw")
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(host_id)
-    monkeypatch.setattr("maury.manifest.HOST_ID_FILE", host_id_file)
 
     summary = init_repo(
         target,

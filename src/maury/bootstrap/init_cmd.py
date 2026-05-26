@@ -40,7 +40,8 @@ from maury.drift import (
 )
 from maury.host_identity import HostIdentityBaseline, write_baseline
 from maury.ids import host_id_hex_prefix, new_host_id, normalize_tag
-from maury.manifest import HOST_ID_FILE, ManifestError, load_manifest
+from maury.manifest import ManifestError, load_manifest
+from maury.paths import host_id_file as _host_id_file
 from maury.render import RenderError, RenderResult, apply_render, render
 from maury.sync import (
     DRIFT_MODE_DEFAULT,
@@ -55,13 +56,12 @@ _DRIFT_MODES = {DRIFT_MODE_DEFAULT, DRIFT_MODE_FORCE, DRIFT_MODE_NON_INTERACTIVE
 def current_host_id_file() -> Path:
     """Return the active host-id file path.
 
-    Module-level `HOST_ID_FILE` is captured at import time and used as
-    the default for `init()`'s parameter. Callers that need to query
-    its *current* value at call time (e.g., to honor test monkeypatches
-    on this module's `HOST_ID_FILE` attribute) should call this helper
-    rather than capturing the attribute themselves.
+    Resolved at call time via `paths.host_id_file()` (ADR-0029:
+    `$XDG_CONFIG_HOME/maury/host-id`, default `~/.config/maury/host-id`),
+    so it honors `$XDG_CONFIG_HOME` and tests isolate it by pointing that
+    env var at a tmp dir.
     """
-    return HOST_ID_FILE
+    return _host_id_file()
 
 
 @dataclass(frozen=True)
@@ -114,12 +114,11 @@ def init(
     if (source_dir is None) == (source_tarball is None):
         raise InitError("provide exactly one of --from-dir or --from-tarball")
 
-    # Defer the HOST_ID_FILE module lookup until call time so test
-    # monkeypatches on `maury.bootstrap.init_cmd.HOST_ID_FILE` take
-    # effect. Default-arg binding would freeze the path at definition
-    # time and miss the patch.
+    # Resolve the host-id path at call time so it honors `$XDG_CONFIG_HOME`
+    # (tests isolate via that env var). A default-arg binding would freeze
+    # the path at definition time.
     if host_id_file is None:
-        host_id_file = HOST_ID_FILE
+        host_id_file = _host_id_file()
 
     actions: list[str] = []
 

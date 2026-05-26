@@ -15,6 +15,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 from maury.ids import new_host_id, new_profile_id
 
@@ -25,17 +26,16 @@ def _make_minimal_repo(
     hostname: str = "synthetic-host",
     monkeypatch: pytest.MonkeyPatch | None = None,
 ) -> Path:
-    """Create a fixture base repo + pre-write the host-id file.
+    """Create a fixture base repo, optionally pre-writing the host-id file.
 
     Per ADR-0039 step 8 (post-2026-05-14), init no longer falls back to
-    hostname matching; identity comes only from `~/.maury-host-id`.
+    hostname matching; identity comes only from the host-id file.
 
-    `HOST_ID_FILE` is captured at module import time as `Path.home() /
-    ".maury-host-id"`, so `monkeypatch.setenv("HOME", ...)` after import
-    doesn't redirect it. To confine init's reads to tmp_path, the test
-    must monkeypatch `maury.bootstrap.init_cmd.HOST_ID_FILE` directly.
-    Pass `monkeypatch=monkeypatch` and this helper does that + writes the
-    manifest's hid into the redirected location.
+    The host-id file resolves via `paths.host_id_file()` and is isolated
+    to a per-test tmp config root by the conftest `_isolate_xdg_roots`
+    fixture. Passing `monkeypatch=` (any non-None) signals this helper to
+    pre-write the manifest's hid there, simulating an already-identified
+    host; omit it to leave the host-id absent.
     """
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -56,9 +56,8 @@ def _make_minimal_repo(
     (repo / ".meta").mkdir()
     (repo / ".meta" / "manifest.json").write_text(json.dumps(manifest))
     if monkeypatch is not None:
-        host_id_file = tmp_path / ".maury-host-id"
+        host_id_file = paths.host_id_file()
         host_id_file.write_text(hid + "\n")
-        monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     return repo
 
 
@@ -158,8 +157,7 @@ def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path: Path, monk
 def test_init_cli_tag_flag_produces_tagged_host_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`--tag laptop` on a fresh host produces a `host_<8 hex>_laptop` ID."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    host_id_file = tmp_path / ".maury-host-id"
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    host_id_file = paths.host_id_file()
     # Repo with a *different* hid in manifest so result is "not registered"
     # but the host-id file gets written with the tagged form.
     repo = _make_minimal_repo(tmp_path, hostname="other-host")
@@ -178,8 +176,7 @@ def test_init_cli_tag_flag_produces_tagged_host_id(tmp_path: Path, monkeypatch: 
 def test_init_cli_tag_flag_normalizes_and_notifies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A lossy `--tag` value gets normalized; the CLI surfaces the change."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    host_id_file = tmp_path / ".maury-host-id"
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    host_id_file = paths.host_id_file()
     repo = _make_minimal_repo(tmp_path, hostname="other-host")
     runner = CliRunner()
     result = runner.invoke(
@@ -195,8 +192,6 @@ def test_init_cli_no_tag_in_non_tty_errors(tmp_path: Path, monkeypatch: pytest.M
     """CliRunner gives a non-TTY stdin. Without `--tag` and without an
     existing host-id file, init must refuse rather than silently default."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    host_id_file = tmp_path / ".maury-host-id"
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     repo = _make_minimal_repo(tmp_path, hostname="other-host")
     runner = CliRunner()
     result = runner.invoke(
@@ -239,8 +234,7 @@ def test_init_cli_reset_deletes_existing_host_id_and_baseline(tmp_path: Path, mo
     from maury.host_identity import HostIdentityBaseline, baseline_path, write_baseline
 
     monkeypatch.setenv("HOME", str(tmp_path))
-    host_id_file = tmp_path / ".maury-host-id"
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
+    host_id_file = paths.host_id_file()
 
     # Pre-populate both files (simulating a host that's already anchored).
     host_id_file.write_text("host_aaaaaaaa_old-laptop\n")

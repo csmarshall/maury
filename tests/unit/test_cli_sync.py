@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 from maury.ids import new_host_id, new_profile_id
 
@@ -344,9 +345,8 @@ def test_sync_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch: 
     with the verbose change message and exit 1."""
     from maury.host_identity import HostIdentityBaseline, write_baseline
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_new\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     target = tmp_path / "out"
     write_baseline(
@@ -393,9 +393,8 @@ def test_sync_confirm_identity_change_acks_and_rewrites_baseline(
     from maury.host_identity import HostIdentityBaseline, read_baseline, write_baseline
     from maury.sync import SyncError
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_new\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     target = tmp_path / "out"
     write_baseline(
@@ -451,9 +450,8 @@ def test_sync_baseline_missing_raises_state_corruption(tmp_path: Path, monkeypat
     now refuses and points the user at `maury init --reset`."""
     from maury.host_identity import baseline_path
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_24b2a0aa_laptop\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     target = tmp_path / "out"
     assert not baseline_path(target).exists()
@@ -483,10 +481,8 @@ def test_sync_baseline_missing_raises_state_corruption(tmp_path: Path, monkeypat
 def test_sync_no_host_id_file_skips_guard_silently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When `~/.maury-host-id` doesn't exist, the guard returns silently
     (downstream code surfaces the 'no host id' error its own way)."""
-    host_id_file = tmp_path / ".maury-host-id"
-    # Not creating the file.
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
-
+    # Not creating the host-id file (absent by default under the isolated
+    # XDG config root), so the guard has nothing to compare and returns.
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath, hostname="will-not-match")
     runner = CliRunner()

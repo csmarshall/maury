@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 from maury.host_identity import HostIdentityBaseline, write_baseline
 from maury.ids import new_host_id, new_profile_id
@@ -56,8 +57,6 @@ def _write_manifest(
 def test_status_with_no_state_files_renders_all_degraded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Fresh tmp_path with no host-id file, no baseline, no manifest:
     each section renders its `(not initialized)` note rather than aborting."""
-    host_id_file = tmp_path / ".maury-host-id"  # doesn't exist
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     runner = CliRunner()
     result = runner.invoke(
         main,
@@ -72,7 +71,7 @@ def test_status_with_no_state_files_renders_all_degraded(tmp_path: Path, monkeyp
     assert result.exit_code == 0, result.output
     out = result.output
     assert "host identity" in out
-    assert "no ~/.maury-host-id" in out
+    assert "no host-id file" in out
     assert "identity baseline" in out
     assert "no baseline" in out
     assert "last render" in out
@@ -92,9 +91,8 @@ def test_status_host_identity_resolves_against_manifest(tmp_path: Path, monkeypa
     mpath = tmp_path / "manifest.json"
     _pid, hid = _write_manifest(mpath, hostname="my-workstation")
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(hid + "\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -119,9 +117,8 @@ def test_status_host_identity_unregistered_shows_warning(tmp_path: Path, monkeyp
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath)  # uses a fresh hid
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(new_host_id("h") + "\n")  # a *different* host_id
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -146,9 +143,8 @@ def test_status_host_identity_unregistered_shows_warning(tmp_path: Path, monkeyp
 
 def test_status_baseline_match_reports_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "target"
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_24b2a0aa_laptop\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     write_baseline(
         target,
         HostIdentityBaseline(
@@ -180,9 +176,8 @@ def test_status_baseline_mismatch_reports_warning_but_exits_zero(
     """ADR-0042 separation: status REPORTS identity mismatch with ⚠️ but
     does NOT abort. sync/reconcile/mine enforce; status diagnoses."""
     target = tmp_path / "target"
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_new\n")  # different hex
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
     write_baseline(
         target,
         HostIdentityBaseline(
@@ -225,9 +220,8 @@ def test_status_repos_section_lists_declared_remotes(tmp_path: Path, monkeypatch
     mpath = tmp_path / "manifest.json"
     _pid, hid = _write_manifest(mpath)
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(hid + "\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     repos_root = tmp_path / "repos"  # NOT pre-cloned
 
@@ -258,9 +252,8 @@ def test_status_repos_section_reports_git_status_for_cloned_repo(
     mpath = tmp_path / "manifest.json"
     _pid, hid = _write_manifest(mpath)
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(hid + "\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     # Create a real git repo at the expected clone path
     repos_root = tmp_path / "repos"
@@ -296,9 +289,8 @@ def test_status_repos_section_reports_dirty_worktree(tmp_path: Path, monkeypatch
     mpath = tmp_path / "manifest.json"
     _pid, hid = _write_manifest(mpath)
 
-    host_id_file = tmp_path / ".maury-host-id"
+    host_id_file = paths.host_id_file()
     host_id_file.write_text(hid + "\n")
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", host_id_file)
 
     repos_root = tmp_path / "repos"
     clone_path = repos_root / "base"
@@ -338,7 +330,6 @@ def test_status_repos_section_reports_dirty_worktree(tmp_path: Path, monkeypatch
 def test_status_reports_last_render_when_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from maury.drift import LastRender, write_last_render
 
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", tmp_path / ".maury-host-id")
     target = tmp_path / "target"
     write_last_render(
         target,
@@ -372,7 +363,6 @@ def test_status_reports_last_render_when_present(tmp_path: Path, monkeypatch: py
 def test_status_reports_mining_watermarks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from maury.mining_state import MiningWatermark, ProjectMiningRecord, write_watermark
 
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", tmp_path / ".maury-host-id")
     target = tmp_path / "target"
     wm = MiningWatermark()
     wm.update(
@@ -410,7 +400,6 @@ def test_status_reports_mining_watermarks(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_status_json_round_trips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`--format json` emits a parseable dict with every section keyed."""
-    monkeypatch.setattr("maury.bootstrap.init_cmd.HOST_ID_FILE", tmp_path / ".maury-host-id")
     runner = CliRunner()
     result = runner.invoke(
         main,

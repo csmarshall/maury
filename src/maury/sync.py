@@ -44,7 +44,6 @@ from maury.drift import (
     write_last_render,
 )
 from maury.manifest import (
-    HOST_ID_FILE,
     HostSpec,
     Manifest,
     ManifestError,
@@ -52,6 +51,7 @@ from maury.manifest import (
     RepoSpec,
     load_manifest,
 )
+from maury.paths import host_id_file as _host_id_file
 from maury.render import RenderError, RenderResult, apply_render, render
 
 # Subdirs that maury renders content into; drift detection scans these
@@ -116,7 +116,7 @@ def sync(
     manifest_path: Path,
     target_dir: Path,
     repos_root: Path,
-    host_id_file: Path = HOST_ID_FILE,
+    host_id_file: Path | None = None,
     dry_run: bool = False,
     drift_mode: str = DRIFT_MODE_DEFAULT,
     on_repo_progress: Callable[[RepoSyncResult], None] | None = None,
@@ -130,7 +130,8 @@ def sync(
         repos_root: parent directory under which per-repo clones live
             (e.g., `~/.config/maury/repos/`). Each repo gets a subdir
             named after its manifest nickname.
-        host_id_file: location of `~/.maury-host-id`.
+        host_id_file: location of the host-id file; defaults to
+            `paths.host_id_file()` (`~/.config/maury/host-id`).
         dry_run: when True, don't actually `git pull` (no I/O on remote)
             and don't write the rendered output. Useful for `--check`.
         drift_mode: how to handle drift when detected (per ADR-0017's
@@ -150,6 +151,8 @@ def sync(
         raise SyncError(f"manifest failed to load: {e}") from e
 
     # Identify this host
+    if host_id_file is None:
+        host_id_file = _host_id_file()
     hid, host_spec = _identify_host(manifest, host_id_file)
     result = SyncResult(host_id=hid, profile_id=host_spec.profile)
 

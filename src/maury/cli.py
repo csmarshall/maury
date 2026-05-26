@@ -809,9 +809,9 @@ def init_cmd(
         raise click.ClickException("--force and --non-interactive are mutually exclusive.")
 
     # Tag is only needed if init will actually generate a new host_id
-    # (i.e., `~/.maury-host-id` doesn't already exist). Resolve the
-    # current value via `current_host_id_file()` so test monkeypatches
-    # on `maury.bootstrap.init_cmd.HOST_ID_FILE` take effect.
+    # (i.e., the host-id file doesn't already exist). Resolve the current
+    # value via `current_host_id_file()` (`paths.host_id_file()`), which
+    # honors `$XDG_CONFIG_HOME` so tests isolate it via that env var.
     from maury.bootstrap.init_cmd import current_host_id_file
     from maury.host_identity import baseline_path
 
@@ -956,7 +956,7 @@ def _section_host_identity(*, manifest_path: Path) -> dict[str, object]:
 
     host_id_file = current_host_id_file()
     if not host_id_file.is_file():
-        return {"present": False, "note": "no ~/.maury-host-id (run `maury init`)"}
+        return {"present": False, "note": f"no host-id file at {host_id_file} (run `maury init`)"}
 
     host_id = host_id_file.read_text(encoding="utf-8").strip()
     try:
