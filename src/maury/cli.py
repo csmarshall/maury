@@ -1402,7 +1402,8 @@ def reconcile_cmd(
     last = read_last_render(target_dir)
     if last is None:
         click.echo(
-            f"no last-render.json found at {target_dir}/maury-state/. Run `maury sync` first to establish a baseline."
+            f"no last-render.json found at {paths.state_dir() / 'last-render.json'}. "
+            "Run `maury sync` first to establish a baseline."
         )
         sys.exit(2)
 
@@ -1545,8 +1546,8 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
     "confirm_identity_change",
     is_flag=True,
     help=(
-        "Acknowledge a detected change to `~/.maury-host-id` and rewrite "
-        "the identity baseline at `~/.claude/maury-state/host-identity.json`. "
+        "Acknowledge a detected change to the host-id file and rewrite "
+        "the identity baseline (under maury's state dir, per ADR-0029). "
         "Per ADR-0042: use when (a) you deliberately edited the host-id file "
         "or (b) restored it from a different host. For mode re-anchoring, "
         "use `maury init --reset` instead."
@@ -4636,7 +4637,7 @@ def focus_current(target_dir: Path) -> None:
     baseline = read_baseline(target)
     if baseline is None:
         raise click.ClickException(
-            f"no host-identity baseline at {target}/maury-state/host-identity.json; run `maury init` first."
+            f"no host-identity baseline at {paths.state_dir() / 'host-identity.json'}; run `maury init` first."
         )
 
     active = active_focus_get(target)
@@ -4675,7 +4676,7 @@ def focus_list(manifest_file: Path | None, target_dir: Path) -> None:
     baseline = read_baseline(target)
     if baseline is None:
         raise click.ClickException(
-            f"no host-identity baseline at {target}/maury-state/host-identity.json; run `maury init` first."
+            f"no host-identity baseline at {paths.state_dir() / 'host-identity.json'}; run `maury init` first."
         )
 
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
@@ -4813,8 +4814,9 @@ def audit_show(
 ) -> None:
     """Read the audit log newest-first with optional filters.
 
-    The audit log is host-local (~/.claude/maury-state/audit.jsonl per
-    ADR-0029/0035), append-only, JSONL. Each command that mutates
+    The audit log is host-local (paths.state_dir()/audit.jsonl —
+    `$XDG_STATE_HOME/maury/audit.jsonl` per ADR-0029/0035), append-only,
+    JSONL. Each command that mutates
     state appends one event per ADR-0035's enumeration.
     """
     from maury.audit_log import read_events

@@ -48,11 +48,12 @@ def test_baseline_json_round_trip(tmp_path: Path) -> None:
     assert loaded == b
 
 
-def test_baseline_path_is_under_maury_state(tmp_path: Path) -> None:
-    """Per ADR-0029 invariant: baseline lives at
-    `<target>/maury-state/host-identity.json`."""
+def test_baseline_path_is_under_state_dir(tmp_path: Path) -> None:
+    """Per ADR-0029 the baseline lives at
+    `paths.state_dir()/host-identity.json`, decoupled from the render target."""
     bp = baseline_path(tmp_path)
     assert bp == paths.state_dir() / "host-identity.json"
+    assert not bp.is_relative_to(paths.render_target_dir())
 
 
 def test_read_baseline_absent_returns_none(tmp_path: Path) -> None:

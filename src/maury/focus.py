@@ -36,7 +36,7 @@ from maury.active_sessions import (
     is_active,
     read_events,
 )
-from maury.host_identity import HostIdentityBaseline, read_baseline, write_baseline
+from maury.host_identity import HostIdentityBaseline, baseline_path, read_baseline, write_baseline
 from maury.manifest import Manifest, ManifestError
 
 
@@ -146,9 +146,7 @@ def active_focus_set(target_dir: Path, focus: str | None) -> None:
     """
     baseline = read_baseline(target_dir)
     if baseline is None:
-        raise FocusError(
-            f"no host-identity baseline at {target_dir}/maury-state/host-identity.json; run `maury init` first."
-        )
+        raise FocusError(f"no host-identity baseline at {baseline_path()}; run `maury init` first.")
     new = HostIdentityBaseline(
         schema_version=baseline.schema_version,
         host_id_hex=baseline.host_id_hex,
