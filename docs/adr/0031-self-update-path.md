@@ -95,7 +95,7 @@ doesn't crowd the operational signal.
 
 The version check fetches `https://pypi.org/pypi/maury/json`
 (or equivalent) at most **once per day per host**, cached at
-`~/.claude/maury-state/last-version-check.json`. If the check
+`~/.local/state/maury/last-version-check.json`. If the check
 fails (no network, PyPI down), maury proceeds without the
 warning — never blocks on the version probe.
 
@@ -194,7 +194,7 @@ the version check is a soft enhancement, never a blocker.
 - **Graceful offline behavior.** No version check = no
   warning, but the command itself proceeds (consistent with
   ADR-0028's per-command offline policy).
-- **One new state file** added to `~/.claude/maury-state/`:
+- **One new state file** added to `~/.local/state/maury/`:
   `last-version-check.json`. Per
   [ADR-0029](0029-maury-state-layout-contract.md), this ADR
   amends 0029's File inventory.
@@ -204,7 +204,7 @@ the version check is a soft enhancement, never a blocker.
   preferences are user-set and persistent across crashes;
   bookkeeping state is maury-set and recoverable
   ([ADR-0029](0029-maury-state-layout-contract.md));
-  identity (`~/.maury-host-id`) is one-time-set and
+  identity (`~/.config/maury/host-id`) is one-time-set and
   irrecoverable ([ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)).
   Different lifecycles, different homes. Trivial schema for
   v1; document in 0029-style fashion if the file accumulates

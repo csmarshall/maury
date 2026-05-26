@@ -177,7 +177,7 @@ hand-edits or silently diverging from peers.
 | [`0023`](0023-hook-installation-and-tool-resolution.md) | Hook ownership marker scheme; capability-driven tool resolution |
 | [`0024`](0024-manifest-concurrency-inclusive-merge.md) | Inclusive structured merge; never silently drop user state |
 | [`0025`](0025-profile-switching-session-safeguards.md) | Profile switch refuses on active session / drift / casual `--force` |
-| [`0029`](0029-maury-state-layout-contract.md) | Single canonical contract for `~/.claude/maury-state/` |
+| [`0029`](0029-maury-state-layout-contract.md) | Single canonical contract for `~/.local/state/maury/` |
 | [`0035`](0035-audit-log.md) | The Phase 10 audit log — every state-changing op recorded |
 | [`0042`](0042-host-identity-guard.md) | Host-identity guard: sync-time hex-change detection + `--confirm-identity-change` (SSH `known_hosts` pattern) |
 
@@ -266,7 +266,7 @@ status).
 - [`0026`](0026-profile-aware-mining.md) — Profile-aware mining
 - [`0027`](0027-cross-context-promotion-via-shared-root.md) — **SUPERSEDED by 0045** — Cross-context promotion via shared inheritance root
 - [`0028`](0028-offline-behavior.md) — Offline behavior
-- [`0029`](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` layout contract
+- [`0029`](0029-maury-state-layout-contract.md) — `~/.local/state/maury/` layout contract
 - [`0030`](0030-manifest-schema-migrations.md) — Manifest schema migrations (**DEFERRED 2026-05-19** — no v2 schema exists yet to migrate to)
 - [`0031`](0031-self-update-path.md) — Self-update path
 - [`0032`](0032-backup-and-disaster-recovery.md) — Backup and disaster recovery

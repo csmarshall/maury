@@ -36,7 +36,7 @@ Before any porting work, your candidate OS must satisfy these
   config (per [ADR-0003](adr/0003-per-host-deploy-keys.md)).
 - **POSIX `sh`** (any of `dash`, `bash`, `zsh`, `mksh`, ...) —
   the wrapper scripts in `base-template/bin/` are POSIX-sh.
-- **POSIX advisory locks (fcntl)** in `~/.claude/maury-state/`
+- **POSIX advisory locks (fcntl)** in `~/.local/state/maury/`
   for safe concurrent reader/writer access (per
   [ADR-0029](adr/0029-maury-state-layout-contract.md)).
 
@@ -249,5 +249,5 @@ evolves.
   — the architectural reason this porting model exists.
 - [ADR-0007 — Python with uv](adr/0007-python-with-uv.md) — the
   language/toolchain assumption every port inherits.
-- [ADR-0029 — `~/.claude/maury-state/` layout contract](adr/0029-maury-state-layout-contract.md)
+- [ADR-0029 — `~/.local/state/maury/` layout contract](adr/0029-maury-state-layout-contract.md)
   — what maury writes to the local filesystem.

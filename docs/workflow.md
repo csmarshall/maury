@@ -27,7 +27,7 @@ For per-command operational detail (what happens *inside* each
 > schema); the target schema is the distributed marker file
 > `.meta/maury-marker.json` per ADR-0030 + ADR-0037. The host-id
 > resolution shown reflects ADR-0039 step 8 (post-2026-05-14): the
-> locally-generated `~/.maury-host-id` is canonical; hostname fallback
+> locally-generated `~/.config/maury/host-id` is canonical; hostname fallback
 > is gone. Pre-2026-05-14 hosts still using the hostname-fallback
 > behavior have been migrated.
 
@@ -41,7 +41,7 @@ flowchart TD
     Pip --> Avail[maury available]
     UV --> Avail
     Avail --> Init[maury init --from-dir REPO<br/>or --from-tarball for offline / air-gap]
-    Init --> HostID[~/.maury-host-id created]
+    Init --> HostID[~/.config/maury/host-id created]
     HostID --> Read[maury reads .meta/manifest.json today<br/>marker-file .meta/maury-marker.json is the target schema per ADR-0030 + ADR-0037<br/>identifies host: id-file only post-2026-05-14 per ADR-0039 step 8<br/>walks base + mode chain + sublayers<br/>renders to ~/.claude/]
     Read --> Populated[~/.claude/ populated]
     Populated --> Reg{host<br/>registered?}
@@ -69,7 +69,7 @@ flowchart TD
     Hook -->|no| Manual
     Status --> Manual[user notices pending work]
     Manual --> RunSync[maury status or maury sync]
-    RunSync --> Drift[drift detected vs<br/>~/.claude/maury-state/last-render.json]
+    RunSync --> Drift[drift detected vs<br/>~/.local/state/maury/last-render.json]
     Drift --> Kind{drift<br/>kind?}
     Kind -->|claude-write| Soft[soft-accepted, logged<br/>maury revert ID available]
     Kind -->|hand-edit| Menu[blocking-review:<br/>adopt / adapt / mark-managed / revert / skip-once<br/>per ADR-0017]

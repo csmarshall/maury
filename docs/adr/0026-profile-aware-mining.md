@@ -55,10 +55,10 @@ mining filters that respect mode, and bucketized review.
 ### Durable session-to-mode linkage: `session-history.jsonl`
 
 [ADR-0025](0025-profile-switching-session-safeguards.md)
-introduced `~/.claude/maury-state/active-sessions.jsonl` as a
+introduced `~/.local/state/maury/active-sessions.jsonl` as a
 **transient** event log for the active-session safety check.
 This ADR adds a **durable** companion:
-`~/.claude/maury-state/session-history.jsonl` — one line per
+`~/.local/state/maury/session-history.jsonl` — one line per
 completed session, written by a `SessionEnd` hook that reduces
 the live event stream into an archived record.
 

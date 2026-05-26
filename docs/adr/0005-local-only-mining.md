@@ -82,7 +82,7 @@ host" tag for the user to investigate.
 
 Per-host responsibilities for the mining pipeline (extraction +
 classification + rule engine) live in `src/maury/mining/`,
-`src/maury/rules/`, and the per-host `~/.claude/maury-state/`
+`src/maury/rules/`, and the per-host `~/.local/state/maury/`
 working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
 
 ### Consequences
@@ -111,7 +111,7 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
   only from `~/.claude/projects/` on the local host; there is
   no remote-fetch entry point.
 - Quarantine path (per [ADR-0029](0029-maury-state-layout-contract.md))
-  lives under `~/.claude/maury-state/quarantine/` and is
+  lives under `~/.local/state/maury/quarantine/` and is
   gitignored at the maury-state layer.
 - Anomaly detection rules live in `rules.yaml` as `forbid`
   rules (per [ADR-0004](0004-rule-engine-classification.md)).
@@ -165,7 +165,7 @@ working directory ([ADR-0029](0029-maury-state-layout-contract.md)).
 Phase 6 (Mining + extraction) — the mining pipeline ships with
 Phase 6, runs purely against local
 `~/.claude/projects/*.jsonl`. The quarantine path lives under
-`~/.claude/maury-state/quarantine/` per
+`~/.local/state/maury/quarantine/` per
 [ADR-0029](0029-maury-state-layout-contract.md).
 
 ## Followups

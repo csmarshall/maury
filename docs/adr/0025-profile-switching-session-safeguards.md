@@ -85,7 +85,7 @@ implication that mode changes on this host are now possible).
 ### Precondition 1 — No active Claude Code sessions on this host
 
 Active-session detection lives at
-`~/.claude/maury-state/active-sessions.jsonl`, an append-only event
+`~/.local/state/maury/active-sessions.jsonl`, an append-only event
 log maintained by hooks shipped under
 [ADR-0023](0023-hook-installation-and-tool-resolution.md)'s
 marker scheme.
@@ -323,7 +323,7 @@ Honest acknowledgements:
   mode-switch slice.
 - **Audit log entry on switch** depends on Phase 10 (audit log)
   being available. Until Phase 10 lands, the switch will write to
-  a stub log file at `~/.claude/maury-state/mode-switches.jsonl`
+  a stub log file at `~/.local/state/maury/mode-switches.jsonl`
   that gets folded into the audit log later.
 
 ## Followups
@@ -384,7 +384,7 @@ Code documentation:
   lightweight intra-trust-boundary verb (`maury focus use`)
   lives in [ADR-0052](0052-focus-the-lightweight-intra-trust-boundary-mode-switch.md).
   **The active-session-detection design in this ADR carries
-  forward**: the `~/.claude/maury-state/active-sessions.jsonl`
+  forward**: the `~/.local/state/maury/active-sessions.jsonl`
   event log, the SessionStart/SessionEnd hook scheme, and the
   precondition cascade (host registered? safe to switch? no
   live sessions?) are all referenced by ADR-0052 for focus

@@ -105,7 +105,7 @@ maury init --from-dir /mnt/usb/maury-base/
 **One of these three forms is required.** The init flow then:
 
 1. **Self-identify.** Generates a fresh `host_<hex>` ID. Writes it to
-   `~/.maury-host-id` (per ADR-0015). This file is created once and
+   `~/.config/maury/host-id` (per ADR-0015). This file is created once and
    never modified — it's how this host identifies itself in the
    manifest from now on.
 2. **Pull (or ingest) the base repo.** Online: clones the URL with
@@ -121,7 +121,7 @@ maury init --from-dir /mnt/usb/maury-base/
    ADR-0037).
 4. **Decide who I am.** Two paths:
    - **Pre-registered:** the manifest already has a host entry whose
-     `host_id` matches `~/.maury-host-id`. Render and exit. Most
+     `host_id` matches `~/.config/maury/host-id`. Render and exit. Most
      hosts will be in this state because the curator (or an existing
      host) added them ahead of time.
    - **New host:** prompt — "register this host as new (name?

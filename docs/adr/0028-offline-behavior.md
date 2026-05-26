@@ -66,7 +66,7 @@ unavailable.
 | `maury status` | none | Works as-is. Reads local state files. |
 | `maury rules trace` | none | Works as-is. |
 | `maury sync` | git pull on remotes | **Default: hard refuse on first remote-unreachable error.** Opt-in via `--offline` to skip pull and render from local clones (with loud warning). |
-| `maury mine` | LLM (`claude -p` or SDK) | **Default: hard refuse if the configured LLM backend is unreachable.** Fall-forward path: `--store-only` saves a normalized transcript subset to `~/.claude/maury-staging/pending-mining/` for later online mining. |
+| `maury mine` | LLM (`claude -p` or SDK) | **Default: hard refuse if the configured LLM backend is unreachable.** Fall-forward path: `--store-only` saves a normalized transcript subset to `~/.local/state/maury/staging/pending-mining/` for later online mining. |
 | `maury init --from-dir` | none if --from-dir is local | Works as-is when given a local path. |
 | `maury init --from-tarball` | none | Works as-is. The sanctioned air-gap onboarding path (per [ADR-0018](0018-minimum-bootstrap-ux.md)). |
 | `maury review` | none | Works as-is. Walks local run branches. |
@@ -127,7 +127,7 @@ Mining is special because:
 
 So `maury mine --store-only` walks transcripts now, normalizes
 them into a windowed/redacted form, and writes the prepared
-material to `~/.claude/maury-staging/pending-mining/`. When the
+material to `~/.local/state/maury/staging/pending-mining/`. When the
 LLM is reachable again, `maury mine --resume-pending` picks up
 where the offline run stopped — runs the LLM extraction over
 the staged windows, classifies, commits to run branches.
@@ -154,7 +154,7 @@ restricted, USB-only):
    maury-base repo via the sneakernet channel, then ingest it.
    **The current implementation gap:** ADR-0018 specifies
    `--from-tarball` as a one-time bootstrap path; it does not
-   define a re-run-as-update behavior, and `~/.maury-host-id`
+   define a re-run-as-update behavior, and `~/.config/maury/host-id`
    is "created once and never modified." Two options for closing
    this gap (followup):
    - Amend ADR-0018 to specify "re-run with `--from-tarball`

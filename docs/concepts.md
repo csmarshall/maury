@@ -664,7 +664,7 @@ mode-tree mechanism. Per
   Code sessions are running (override:
   `--force-active-session`).
 - The active focus pointer is a new field (`active_focus`) on
-  `~/.claude/maury-state/host-identity.json`.
+  `~/.local/state/maury/host-identity.json`.
 - Operators see the active mode + focus in Claude Code's prompt
   via `maury statusline`, wired into `~/.claude/settings.json`'s
   `statusLine` setting by pasting a three-line snippet into the
@@ -688,7 +688,7 @@ over its lifetime accumulates **multiple** `host_<hex>` IDs —
 one per mode-registration — and each ID is permanently tied to
 "this hardware in that mode."
 
-`~/.maury-host-id` stores the **current mode-registration ID**
+`~/.config/maury/host-id` stores the **current mode-registration ID**
 — the `host_<hex>` for whichever mode this hardware is
 presently bootstrapped into. It is written once at bootstrap,
 cleared on deregistration, and re-written with a new ID on the
@@ -724,9 +724,9 @@ zero, and was deleted rather than frozen into v1.
 
 **Identity baseline + host-identity guard** (per
 [ADR-0042](adr/0042-host-identity-guard.md)): every host has a
-**baseline** recorded at `~/.claude/maury-state/host-identity.json`
+**baseline** recorded at `~/.local/state/maury/host-identity.json`
 on first sync, snapshotting the 8-hex prefix in
-`~/.maury-host-id` at registration time. Every subsequent
+`~/.config/maury/host-id` at registration time. Every subsequent
 mode-scoped command (sync, render, reconcile, mine, etc.)
 cross-checks the current hex against the baseline; on
 mismatch, maury aborts loudly and requires explicit

@@ -62,7 +62,7 @@ wanted — so resolving it silently doesn't violate the rule.
 | **Both sides added different keys** at the same path | **Auto-resolve: keep all of them.** Different host_ids, different profile_ids, different repo nicknames — coexisting is the right answer. Not a conflict; an inclusive merge. |
 | **Both sides modified the same key** from the ancestor's value | **Surface to interactive resolver.** E.g., A renames `home → personal`, B renames `home → work-personal`. We cannot pick one for the user; clock-skew can invert "later," and the user's intent in the two renames may have been different on each host. |
 | **One side deletes a key, the other side modifies the same key** | **Surface to interactive resolver.** Different intents (`profile rm` vs `profile rename`); maury cannot pick. |
-| **Both sides added the same key with different content** (e.g., user copied `~/.maury-host-id` between machines) | **Surface to interactive resolver.** Treated as a same-key overwrite. Note: per [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) the host-id file is created at bootstrap and never modified, so this only happens via user error — but we surface it rather than silently picking one identity. |
+| **Both sides added the same key with different content** (e.g., user copied `~/.config/maury/host-id` between machines) | **Surface to interactive resolver.** Treated as a same-key overwrite. Note: per [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) the host-id file is created at bootstrap and never modified, so this only happens via user error — but we surface it rather than silently picking one identity. |
 
 Two simpler cases for completeness:
 

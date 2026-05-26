@@ -1,4 +1,4 @@
-# ADR-0029: `~/.claude/maury-state/` layout contract
+# ADR-0029: Host-side file layout contract (XDG; state outside `~/.claude/`)
 
 **Status:** Accepted
 **Date:** 2026-05-07
@@ -11,32 +11,51 @@
   "TODO: Phase 10 ADR — not yet written"; now points at
   [ADR-0035](0035-audit-log.md) which fully specifies the
   audit log.
+- 2026-05-26 — **state relocated out of `~/.claude/` to maury's own
+  XDG roots.** maury no longer stores any of its own state inside Claude
+  Code's `~/.claude/` directory; only render *output* lives there. See
+  §"Host-side roots." (Pre-release with no users — the brief
+  `~/.claude/maury-state/` history is condensed away rather than left as
+  a contradiction trail.)
 
 ## Related tenets
 
 - [Tenet 1 — First, do no harm](../tenets.md#1-first-do-no-harm)
 - [Tenet 4 — Sensitive data stays local](../tenets.md#4-sensitive-data-stays-local)
 - [Tenet 7 — Provenance is mandatory](../tenets.md#7-provenance-is-mandatory)
+- [Tenet 10 — Modularity over hardcoding](../tenets.md#10-modularity-over-hardcoding) — lean on the XDG Base Directory spec rather than inventing maury's own home-dir conventions.
 
 ## TL;DR
 
-ADRs 0017/0023/0025/0026 each introduced files under
-`~/.claude/maury-state/` without a single doc consolidating them.
-This ADR is that contract: enumerates every file, names ownership
-and lifecycle, and locks the cross-cutting invariants.
-`~/.claude/maury-state/` is the maury equivalent of `.git/` —
-per-host, host-local, **never synced to git** (defense-in-depth:
-structurally outside any synced repo path, plus per-file write
-contracts). All files are recreatable from their primary sources
-on next sync; losing the directory is recoverable, never
-catastrophic. Trade-off: a new state file needs to land in this
-ADR's File-inventory table as a hard requirement, or it isn't
-canonical.
+maury's host-side files live under **three roots, split by ownership**:
+
+- **`~/.claude/`** — Claude Code's directory. maury writes only its
+  **render output** here (`CLAUDE.md`, `settings.json`, `skills/`, hooks)
+  because that's what Claude Code reads. maury stores **none of its own
+  state** here.
+- **`~/.config/maury/`** (`$XDG_CONFIG_HOME/maury`) — maury's config +
+  identity + synced repo clones: the `host-id` file, `repos/`, the
+  `.lock`.
+- **`~/.local/state/maury/`** (`$XDG_STATE_HOME/maury`) — maury's
+  operational state: the file inventory below (drift baseline, audit log,
+  session logs, watermarks, identity baseline, …) plus the `staging/`
+  captures. This is the maury equivalent of `.git/` — per-host,
+  host-local, **never synced to git**.
+
+Why state is *not* under `~/.claude/`: that directory is owned by another
+tool. Storing maury's state there couples maury's invariants to Claude
+Code's directory lifecycle — a reset, reinstall, or layout change of
+Claude Code could wipe or break maury state that isn't even Claude Code's.
+Only the integration *output* belongs in a foreign tool's directory; the
+state lives under roots maury owns. All state files are recreatable from
+their primary sources on next sync; losing the dir is recoverable, never
+catastrophic. Trade-off: a new state file must land in this ADR's
+File-inventory table, or it isn't canonical.
 
 ## Context
 
-Multiple ADRs (0017, 0023, 0025, 0026) have introduced files
-under `~/.claude/maury-state/` with no single doc that
+Multiple ADRs (0017, 0023, 0025, 0026) have introduced
+host-local state files with no single doc that
 enumerates the full set, defines ownership and lifecycle, or
 states the cross-cutting invariants (never-sync-to-git,
 host-local, etc.).
@@ -49,40 +68,54 @@ inconsistent naming (`.json` vs `.jsonl`), inconsistent
 ownership notes, drift in the never-sync-to-git policy.
 
 This ADR is the consolidation: the single canonical contract
-for what lives under `~/.claude/maury-state/`, who writes it,
+for maury's host-side roots and what lives under each, who writes it,
 who reads it, when it's created/updated/pruned, what happens
 when the dir is lost.
 
 ## Decision
 
-### Directory: `~/.claude/maury-state/`
+### Host-side roots
 
-Per-host, host-local. **NEVER synced to git.** This is the
-maury equivalent of `.git/` — operational state owned by the
-running maury installation, not part of any user-facing or
-synced content.
+maury resolves three host-side roots, honoring the XDG Base Directory
+environment variables (falling back to the documented defaults):
 
-Defense-in-depth on never-sync-to-git:
+| Root | Resolution | Holds |
+|---|---|---|
+| config | `$XDG_CONFIG_HOME/maury` (default `~/.config/maury/`) | `host-id` (the host's stable identity), `repos/` (synced repo clones, `repos_root`), `.lock` (the fcntl mutex). |
+| state | `$XDG_STATE_HOME/maury` (default `~/.local/state/maury/`) | The operational-state file inventory below + `staging/` (per [ADR-0013](0013-active-in-session-capture.md): captures + offline-mining material). |
+| render output | `~/.claude/` (Claude Code's, fixed by that tool) | maury's **rendered output only** — `CLAUDE.md`, `settings.json`, `skills/`, hooks. **No maury state.** |
 
-1. The directory lives outside any synced repo path (synced
-   repos are cloned under `repos_root`, typically
-   `~/.config/maury/repos/`, NOT under `~/.claude/`). This is
-   the load-bearing guarantee — even without any .gitignore,
-   the path is structurally not in any git working tree maury
-   manages.
-2. Files in this directory may contain transcript content
-   snippets, session IDs, host identifiers — sensitive per
-   tenet 4. The maury-owned-only contract here makes that
-   sensitivity explicit so contributors don't add a "let's
-   sync this for convenience" feature later.
+The **state root is per-host, host-local, NEVER synced to git** — the
+maury equivalent of `.git/`. The **config root** is likewise host-local
+(the repo clones + the host's identity are not themselves synced content;
+the clones *contain* synced repos as nested git working trees).
 
-Followup: a future ADR could add `~/.claude/.gitignore`
-rendering by maury as a third defense layer. Not in v1 — the
-path-outside-tree guarantee is sufficient.
+**Why maury's state is not under `~/.claude/`.** `~/.claude/` is owned by
+Claude Code. maury writes its render output there because that is the
+integration contract — it's what Claude Code loads. But storing maury's
+*own* state there would couple maury's invariants to a foreign tool's
+directory lifecycle: a Claude Code reset/reinstall, or a future change to
+how `~/.claude/` is laid out or cleaned, could wipe or break maury state
+that isn't Claude Code's to manage. Isolating state under a maury-owned
+root removes that blast radius. (The earlier design placed state at
+`~/.claude/maury-state/`; relocated 2026-05-26.)
+
+Defense-in-depth on never-sync-to-git for the state root:
+
+1. The state root lives outside any synced repo path (synced repos are
+   cloned under the config root's `repos/`, NOT under the state root).
+   Even without any `.gitignore`, the path is structurally not in any git
+   working tree maury manages.
+2. Files in the state root may contain transcript content snippets,
+   session IDs, host identifiers — sensitive per tenet 4. The
+   maury-owned-only contract makes that sensitivity explicit so
+   contributors don't add a "let's sync this for convenience" feature
+   later.
 
 ### File inventory
 
-Every file maury writes under this directory, the ADR that
+Every file maury writes under the **state root**
+(`$XDG_STATE_HOME/maury/`, default `~/.local/state/maury/`), the ADR that
 specifies its schema, its lifecycle, and its purpose.
 
 | File | Specified in | Format | Purpose |
@@ -95,7 +128,7 @@ specifies its schema, its lifecycle, and its purpose.
 | `mode-switches.jsonl` | [ADR-0025](0025-profile-switching-session-safeguards.md) §"On a clean switch" point 1 | JSONL (append-only) | Stub audit log for profile-switch events until Phase 10 audit log lands; gets folded into the audit log later. |
 | `audit.jsonl` | [ADR-0035](0035-audit-log.md) | JSONL (append-only) | Comprehensive audit of every state-changing maury operation. Subsumes `mode-switches.jsonl` via one-shot migration. |
 | `last-version-check.json` | [ADR-0031](0031-self-update-path.md) | JSON (single doc) | Cached result of the once-per-day PyPI version check (installed_version, latest_version, channel, checked_at). Used to gate the stale-version warning without re-probing PyPI on every command. |
-| `host-identity.json` | [ADR-0042](0042-host-identity-guard.md) | JSON (single doc) | Identity baseline written at `maury init`. Every mode-scoped command compares the current `~/.maury-host-id` 8-hex prefix against `host_id_hex` here; mismatch triggers the identity-change abort. Tag suffix edits do not trigger the guard. Updated only by `init`, `init --reset`, or `sync --confirm-identity-change`. |
+| `host-identity.json` | [ADR-0042](0042-host-identity-guard.md) | JSON (single doc) | Identity baseline written at `maury init`. Every mode-scoped command compares the current `host-id` file's 8-hex prefix against `host_id_hex` here; mismatch triggers the identity-change abort. Tag suffix edits do not trigger the guard. Updated only by `init`, `init --reset`, or `sync --confirm-identity-change`. |
 | `last-mine.json` | [ADR-0043](0043-incremental-mining.md) | JSON (single doc) | Per-project watermark for incremental mining. Records `last_jsonl_mtime` per project dir name; `maury mine` reads it to skip already-processed transcript ranges. `mining_algorithm_version` field bumps invalidate all watermarks. |
 
 ### Cross-cutting invariants
@@ -120,7 +153,7 @@ These properties apply to every file in the directory:
    `active-context.json` did not previously call this out;
    both are amended-by-implication via this contract.
    Implementation must follow.*
-5. **Recoverable from loss.** If `~/.claude/maury-state/` is
+5. **Recoverable from loss.** If the state root is
    deleted or corrupted, `maury init` (or the first
    `maury sync` on a host that's already initialized)
    reconstructs what it can:
@@ -179,37 +212,41 @@ For clarity by negative space:
   start within the matching project; not rendered by maury today
   (maury's render output is `~/.claude/`-rooted; the project-scoped
   memory dir is read-only from maury's perspective).
-- **The `~/.maury-host-id` file** — lives at user `$HOME`, not
-  under `~/.claude/`, per [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)
-  and [ADR-0018](0018-minimum-bootstrap-ux.md). Identity, not
-  state.
-- **The maury-staging dir** — `~/.claude/maury-staging/`, per
-  [ADR-0013](0013-active-in-session-capture.md). Conceptually
-  related (also host-local, also never-sync-to-git) but a
-  different directory because its lifecycle is different.
-  maury-staging holds two kinds of content:
-  1. **User-reviewable captures** at
-     `~/.claude/maury-staging/captures.jsonl` (per ADR-0013)
-     — the user reviews via `maury review` and clears as
+- **The `host-id` file** — lives under the **config root**
+  (`$XDG_CONFIG_HOME/maury/host-id`, default
+  `~/.config/maury/host-id`), per [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md)
+  and [ADR-0018](0018-minimum-bootstrap-ux.md). Identity, not state — so
+  it sits in the config root, not the state inventory. (Was previously a
+  bare `~/.maury-host-id` dotfile at `$HOME`; relocated 2026-05-26 to
+  stop polluting `$HOME` and to keep all maury host-side files under
+  maury's XDG roots.)
+- **The staging dir** — `staging/` under the **state root**
+  (`$XDG_STATE_HOME/maury/staging/`), per
+  [ADR-0013](0013-active-in-session-capture.md). A distinct subtree
+  because its lifecycle differs from the bookkeeping files (it's
+  user-visible work-in-progress), but it lives under the same
+  maury-owned state root. It holds two kinds of content:
+  1. **User-reviewable captures** at `staging/captures.jsonl` (per
+     ADR-0013) — the user reviews via `maury review` and clears as
      they're processed.
   2. **Maury-managed offline-mining material** at
-     `~/.claude/maury-staging/pending-mining/` (per
-     [ADR-0028](0028-offline-behavior.md)) — maury writes
-     during `--store-only` (transcripts normalized + redacted
-     into windows) and consumes during `--resume-pending`
-     (LLM extraction runs over the staged windows).
+     `staging/pending-mining/` (per
+     [ADR-0028](0028-offline-behavior.md)) — maury writes during
+     `--store-only` (transcripts normalized + redacted into windows) and
+     consumes during `--resume-pending` (LLM extraction over the staged
+     windows).
 
-  Both are user-visible work-in-progress, distinct from
-  maury-state's strictly-bookkeeping role. Note specifically
-  that **`pending-mining/` lives under maury-staging, NOT
-  under maury-state** — it's offline work-in-progress, not
-  bookkeeping state.
+  Both are user-visible work-in-progress, distinct from the
+  state root's strictly-bookkeeping files. Note specifically
+  that **`pending-mining/` lives under `staging/`, NOT
+  alongside the bookkeeping files** — it's offline
+  work-in-progress, not bookkeeping state.
 
 ### Future additions
 
 When a future ADR wants to add a new state file:
 
-1. The new file lives under `~/.claude/maury-state/` only if
+1. The new file lives directly under the state root only if
    it satisfies all six cross-cutting invariants above.
 2. The ADR adding it MUST update this ADR's "File inventory"
    table (an `**Amended:**` entry on this ADR with the
@@ -218,9 +255,10 @@ When a future ADR wants to add a new state file:
    (`.json` for single-doc, `.jsonl` for append-only).
 
 ADRs that introduce host-local-but-different-lifecycle state
-(like the maury-staging dir) should put it in a sibling
-directory, not under `maury-state/`. The clean separation
-keeps the recovery story understandable.
+(like the `staging/` subtree) should put it in a sibling
+subdirectory of the state root, not among the bookkeeping
+files. The clean separation keeps the recovery story
+understandable.
 
 ## Consequences
 

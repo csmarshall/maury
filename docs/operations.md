@@ -39,12 +39,12 @@ flowchart TD
     Validate --> Load[load source marker<br/>.meta/maury-marker.json]
     Load --> Schema{schema version<br/>known?}
     Schema -->|no| FailSchema([error: unknown version])
-    Schema -->|yes| HostID{~/.maury-host-id<br/>present?}
+    Schema -->|yes| HostID{~/.config/maury/host-id<br/>present?}
     HostID -->|yes| InMan{id in<br/>marker hosts?}
     InMan -->|yes| Identify[reuse existing entry]
     InMan -->|no| FailStale([error: stale id])
     HostID -->|no| Hostname{hostname<br/>in marker hosts?}
-    Hostname -->|yes| ReuseByName[reuse entry<br/>write ~/.maury-host-id]
+    Hostname -->|yes| ReuseByName[reuse entry<br/>write ~/.config/maury/host-id]
     Hostname -->|no| Propose[propose register-this-host commit<br/>continue with default mode]
     Identify --> Probe
     ReuseByName --> Probe
@@ -100,7 +100,7 @@ gracefully if its inputs are absent.
 ```mermaid
 flowchart TD
     Start([maury status]) --> Load[load manifest<br/>--manifest-file flag or default]
-    Load --> Host[Section 1: host identity<br/>~/.maury-host-id + tag]
+    Load --> Host[Section 1: host identity<br/>~/.config/maury/host-id + tag]
     Host --> Baseline[Section 2: identity baseline<br/>host-identity.json status — match / mismatch / missing]
     Baseline --> Repos[Section 3: repos + git status<br/>per repo: URL, repo_mode, clone path<br/>branch, dirty, ahead/behind]
     Repos --> LastR[Section 4: last render<br/>last-render.json timestamp + file count]
@@ -413,8 +413,8 @@ flowchart TD
     Confirm -->|no| Abort([cancelled])
     Confirm -->|yes| StripHooks[strip every # maury-managed entry<br/>from settings.json hooks block<br/>user hooks untouched]
     StripHooks --> DelBin[delete ~/.claude/bin/maury-*<br/>and ~/.claude/bin/maury-tools.sh]
-    DelBin --> DelState[delete ~/.claude/maury-state/<br/>last-render, claude-writes, watermarks]
-    DelState --> DelID[delete ~/.maury-host-id]
+    DelBin --> DelState[delete ~/.local/state/maury/<br/>last-render, claude-writes, watermarks]
+    DelState --> DelID[delete ~/.config/maury/host-id]
     DelID --> Done([print: removed maury hooks<br/>left N user hooks intact<br/>clones at REPOS_ROOT not touched])
 ```
 

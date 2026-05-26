@@ -232,7 +232,7 @@ terminals interleaves messages into one transcript.
 > forking, messages from both interleave into one transcript."*
 > — [Sessions documentation](https://code.claude.com/docs/en/sessions)
 
-**Maury depends on this for:** ADR-0023's `~/.claude/maury-state/
+**Maury depends on this for:** ADR-0023's `~/.local/state/maury/
 claude-writes.jsonl` and ADR-0025's `active-sessions.jsonl` are
 both written by hooks running in concurrent sessions. We rely on
 POSIX `O_APPEND` atomic-write guarantees on lines ≤ `PIPE_BUF`
@@ -473,12 +473,12 @@ minor-version bump that touches the hook subsystem.
 **Behavior observed:** Hook subprocess can `mkdir -p` a directory
 that didn't exist and write a file inside it, with no sandbox
 or permission restrictions. The HIGH-risk concern about TCC or
-similar interfering with `~/.claude/maury-state/` writes did
+similar interfering with `~/.local/state/maury/` writes did
 not materialize.
 
 **Implication:** ADR-0017's `claude-writes.jsonl`, ADR-0025's
 `active-sessions.jsonl`, and any future maury hook that
-records state under `~/.claude/maury-state/` can rely on this.
+records state under `~/.local/state/maury/` can rely on this.
 The HIGH risk level on this item is **closed**.
 
 **Re-verification:** `maury verify-cc-hooks`. Worth re-running

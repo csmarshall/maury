@@ -13,7 +13,7 @@
 
 - [ADR-0008](0008-claude-diary-reference.md) — original mining design; `walk_user_messages_in_file` in `src/maury/mining/transcripts.py` is the lenient parser this ADR proposes to strict-mode.
 - [ADR-0043](0043-incremental-mining.md) — incremental mining + `mining_algorithm_version`; this ADR extends the version mechanism to invalidate the schema lock too.
-- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` inventory; this ADR adds a compatibility list (location TBD per Followups) but not a new state file.
+- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.local/state/maury/` inventory; this ADR adds a compatibility list (location TBD per Followups) but not a new state file.
 
 ## TL;DR
 
@@ -399,7 +399,7 @@ Either way, `--lenient` remains available as opt-out.
   for v1.
 - **Shadow-mode warning surface.** Currently spec'd as
   "one per project per session." Alternative: log every
-  failing line to `~/.claude/maury-state/transcript-drift.jsonl`
+  failing line to `~/.local/state/maury/transcript-drift.jsonl`
   so a maintainer reading the file later sees the full
   history. Trade: more state file surface vs. better
   forensics. Decide during v1 build.

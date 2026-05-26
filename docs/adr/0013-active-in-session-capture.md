@@ -172,7 +172,7 @@ for audit purposes only.
    pending-capture nudge surfaced after they finish each
    assistant exchange, not just at session end.
 
-The staging file lives at `~/.claude/maury-staging/captures.jsonl`.
+The staging file lives at `~/.local/state/maury/staging/captures.jsonl`.
 It is **per-host**, **never synced to git**. Each line:
 
 ```json
@@ -204,7 +204,7 @@ paragraph).
 For Claude-initiated capture (entry path 1) to respect trust
 boundaries, Claude needs to know **the host's active mode and
 its inheritance chain.** Maury maintains
-`~/.claude/maury-state/active-context.json`, rewritten on every
+`~/.local/state/maury/active-context.json`, rewritten on every
 `maury init` and `maury mode use`:
 
 ```json
@@ -307,7 +307,7 @@ quietly failing or producing a confusing error.
   False positives (Claude stages noise) are caught by the
   user during `maury review`.
 - ❌ **Bad:** The staging file must never sync to git.
-  Defense-in-depth: `~/.claude/maury-staging/` is local-only,
+  Defense-in-depth: `~/.local/state/maury/staging/` is local-only,
   plus the file lives outside any synced repo path.
 - ❌ **Bad:** Cross-profile content emerging on the wrong
   host (e.g., a "linux-server" capture from a work-laptop
@@ -321,7 +321,7 @@ quietly failing or producing a confusing error.
   fragment, `UserPromptSubmit` hook, `/maury-pin` slash
   command) are shipped from `base-template/` via the render
   engine.
-- `~/.claude/maury-staging/captures.jsonl` is gitignored at
+- `~/.local/state/maury/staging/captures.jsonl` is gitignored at
   the maury-state layer per
   [ADR-0029](0029-maury-state-layout-contract.md).
 - Mining (Phase 6) consumes `captures.jsonl` and routes

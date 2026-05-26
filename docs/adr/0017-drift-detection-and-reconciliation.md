@@ -30,7 +30,7 @@
 ## TL;DR
 
 Maury keeps a per-host SHA log of what it rendered
-(`~/.claude/maury-state/last-render.json`). Sync detects drift
+(`~/.local/state/maury/last-render.json`). Sync detects drift
 between rendered SHAs and current files, distinguishes hand-edits
 from Claude-tool writes via a `PostToolUse log_tool_use` hook, and
 surfaces a 5-action reconcile menu (adopt / adapt / mark-managed /
@@ -117,7 +117,7 @@ for differences.
 
 **Chosen option:** Option F — maury maintains a per-host
 `last-render.json` (path + sha256 for every file it has
-rendered) at `~/.claude/maury-state/last-render.json`. Drift
+rendered) at `~/.local/state/maury/last-render.json`. Drift
 is the diff between actual file SHAs and the rendered SHAs.
 This is the only option that preserves Tenet 1 and Tenet 8
 together — every hand-edit is detected and surfaced; nothing
@@ -136,7 +136,7 @@ Every drift carries a **source attribution**:
 | Claude Code Write/Edit/MultiEdit | File modified, IS in claude-writes log | **Soft-accepted** — change persists, user gets `maury revert <id>` affordance |
 | User-added file in managed dir | Path not in `last-render.json` at all | **Prompt to claim** — user picks: add to repo, mark hand-managed, or leave untracked |
 
-The Claude-write log lives at `~/.claude/maury-state/claude-writes.jsonl`,
+The Claude-write log lives at `~/.local/state/maury/claude-writes.jsonl`,
 populated by a [`PostToolUse`][cc-hooks] hook (action `log_tool_use`)
 that maury ships and the render engine installs. Each line:
 `{ts, session_id, tool, path, diff_hint, before_sha, after_sha,
@@ -321,11 +321,11 @@ Reads several state files and emits a single JSON document:
 ```
 
 Sources:
-- `host_id`, `active_profile` ← `~/.claude/maury-state/active-context.json` (ADR-0025).
-- `last_sync_at`, `drift` counts ← `~/.claude/maury-state/last-render.json` (this ADR's Phase 5.x.a).
-- `pending_captures` ← `~/.claude/maury-staging/captures.jsonl` line count (ADR-0013).
+- `host_id`, `active_profile` ← `~/.local/state/maury/active-context.json` (ADR-0025).
+- `last_sync_at`, `drift` counts ← `~/.local/state/maury/last-render.json` (this ADR's Phase 5.x.a).
+- `pending_captures` ← `~/.local/state/maury/staging/captures.jsonl` line count (ADR-0013).
 - `pending_proposals` ← count of un-reviewed run branches (ADR-0022).
-- `active_sessions` ← reduce of `~/.claude/maury-state/active-sessions.jsonl` (ADR-0025).
+- `active_sessions` ← reduce of `~/.local/state/maury/active-sessions.jsonl` (ADR-0025).
 
 **Claude's user-facing output (in spirit):**
 
@@ -381,7 +381,7 @@ v1.1 (deferred):
 
 ### Confirmation
 
-- `~/.claude/maury-state/last-render.json` is written after
+- `~/.local/state/maury/last-render.json` is written after
   every successful render; SHAs are sha256 per the schema in
   [ADR-0029](0029-maury-state-layout-contract.md).
 - `src/maury/drift.py` (Phase 5.x.a slice 1, shipped) and

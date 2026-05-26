@@ -15,10 +15,10 @@
 ## Related ADRs
 
 - [ADR-0003](0003-per-host-deploy-keys.md) — per-host deploy keys; SSH-key-driven access
-- [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) — `host_<hex>` UUID; `~/.maury-host-id` lifecycle (this ADR scopes the ID to mode)
+- [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) — `host_<hex>` UUID; `~/.config/maury/host-id` lifecycle (this ADR scopes the ID to mode)
 - [ADR-0016](0016-pluggable-repo-backends.md) — backend pluralism; SSH-key-driven access probing
 - [ADR-0018](0018-minimum-bootstrap-ux.md) — `maury init` UX; explicit inputs, no auto-detection magic
-- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` layout contract (host-local state)
+- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.local/state/maury/` layout contract (host-local state)
 - [ADR-0037](0037-layer-taxonomy-and-repo-discovery.md) — layer taxonomy; distributed manifest; mode tree; marker file schema; `agency_id`
 - [ADR-0038](0038-precept-acquisition-model.md) — advisory dismissal storage in mode repo; reset on mode change
 
@@ -62,7 +62,7 @@ for:
    time? How does it pick a mode? What happens if the user wants a
    mode that does not yet exist?
 3. **Host identity.** ADR-0015 specifies `host_<hex>` UUIDs stored in
-   `~/.maury-host-id` and described as "never modified after first
+   `~/.config/maury/host-id` and described as "never modified after first
    init." That invariant needs reconciling with the fact that a host
    may participate in multiple modes over its lifetime (work, home,
    client engagements). Are IDs stable across modes, or scoped to a
@@ -164,24 +164,24 @@ It also aligns with ADR-0037's structural fact that hosts register
 against modes (not against base) — there is nowhere agency-wide to
 record a stable cross-mode host ID even if the design wanted one.
 
-#### What `~/.maury-host-id` stores
+#### What `~/.config/maury/host-id` stores
 
-`~/.maury-host-id` stores the **current mode-registration ID** — the
+`~/.config/maury/host-id` stores the **current mode-registration ID** — the
 `host_<hex>` for whichever mode this hardware is presently
 bootstrapped into. Not a permanent device ID.
 
 - Bootstrap into `mode:work` → `host_abc...` written to
-  `~/.maury-host-id`.
-- Deregister from `work` → `~/.maury-host-id` is cleared.
+  `~/.config/maury/host-id`.
+- Deregister from `work` → `~/.config/maury/host-id` is cleared.
 - Bootstrap into `mode:home` → fresh `host_xyz...` written to
-  `~/.maury-host-id`.
+  `~/.config/maury/host-id`.
 
 `host_abc...` and `host_xyz...` are different identities. The old ID
 stays retired in `mode:work`'s `hosts` dict (retained for audit;
 never reused).
 
 ADR-0015's "never modified after first init" invariant applies **per
-registration**: within a single mode-registration, `~/.maury-host-id`
+registration**: within a single mode-registration, `~/.config/maury/host-id`
 is written exactly once at bootstrap and never modified.
 Deregistration ends the registration; the next bootstrap is a fresh
 registration with a fresh write.
@@ -258,7 +258,7 @@ does not search the filesystem for plausible candidates.
    the host entry in the chosen mode's marker file under "hosts"
    (with registered_at and environment_tags), commits and pushes
    the mode marker, stores the new host_<hex> locally at
-   ~/.maury-host-id.
+   ~/.config/maury/host-id.
 ```
 
 #### Step 2: full-graph traversal
@@ -391,7 +391,7 @@ child modes.
   interactive prompt in §"Tag UX at bootstrap" below.
 - The full tagged ID is the **mode-registration ID** for this hardware
   in this mode.
-- The ID is written to `~/.maury-host-id`. Within this registration,
+- The ID is written to `~/.config/maury/host-id`. Within this registration,
   the 8-hex prefix is never modified again; the tag suffix is freely
   editable per the ADR-0015 mutability split.
 - Maury edits the chosen mode's `.meta/maury-marker.json` to add the
@@ -406,7 +406,7 @@ child modes.
   ```
 - Maury commits and pushes the mode marker update.
 - Maury writes the identity baseline at
-  `~/.claude/maury-state/host-identity.json` per ADR-0042; this
+  `~/.local/state/maury/host-identity.json` per ADR-0042; this
   baseline is the source of truth for the sync-time hex-change
   guard.
 
@@ -451,7 +451,7 @@ silently defaulting.
 
 ### Host identity conflict detection
 
-`maury` commands that need "which host am I" read `~/.maury-host-id`
+`maury` commands that need "which host am I" read `~/.config/maury/host-id`
 and look up the matching entry in the active mode's `hosts` dict.
 The three states are:
 
@@ -471,7 +471,7 @@ The three states are:
   bootstrap-time declaration (best-effort: tags may legitimately
   evolve via `maury host retag`).
 
-A mismatch is most often the `~/.maury-host-id` file having been
+A mismatch is most often the `~/.config/maury/host-id` file having been
 **copied from another machine** — a duplicate that creates a real
 risk of two pieces of hardware thinking they are the same
 registration. The warning is loud and the user must arbitrate (Tenet
@@ -479,7 +479,7 @@ registration. The warning is loud and the user must arbitrate (Tenet
 
 The recovery path for a copied host-id file is:
 
-1. Delete `~/.maury-host-id` on the host that copied it in.
+1. Delete `~/.config/maury/host-id` on the host that copied it in.
 2. Re-run bootstrap. A fresh `host_<hex>` is generated; the host
    registers as a distinct mode-registration.
 
@@ -488,7 +488,7 @@ user.
 
 #### "Unregistered" can also mean "previously deregistered"
 
-If the local `~/.maury-host-id` matches an ID that has been
+If the local `~/.config/maury/host-id` matches an ID that has been
 deregistered from its original mode (and is therefore no longer
 present in any mode's `hosts` dict), the host appears as
 **Unregistered** to maury. The recovery path is the same as for a
@@ -519,7 +519,7 @@ transaction. Because IDs are mode-scoped, the result is also a fresh
    - Force state storage flush (commit + push pending writes).
    - Retire the current host_<hex>: remove the entry from the
      current mode's hosts dict; commit + push the mode marker.
-   - Clear ~/.maury-host-id.
+   - Clear ~/.config/maury/host-id.
         |
         v
 3. BOOTSTRAP into the new mode (atomic), using the standard bootstrap
@@ -536,7 +536,7 @@ deregistered from the old mode. There is no limbo state.
 
 Both deregister and bootstrap are individually atomic (each
 completes or leaves the host in a recoverable state with a single
-`~/.maury-host-id` write). Crucially, there is no single "switch from
+`~/.config/maury/host-id` write). Crucially, there is no single "switch from
 A to B atomically" transaction — that would require cross-repo
 distributed commits, which do not exist in git and which the model
 forbids (Tenet 1 forbids inventing distributed-systems failure modes
@@ -556,7 +556,7 @@ gives the same safety property (the host is never in a state where
 neither old-registration nor new-registration is true *and the user
 has been led to believe one is*) without inventing cross-repo
 transactions. If deregister succeeds and bootstrap fails (e.g.,
-network outage between the two), `~/.maury-host-id` is cleared and no
+network outage between the two), `~/.config/maury/host-id` is cleared and no
 mode is active — the host is in a recoverable state and can rerun
 bootstrap when the network comes back.
 
@@ -576,7 +576,7 @@ every override decision in the new mode.
 #### What carries over
 
 - **Hardware.** The physical machine itself is the same.
-- **`~/.claude/maury-state/` host-local files** (per ADR-0029). The
+- **`~/.local/state/maury/` host-local files** (per ADR-0029). The
   host-local audit log, drift baseline, etc., do not reset on mode
   change. They may want to be archived per registration; that is a
   separate concern handled by ADR-0029 conventions.
@@ -586,7 +586,7 @@ every override decision in the new mode.
 
 - **The `host_<hex>` ID.** The old ID is retired; a new ID is minted
   by the new bootstrap.
-- **`~/.maury-host-id`.** Cleared during deregistration; rewritten
+- **`~/.config/maury/host-id`.** Cleared during deregistration; rewritten
   with the new ID during the next bootstrap.
 - **The host's entry in the old mode's marker.** Removed during
   deregister.
@@ -724,7 +724,7 @@ default sync is mode-scoped per the locality principle.
 - **Bad:** Mode change generates a new `host_<hex>` ID; there is no
   "transfer" of identity. The old ID stays retired. Replacement-
   hardware recovery is a content-copy, not an identity-transfer.
-- **Bad:** Conflict detection on `~/.maury-host-id` mismatch surfaces
+- **Bad:** Conflict detection on `~/.config/maury/host-id` mismatch surfaces
   a warning but does not auto-correct. Users must understand the
   recovery path (delete and re-bootstrap).
 
@@ -736,13 +736,13 @@ default sync is mode-scoped per the locality principle.
 - `maury init` (or the `maury mode bootstrap` flow) implements the
   eight-step bootstrap described above; tested against an agency with
   mixed-accessibility modes to confirm filtering.
-- `~/.maury-host-id` lifecycle:
+- `~/.config/maury/host-id` lifecycle:
   - Within a single mode-registration: written exactly once at
     bootstrap; never modified.
   - On deregistration: cleared.
   - On the next bootstrap: a fresh ID written; the prior ID remains
     retired in the prior mode's marker.
-- Conflict detection: a host whose `~/.maury-host-id` does not match
+- Conflict detection: a host whose `~/.config/maury/host-id` does not match
   the active mode's marker entry surfaces a WARN per the table
   above; covered by an integration test that copies the file between
   two test hosts.
@@ -751,7 +751,7 @@ default sync is mode-scoped per the locality principle.
   bootstrap`) with a pre-flight validate. There is no single
   `maury mode switch` that wraps both into a pseudo-transaction.
 - The new bootstrap mints a new `host_<hex>` ID; tested by asserting
-  that the `~/.maury-host-id` value after a mode change differs from
+  that the `~/.config/maury/host-id` value after a mode change differs from
   the value before, and that the old ID is present-but-retired in
   the old mode's marker.
 - `maury sync` traverses only the active mode's subgraph by default;
@@ -805,7 +805,7 @@ default sync is mode-scoped per the locality principle.
 - **Recovery from a partially-completed mode change.** If deregister
   succeeds and bootstrap fails (network outage between the two
   atomic operations), the host is in a recoverable state —
-  `~/.maury-host-id` is cleared, no mode is active. The recovery
+  `~/.config/maury/host-id` is cleared, no mode is active. The recovery
   path is "re-run bootstrap"; the validate step on retry ensures
   the user does not silently slide into a worse state.
 - **Default-suggestion heuristic refinement.** The current signals
@@ -848,7 +848,7 @@ machinery that produced the rendered file.
   bootstrap" sub-section captures the interactive prompt + DNS-
   rule normalization (downcase + replace non-`[a-z0-9-]` with
   `-` + truncate). Step 8 also gained a line about writing the
-  identity baseline at `~/.claude/maury-state/host-identity.json`
+  identity baseline at `~/.local/state/maury/host-identity.json`
   per ADR-0042 (host-identity guard).
 - 2026-05-19 — pre-release cleanup: the legacy `maury bootstrap host`
   CLI alias was deleted (no users exist to deprecate from). `maury

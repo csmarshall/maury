@@ -231,7 +231,7 @@ maury for compliance, ship updates.
   hook system. MCP partially fills this gap for tools/resources
   but not for lifecycle events.
 - **Cross-vendor agent state-directory standards.** None
-  exist. Maury's `~/.claude/maury-state/` per
+  exist. Maury's `~/.local/state/maury/` per
   [ADR-0029](0029-maury-state-layout-contract.md) is correctly
   scoped to Claude Code's `~/.claude/` hierarchy.
 

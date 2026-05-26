@@ -13,14 +13,14 @@
 ## Related ADRs
 
 - [ADR-0015](0015-surrogate-keys-for-hosts-and-profiles.md) — defines the `host_<hex>_<tag>` ID format and the hex/tag mutability split this ADR enforces at sync time.
-- [ADR-0017](0017-drift-detection-and-reconciliation.md) — drift detection uses `~/.claude/maury-state/last-render.json` as the baseline for file content; this ADR adds an analogous baseline for host identity itself.
-- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` inventory; this ADR adds `host-identity.json` to that inventory.
+- [ADR-0017](0017-drift-detection-and-reconciliation.md) — drift detection uses `~/.local/state/maury/last-render.json` as the baseline for file content; this ADR adds an analogous baseline for host identity itself.
+- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.local/state/maury/` inventory; this ADR adds `host-identity.json` to that inventory.
 - [ADR-0039](0039-bootstrap-and-host-lifecycle.md) — bootstrap writes the baseline; mode-change deregistration clears it.
 - [ADR-0041](0041-per-mode-anthropic-credentials.md) — the three-piece work/home trust contract this ADR extends with a fourth checkpoint.
 
 ## TL;DR
 
-The `host_<hex>_<tag>` value in `~/.maury-host-id` is identity:
+The `host_<hex>_<tag>` value in `~/.config/maury/host-id` is identity:
 which manifest entry applies, which mode this hardware is in,
 which Anthropic credentials get wired up, which repos sync. A
 user who edits the hex prefix — accidentally or otherwise —
@@ -28,7 +28,7 @@ silently swaps the host into a different mode-registration, with
 potentially catastrophic blast radius (work credentials in home
 context, home repos rendered onto a work laptop). Maury records
 a `host-identity.json` baseline at first sync; every subsequent
-sync checks the current `~/.maury-host-id` hex against the
+sync checks the current `~/.config/maury/host-id` hex against the
 baseline; on mismatch, abort loudly and require
 `maury sync --confirm-identity-change` (or
 `maury init --reset`) to proceed. Pattern follows SSH's
@@ -38,7 +38,7 @@ baseline; on mismatch, abort loudly and require
 
 ADR-0015's amended ID format makes `host_<hex>_<tag>` cosmetically
 readable, which is a UX win — but it doesn't change the underlying
-fact that the hex prefix in `~/.maury-host-id` is the lookup key
+fact that the hex prefix in `~/.config/maury/host-id` is the lookup key
 for every mode-scoped operation maury performs: render, sync,
 reconcile, mining, doctor.
 
@@ -47,13 +47,13 @@ mechanism that prevents the user from editing it. Three concrete
 failure modes follow:
 
 1. **The brain-fart edit.** User is debugging something, opens
-   `~/.maury-host-id`, fat-fingers a character or pastes the wrong
+   `~/.config/maury/host-id`, fat-fingers a character or pastes the wrong
    ID from a terminal scrollback. `maury sync` next time silently
    pulls a different mode's repos onto this machine.
 
 2. **The "I want to move this host" attempt.** User wants to move
    their laptop from `mode:work` to `mode:home` and reasonably
-   guesses that editing `~/.maury-host-id` does the swap. It does
+   guesses that editing `~/.config/maury/host-id` does the swap. It does
    not (the manifest entry is what determines the mode), but the
    edited file gets read on next sync and the curator's
    `_identify_host` flow now refuses (host_id not in manifest), or
@@ -62,7 +62,7 @@ failure modes follow:
 
 3. **The cross-host paste.** User runs `maury status` on host A,
    copies the ID into a Slack message for help debugging, later
-   pastes that ID into host B's `~/.maury-host-id` thinking it's
+   pastes that ID into host B's `~/.config/maury/host-id` thinking it's
    what they were told to do. Host B silently inherits host A's
    identity.
 
@@ -87,7 +87,7 @@ of the existing trust-boundary mechanisms.
   piece must be cross-checked, not trusted. The host-id file is
   the fourth physical piece.
 - **State coherence.** `maury init` writes both
-  `~/.maury-host-id` AND the baseline atomically. The guard
+  `~/.config/maury/host-id` AND the baseline atomically. The guard
   treats their independent absence/presence as state corruption,
   not a normal operating mode.
 - **Legitimate re-anchoring exists.** A user wiping and
@@ -117,7 +117,7 @@ legitimate re-anchoring (re-image, backup restore).
 
 ### Implementation details
 
-#### Baseline file: `~/.claude/maury-state/host-identity.json`
+#### Baseline file: `~/.local/state/maury/host-identity.json`
 
 Single JSON document, written by `maury init` at the same time
 as the marker-file commit (ADR-0039 step 8). Writes use the
@@ -148,12 +148,12 @@ manifest, the snapshot is correct-as-of-bootstrap-time.
 Every command that does mode-scoped work — `maury sync`,
 `maury reconcile`, `maury render`, `maury mine`, `maury status`,
 `maury doctor` — performs the following check after reading
-`~/.maury-host-id` but before any mode-scoped resolution:
+`~/.config/maury/host-id` but before any mode-scoped resolution:
 
 ```
-1. Read host_id from ~/.maury-host-id
+1. Read host_id from ~/.config/maury/host-id
 2. Extract the 8-hex prefix (strip optional _<tag>)
-3. If ~/.claude/maury-state/host-identity.json exists:
+3. If ~/.local/state/maury/host-identity.json exists:
    a. Read baseline.host_id_hex
    b. If baseline.host_id_hex != current_hex:
         ABORT with the identity-change message
@@ -170,19 +170,19 @@ When the guard trips, the user sees:
 ```
 ✗ host identity changed since last sync.
 
-  baseline (at ~/.claude/maury-state/host-identity.json):
+  baseline (at ~/.local/state/maury/host-identity.json):
     host_id_hex: 24b2a0aa
     mode: home (mode_3f1a...)
     registered: 2026-05-14T15:42:11Z
 
-  current (at ~/.maury-host-id):
+  current (at ~/.config/maury/host-id):
     host_id_hex: 88ff77ee
     full: host_88ff77ee_work-laptop
 
   This means either:
-    (a) Your ~/.maury-host-id was edited (deliberately or by
+    (a) Your ~/.config/maury/host-id was edited (deliberately or by
         accident).
-    (b) You restored ~/.maury-host-id from a different host
+    (b) You restored ~/.config/maury/host-id from a different host
         (e.g., backup restore from another laptop).
     (c) You intended to move this hardware to a different
         mode-registration.
@@ -225,17 +225,17 @@ Distinct from `--confirm-identity-change`. Used when the user
 intends a fresh registration rather than acknowledging an
 existing one:
 
-1. Refuses if the current `~/.maury-host-id` is still registered
+1. Refuses if the current `~/.config/maury/host-id` is still registered
    in the active mode's marker (would orphan that registration).
    User must first `maury mode deregister`.
-2. Deletes `~/.maury-host-id` and `host-identity.json`.
+2. Deletes `~/.config/maury/host-id` and `host-identity.json`.
 3. Runs the full bootstrap flow from ADR-0039 §"New host
    bootstrap."
 4. Writes fresh files on completion.
 
 #### State-corruption case: host-id present, baseline absent
 
-`maury init` writes `~/.maury-host-id` and `host-identity.json`
+`maury init` writes `~/.config/maury/host-id` and `host-identity.json`
 together (the host-id file is written first; the baseline is
 written immediately after on the same code path). The only way
 to observe one without the other is filesystem corruption,
@@ -254,7 +254,7 @@ the ADR was added.
 
 A `maury mode change` operation (ADR-0039 §"Mode change process")
 is the legitimate way to swap a host between modes. The flow
-already clears `~/.maury-host-id` on deregister and writes a fresh
+already clears `~/.config/maury/host-id` on deregister and writes a fresh
 one on re-bootstrap. The mode-change code path **deletes
 `host-identity.json` on deregister** and re-creates it during
 the new bootstrap. From the guard's perspective, this is just a
@@ -274,7 +274,7 @@ normal bootstrap; no identity-change abort fires.
 - ⚖️ **Neutral:** The verbose abort message is long. Long messages
   in failure modes are intentional per Tenet 11; this is the
   right tradeoff.
-- ❌ **Bad:** One additional state file in `~/.claude/maury-state/`
+- ❌ **Bad:** One additional state file in `~/.local/state/maury/`
   (`host-identity.json`). ADR-0029's File inventory grows by one.
   Real but tiny maintenance surface.
 - ❌ **Bad:** The "legitimate re-image" case still requires the
@@ -363,7 +363,7 @@ normal bootstrap; no identity-change abort fires.
 ## Followups
 
 - **`maury doctor` rule** flagging "baseline missing but
-  `~/.maury-host-id` present" as a state-corruption signal —
+  `~/.config/maury/host-id` present" as a state-corruption signal —
   pre-empting the next mode-scoped command's hard
   `HostIdentityError` with a softer doctor-level warning that
   points at `maury init --reset` before the user is mid-sync.

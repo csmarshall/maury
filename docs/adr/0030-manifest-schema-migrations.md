@@ -228,7 +228,7 @@ explicitly commits and pushes — same workflow as any other
 manifest edit. The upgrade is a local file transformation;
 distribution is a separate, deliberate step.
 
-It does NOT touch other state files (`~/.claude/maury-state/`
+It does NOT touch other state files (`~/.local/state/maury/`
 contents per ADR-0029, the synced repo's other content). Only
 `.meta/maury-marker.json` is in scope.
 

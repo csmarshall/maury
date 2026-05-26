@@ -261,7 +261,7 @@ line of stdout becomes the status text.
 
 Maury ships `maury statusline` as a subcommand that:
 
-1. Reads `~/.claude/maury-state/host-identity.json`.
+1. Reads `~/.local/state/maury/host-identity.json`.
 2. Outputs a one-line summary to stdout:
    - With focus set: `mode:personal focus:personal:consulting:acme`
    - Without (or focus equals registered mode): `mode:personal`

@@ -50,7 +50,7 @@
   detection; the render pipeline's companion (writes are
   reconciled, not silently overwritten)
 - [ADR-0029](0029-maury-state-layout-contract.md) —
-  `~/.claude/maury-state/` layout contract; the
+  `~/.local/state/maury/` layout contract; the
   `last-render.json` provenance the pipeline writes
 - [ADR-0030](0030-manifest-schema-migrations.md) — when marker
   schema bumps are required

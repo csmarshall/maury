@@ -299,7 +299,7 @@ contains:
 The maury `log_tool_use` script reads stdin, extracts the fields
 it needs (typically with `jq`), computes derived values (file
 SHA before/after, size delta), and appends one JSON line to
-`~/.claude/maury-state/claude-writes.jsonl`.
+`~/.local/state/maury/claude-writes.jsonl`.
 
 #### What gets written to claude-writes.jsonl
 
@@ -365,7 +365,7 @@ under that bound. No file lock is needed.
 1. Strip every `# maury-managed`-marked entry from `settings.json`'s
    `hooks` block. Leave non-marked entries untouched.
 2. Delete `~/.claude/bin/maury-*` and `~/.claude/bin/maury-tools.sh`.
-3. Delete `~/.claude/maury-state/`.
+3. Delete `~/.local/state/maury/`.
 4. Print "removed maury hooks; left N user hooks intact; clones
    under <repos_root> were not touched (delete them manually if
    desired)".

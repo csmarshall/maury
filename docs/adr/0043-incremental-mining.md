@@ -11,7 +11,7 @@
 ## Related ADRs
 
 - [ADR-0026](0026-profile-aware-mining.md) — mining the transcript history for durable preference candidates; this ADR adds state tracking so the operation is incremental rather than always-full.
-- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.claude/maury-state/` inventory; this ADR adds `last-mine.json` to the inventory.
+- [ADR-0029](0029-maury-state-layout-contract.md) — `~/.local/state/maury/` inventory; this ADR adds `last-mine.json` to the inventory.
 - [ADR-0035](0035-audit-log.md) — mining runs are audit-logged; the watermark itself is not audit data (it's per-host state).
 
 ## TL;DR
@@ -21,7 +21,7 @@ transcript files and asks an LLM to extract durable preference
 candidates. Today every run re-mines from scratch — slow,
 expensive (LLM cost per window), and discouraging frequent use.
 This ADR adds a per-project watermark file at
-`~/.claude/maury-state/last-mine.json` that records the highest
+`~/.local/state/maury/last-mine.json` that records the highest
 JSONL mtime processed per project. Default `maury mine` becomes
 **incremental** (mine only data newer than the watermark);
 `--full` re-mines everything; a `mining_algorithm_version` field
@@ -84,7 +84,7 @@ defaults solves (2) by deriving from `Path.cwd()`.
 - **State must be in `maury-state/`, not the project dir.** Per
   the project's existing pattern (`last-render.json`,
   `claude-writes.jsonl`, `active-context.json`, etc.), maury's
-  state lives under `~/.claude/maury-state/`. Polluting
+  state lives under `~/.local/state/maury/`. Polluting
   `~/.claude/projects/` with maury files breaks the boundary
   the rest of the codebase respects.
 - **Watermark granularity should be minimum-viable.** Mtime-per-
@@ -106,7 +106,7 @@ defaults solves (2) by deriving from `Path.cwd()`.
 For the **incremental state location:**
 
 - **Option α:** Drop a marker file inside each project dir (`~/.claude/projects/<dir>/.maury-mined`).
-- **Option β (chosen):** Central `~/.claude/maury-state/last-mine.json` keyed by project dir name.
+- **Option β (chosen):** Central `~/.local/state/maury/last-mine.json` keyed by project dir name.
 
 For the **default project selection:**
 
@@ -124,7 +124,7 @@ only when the current cwd isn't a recognized project dir.
 
 ### Implementation details
 
-#### State file: `~/.claude/maury-state/last-mine.json`
+#### State file: `~/.local/state/maury/last-mine.json`
 
 Single JSON document. Writes use the tmp+rename pattern from
 [ADR-0029 §"Cross-cutting invariants"](0029-maury-state-layout-contract.md#cross-cutting-invariants)
@@ -179,7 +179,7 @@ high-water mark for that project:
      under ~/.claude/projects/, use that.
    - Else fall back to the busiest-project heuristic.
 
-2. Read ~/.claude/maury-state/last-mine.json:
+2. Read ~/.local/state/maury/last-mine.json:
    - If file absent: this is the first mine. Process all
      transcripts; write a fresh state file at end.
    - If file present and mining_algorithm_version matches code:
@@ -279,7 +279,7 @@ get it when running `maury mine` from a non-project dir (e.g.,
 - ✅ **Good:** Algorithm changes are first-class. Bumping
   `mining_algorithm_version` is the explicit mechanism for "this
   extraction is materially different, re-run on history."
-- ⚖️ **Neutral:** One new state file in `~/.claude/maury-state/`.
+- ⚖️ **Neutral:** One new state file in `~/.local/state/maury/`.
   ADR-0029's inventory grows by one entry.
 - ⚖️ **Neutral:** The fallback-to-busiest notice adds output
   noise on first mine from new dirs. Tolerable.
@@ -324,7 +324,7 @@ get it when running `maury mine` from a non-project dir (e.g.,
 
 - ✅ **Good:** Matches the existing state-file pattern
   (`last-render.json`, `claude-writes.jsonl`, etc.).
-- ✅ **Good:** Easy reset (`rm ~/.claude/maury-state/last-mine.json`).
+- ✅ **Good:** Easy reset (`rm ~/.local/state/maury/last-mine.json`).
 - ⚖️ **Neutral:** One JSON load + lookup indirection per
   `maury mine` run. Sub-millisecond cost.
 

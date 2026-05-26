@@ -431,7 +431,7 @@ override-anchor's auto-clear is the safety net per Tenet 1.
 ### Advisory storage
 
 Acknowledged advisories live in the **mode repo**, not in
-`~/.claude/maury-state/`:
+`~/.local/state/maury/`:
 
 - **Why mode, not host-local.** A user who works in the same mode on
   two machines should only need to acknowledge once. Host-local state

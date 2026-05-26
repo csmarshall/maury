@@ -14,7 +14,7 @@
 Six prior ADRs reference a "Phase 10 audit log" without specifying
 it — every one of them is making promises against a contract that
 didn't exist. This ADR is that contract: **one file**,
-`~/.claude/maury-state/audit.jsonl`, append-only, host-local
+`~/.local/state/maury/audit.jsonl`, append-only, host-local
 (never synced to git), JSONL with ≤4 KB records to maintain POSIX
 `O_APPEND` atomicity per the concurrent-sessions CC contract. Every
 state-changing maury operation writes one event with a fixed
@@ -57,7 +57,7 @@ This ADR specifies that contract.
 
 ### One file, append-only, host-local
 
-`~/.claude/maury-state/audit.jsonl` per
+`~/.local/state/maury/audit.jsonl` per
 [ADR-0029](0029-maury-state-layout-contract.md)'s File
 inventory. JSONL: one event record per line, ≤4 KB to maintain
 POSIX `O_APPEND` atomicity per
@@ -89,7 +89,7 @@ Every event record:
 
 - `ts` — UTC ISO-8601.
 - `event` — one of the kinds enumerated below.
-- `host_id` — from `~/.maury-host-id`.
+- `host_id` — from `~/.config/maury/host-id`.
 - `session_id` — Claude Code session that triggered this, if
   applicable; null otherwise.
 - `active_profile` — profile active when the event fired (per
@@ -159,7 +159,7 @@ Removing or renaming an event kind is a schema-version bump
 ### Relationship to other state files
 
 The audit log is **the cross-cutting record**, not the only
-record. Other state files in `~/.claude/maury-state/` per
+record. Other state files in `~/.local/state/maury/` per
 [ADR-0029](0029-maury-state-layout-contract.md) serve their
 own per-domain purposes; the audit log captures the
 state-changing *events*.

@@ -12,9 +12,9 @@
 
 Synced repos and the rendered `~/.claude/` are recoverable from git
 remotes; what backup actually needs to address is the **host-local
-content** — `~/.maury-host-id`, the append-only logs
+content** — `~/.config/maury/host-id`, the append-only logs
 (`claude-writes.jsonl`, `session-history.jsonl`, etc.), the staging
-files in `~/.claude/maury-staging/`, and (opt-in) the raw Claude
+files in `~/.local/state/maury/staging/`, and (opt-in) the raw Claude
 Code transcripts under `~/.claude/projects/`. Two commands:
 **`maury backup`** writes a `.tar.zst` bundle; **`maury restore`**
 unpacks it back into place. Default scope is metadata-only;
@@ -27,13 +27,15 @@ a specific remote.
 ## Context
 
 [ADR-0029](0029-maury-state-layout-contract.md) §"Recoverable
-from loss" enumerates which files in `~/.claude/maury-state/`
+from loss" enumerates which files in `~/.local/state/maury/`
 survive a directory wipe (last-render and active-context get
 rebuilt on next sync) and which don't (the append-only logs —
 claude-writes, session-history, profile-switches —
 permanently lose their history). [ADR-0029](0029-maury-state-layout-contract.md)
-also lists what doesn't live in maury-state (synced repos,
-identity file, maury-staging).
+also lists what lives elsewhere: synced repos and the identity file are
+under the **config root**; the `staging/` subtree is under the **state
+root** but has a different (user-visible work-in-progress) lifecycle than
+the bookkeeping files.
 
 That's a recovery analysis, but it's not a backup story.
 What does a maury user need to back up to actually survive
@@ -50,12 +52,12 @@ sources vs. what only exists on this host:
 | Rendered `~/.claude/` content | `maury render` from manifest | — |
 | `last-render.json` | rebuilt by next render | — |
 | `active-context.json` | rebuilt by `maury init` / `maury profile use` | — |
-| `~/.maury-host-id` | — | yes (identity, irreplaceable) |
+| `~/.config/maury/host-id` | — | yes (identity, irreplaceable) |
 | `claude-writes.jsonl` | — | yes (drift attribution history) |
 | `session-history.jsonl` | — | yes (profile attribution for past transcripts) |
 | `profile-switches.jsonl` (until Phase 10) | — | yes (audit history) |
-| `~/.claude/maury-staging/captures.jsonl` | — | yes (un-reviewed captures) |
-| `~/.claude/maury-staging/pending-mining/` | — | yes (offline-staged mining work) |
+| `~/.local/state/maury/staging/captures.jsonl` | — | yes (un-reviewed captures) |
+| `~/.local/state/maury/staging/pending-mining/` | — | yes (offline-staged mining work) |
 | `~/.claude/projects/<hash>/*.jsonl` (Claude Code transcripts) | — | yes (raw conversation history) |
 
 The local-only items are what backup needs to address.
@@ -77,13 +79,13 @@ contents back into the appropriate locations under `$HOME`.
 ### What `maury backup` includes by default
 
 ```
-~/.maury-host-id                              (identity)
-~/.claude/maury-state/claude-writes.jsonl     (drift history)
-~/.claude/maury-state/session-history.jsonl   (profile history)
-~/.claude/maury-state/profile-switches.jsonl  (audit history)
-~/.claude/maury-state/active-sessions.jsonl   (in-flight session state)
-~/.claude/maury-state/active-context.json     (current binding — re-derivable but cheap to back up)
-~/.claude/maury-staging/                      (un-reviewed captures + offline-mining material)
+~/.config/maury/host-id                              (identity)
+~/.local/state/maury/claude-writes.jsonl     (drift history)
+~/.local/state/maury/session-history.jsonl   (profile history)
+~/.local/state/maury/profile-switches.jsonl  (audit history)
+~/.local/state/maury/active-sessions.jsonl   (in-flight session state)
+~/.local/state/maury/active-context.json     (current binding — re-derivable but cheap to back up)
+~/.local/state/maury/staging/                      (un-reviewed captures + offline-mining material)
 ```
 
 ### What `maury backup` includes with `--include-transcripts`
@@ -132,14 +134,14 @@ maury restore <tarball>
    listing what's inside, plus the expected file paths. Refuse if
    malformed.
 2. **Checks identity collision.** Three cases:
-   - **No existing `~/.maury-host-id`** (fresh install or
+   - **No existing `~/.config/maury/host-id`** (fresh install or
      deleted identity): restore proceeds and writes the
      tarball's identity. This is the canonical disk-loss
      recovery flow.
-   - **Existing `~/.maury-host-id` matches tarball's
+   - **Existing `~/.config/maury/host-id` matches tarball's
      `host_id`**: restore proceeds; the tarball is a backup
      of this same host.
-   - **Existing `~/.maury-host-id` differs from tarball's
+   - **Existing `~/.config/maury/host-id` differs from tarball's
      `host_id`**: refuse with *"this host already has
      identity X; the backup is for identity Y. Use
      `--into /tmp/restore-tmp` to extract without touching
@@ -178,14 +180,14 @@ Plain `tar.gz`. Inside:
 maury-backup-<host_id_short>-<YYYY-MM-DD>/
   ├── manifest.txt          ← what's in this backup, schema version,
   │                            host_id, created_at
-  ├── maury-host-id         ← copy of ~/.maury-host-id
-  ├── maury-state/
+  ├── host-id               ← copy of ~/.config/maury/host-id
+  ├── state/                ← copy of ~/.local/state/maury/
   │   ├── claude-writes.jsonl
   │   ├── session-history.jsonl
-  │   └── ...
-  ├── maury-staging/
-  │   ├── captures.jsonl
-  │   └── pending-mining/...
+  │   ├── ...
+  │   └── staging/          ← captures + offline-mining material
+  │       ├── captures.jsonl
+  │       └── pending-mining/...
   └── projects/             ← only if --include-transcripts
       └── <hash>/...
 ```
@@ -201,9 +203,9 @@ created_at: 2026-05-07T14:32:00Z
 maury_version: 0.5.1
 includes_transcripts: false
 files:
-  - maury-host-id (40 bytes)
-  - maury-state/claude-writes.jsonl (1.2 MB, 4823 lines)
-  - maury-state/session-history.jsonl (88 KB, 312 lines)
+  - host-id (40 bytes)
+  - state/claude-writes.jsonl (1.2 MB, 4823 lines)
+  - state/session-history.jsonl (88 KB, 312 lines)
   - ...
 ```
 
@@ -246,14 +248,14 @@ The `maury backup` command writes a sha256 for each file into
 |---|---|
 | Disk wipe; have backup | `pipx install maury` → `maury restore <tarball>` → `maury sync` to re-clone repos |
 | Disk wipe; no backup | `pipx install maury` → `maury init --from-dir <repo>` (new identity; loses all maury-state history; un-reviewed captures gone; transcript history gone if `~/.claude/projects/` not separately archived) |
-| `~/.maury-host-id` accidentally deleted | If you have a backup containing it, `maury restore` puts it back. Otherwise, treat as new host and re-bootstrap (you'll show up in the manifest as a new host_id; old host_id remains in manifest history for audit). |
-| Just maury-state corrupted | `rm -rf ~/.claude/maury-state/`, then `maury init` (or `maury sync` if already initialized) — `last-render.json` rebuilds on next render; `active-context.json` rebuilds on `maury init` / `maury profile use`; append-only history (claude-writes, session-history, profile-switches) is lost; warn user about the lost history per [ADR-0029](0029-maury-state-layout-contract.md) |
+| `~/.config/maury/host-id` accidentally deleted | If you have a backup containing it, `maury restore` puts it back. Otherwise, treat as new host and re-bootstrap (you'll show up in the manifest as a new host_id; old host_id remains in manifest history for audit). |
+| Just maury-state corrupted | `rm -rf ~/.local/state/maury/`, then `maury init` (or `maury sync` if already initialized) — `last-render.json` rebuilds on next render; `active-context.json` rebuilds on `maury init` / `maury profile use`; append-only history (claude-writes, session-history, profile-switches) is lost; warn user about the lost history per [ADR-0029](0029-maury-state-layout-contract.md) |
 | Synced repo lost on every host (catastrophic) | Restore the most recent backup that includes a clone snapshot (NOT included by default — see followup); failing that, the team's most-recent push to remote is the recovery point |
 
 ## Consequences
 
 - **Identity is the only truly irrecoverable asset.** If
-  `~/.maury-host-id` is gone and not backed up, the host
+  `~/.config/maury/host-id` is gone and not backed up, the host
   becomes a new host (different identity in the manifest). The
   old host's audit trail still exists in the manifest's history,
   but the new host can't claim it.

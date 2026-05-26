@@ -189,7 +189,7 @@ uv run maury init --from-dir /path/to/your/maury-base
 
 The init flow per [ADR-0018](../adr/0018-minimum-bootstrap-ux.md):
 
-1. Generates a fresh `host_<hex>` ID in `~/.maury-host-id`.
+1. Generates a fresh `host_<hex>` ID in `~/.config/maury/host-id`.
 2. Reads your base repo's `.meta/manifest.json` to discover the
    layout.
 3. Identifies this host: pre-registered if the manifest already
