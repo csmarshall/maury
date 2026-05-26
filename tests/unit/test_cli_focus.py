@@ -58,7 +58,6 @@ def _seed_tree(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
 
     target = tmp_path / "out"
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=SCHEMA_VERSION,
             host_id_hex="24b2a0aa",
@@ -96,7 +95,7 @@ def test_focus_use_descendant_succeeds(tmp_path: Path) -> None:
     # Check the baseline was updated.
     from maury.host_identity import read_baseline
 
-    baseline = read_baseline(target)
+    baseline = read_baseline()
     assert baseline is not None
     assert baseline.active_focus == "personal:consulting:acme"
 
@@ -119,7 +118,7 @@ def test_focus_use_no_argument_clears_active_focus(tmp_path: Path) -> None:
 
     from maury.host_identity import read_baseline
 
-    baseline = read_baseline(target)
+    baseline = read_baseline()
     assert baseline is not None
     assert baseline.active_focus is None
 
@@ -308,7 +307,7 @@ def test_focus_use_emits_focus_switched_on_success(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
 
-    events = list(read_events(target))
+    events = list(read_events())
     kinds = [e.event for e in events]
     assert "focus_switched" in kinds
     event = next(e for e in events if e.event == "focus_switched")
@@ -339,7 +338,7 @@ def test_focus_use_clear_emits_focus_switched(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
 
-    events = list(read_events(target))
+    events = list(read_events())
     assert len(events) == 1
     event = events[0]
     assert event.event == "focus_switched"
@@ -359,7 +358,7 @@ def test_focus_use_no_audit_when_clearing_already_unset(tmp_path: Path) -> None:
         ["focus", "use", "--manifest-file", str(mpath), "--target", str(target)],
     )
     assert result.exit_code == 0, result.output
-    assert list(read_events(target)) == []
+    assert list(read_events()) == []
 
 
 def test_focus_use_refused_emits_focus_switch_refused(tmp_path: Path) -> None:
@@ -375,7 +374,7 @@ def test_focus_use_refused_emits_focus_switch_refused(tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
 
-    events = list(read_events(target))
+    events = list(read_events())
     kinds = [e.event for e in events]
     assert "focus_switch_refused" in kinds
     event = next(e for e in events if e.event == "focus_switch_refused")
@@ -399,6 +398,6 @@ def test_focus_use_active_session_refusal_emits_event(tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
 
-    events = list(read_events(target))
+    events = list(read_events())
     event = next(e for e in events if e.event == "focus_switch_refused")
     assert event.details["precondition"] == "active_sessions"

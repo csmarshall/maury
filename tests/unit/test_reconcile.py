@@ -89,7 +89,7 @@ class TestModuleSurface:
     def test_captures_path_lives_under_staging(self, tmp_path: Path) -> None:
         # Per ADR-0029 staging lives at paths.staging_dir()
         # ($XDG_STATE_HOME/maury/staging), decoupled from the render target.
-        cp = captures_path(tmp_path)
+        cp = captures_path()
         assert cp.name == CAPTURES_FILENAME
         assert cp == paths.staging_dir() / CAPTURES_FILENAME
         assert not cp.is_relative_to(paths.render_target_dir())
@@ -345,7 +345,7 @@ class TestAdopt:
             session_id="abc123",
         )
         assert summary.captures_written == 1
-        cp = captures_path(tmp_path)
+        cp = captures_path()
         assert cp.is_file()
         records = [json.loads(line) for line in cp.read_text().splitlines() if line]
         assert len(records) == 1
@@ -368,7 +368,7 @@ class TestAdopt:
         assert (tmp_path / "CLAUDE.md").read_text() == "hand-edited\n"
 
     def test_adopt_appends_to_existing_captures_file(self, tmp_path: Path) -> None:
-        cp = captures_path(tmp_path)
+        cp = captures_path()
         cp.parent.mkdir(parents=True, exist_ok=True)
         cp.write_text(json.dumps({"existing": "record"}) + "\n")
         (tmp_path / "CLAUDE.md").write_text("new\n")
@@ -394,7 +394,7 @@ class TestAdopt:
             rendered=_make_render_result(("big.md", b"")),
             prompter=_scripted_prompter({"big.md": ReconcileAction.ADOPT}),
         )
-        cp = captures_path(tmp_path)
+        cp = captures_path()
         rec = json.loads(cp.read_text().strip())
         assert "(truncated)" in rec["body_excerpt"]
         assert len(rec["body_excerpt"]) < 5000
@@ -409,7 +409,7 @@ class TestAdopt:
             rendered=_make_render_result(("bin/data", b"")),
             prompter=_scripted_prompter({"bin/data": ReconcileAction.ADOPT}),
         )
-        cp = captures_path(tmp_path)
+        cp = captures_path()
         rec = json.loads(cp.read_text().strip())
         assert rec["body_excerpt"] == "(binary content; not embedded)"
 
@@ -430,7 +430,7 @@ class TestAdaptFallback:
         assert summary.captures_written == 1
         assert summary.paths_falling_back_to_adopt == 1
         # The capture record's source field marks it as a fallback
-        cp = captures_path(tmp_path)
+        cp = captures_path()
         rec = json.loads(cp.read_text().strip())
         assert rec["source"] == "drift-adopt-fallback"
 
@@ -576,7 +576,7 @@ class TestAuditLogIntegration:
             session_id="sess-abc",
         )
 
-        events = list(reversed(list(read_events(tmp_path))))
+        events = list(reversed(list(read_events())))
         kinds = [e.event for e in events]
         assert kinds == ["reconcile_action", "reconcile_action"]
         assert {e.details["path"] for e in events} == {"a.md", "b.md"}

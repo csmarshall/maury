@@ -205,7 +205,7 @@ def init(
         raise InitError(f"render failed: {e}") from e
 
     # 5a. Drift preflight (per ADR-0017 + Tenet 1).
-    last = read_last_render(target_dir)
+    last = read_last_render()
     drift_report: DriftReport | None = None
     drift_action: str = ""
     drift_errors: list[str] = []
@@ -278,7 +278,7 @@ def init(
                 for f in result.files
             ],
         )
-        write_last_render(target_dir, new_baseline)
+        write_last_render(new_baseline)
 
         # 5c. Per ADR-0042, write the host-identity baseline so subsequent
         # mode-scoped commands can detect accidental hex edits to
@@ -291,7 +291,7 @@ def init(
             mode_id=profile_id,
             mode_name_at_bootstrap=manifest.profiles[profile_id].name,
         )
-        write_baseline(target_dir, identity_baseline)
+        write_baseline(identity_baseline)
 
     # Audit-log: init_completed. Skip on dry-run (no state effects).
     if not dry_run:
@@ -301,7 +301,6 @@ def init(
 
         with contextlib.suppress(AuditLogError):
             log(
-                target_dir,
                 "init_completed",
                 host_id=matched_hid,
                 source="dir" if source_dir is not None else "tarball",

@@ -240,7 +240,6 @@ def test_init_cli_reset_deletes_existing_host_id_and_baseline(tmp_path: Path, mo
     host_id_file.write_text("host_aaaaaaaa_old-laptop\n")
     target = tmp_path / "out"
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="aaaaaaaa",
@@ -249,7 +248,7 @@ def test_init_cli_reset_deletes_existing_host_id_and_baseline(tmp_path: Path, mo
             mode_name_at_bootstrap="old",
         ),
     )
-    assert baseline_path(target).exists()
+    assert baseline_path().exists()
 
     # Repo with a *different* hid so result after reset is "not registered".
     repo = _make_minimal_repo(tmp_path, hostname="other-host")
@@ -273,7 +272,7 @@ def test_init_cli_reset_deletes_existing_host_id_and_baseline(tmp_path: Path, mo
     assert new_id.endswith("_new-laptop")
     assert not new_id.startswith("host_aaaaaaaa")
     # Baseline was deleted (and not re-created since unregistered).
-    assert not baseline_path(target).exists()
+    assert not baseline_path().exists()
     # Reset messages surfaced.
     assert "--reset: removing" in result.output
 

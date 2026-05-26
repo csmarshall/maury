@@ -146,7 +146,6 @@ def test_status_baseline_match_reports_match(tmp_path: Path, monkeypatch: pytest
     host_id_file = paths.host_id_file()
     host_id_file.write_text("host_24b2a0aa_laptop\n")
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -179,7 +178,6 @@ def test_status_baseline_mismatch_reports_warning_but_exits_zero(
     host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_new\n")  # different hex
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -332,7 +330,6 @@ def test_status_reports_last_render_when_present(tmp_path: Path, monkeypatch: py
 
     target = tmp_path / "target"
     write_last_render(
-        target,
         LastRender(
             schema_version=1,
             rendered_at="2026-05-15T10:00:00Z",
@@ -374,7 +371,7 @@ def test_status_reports_mining_watermarks(tmp_path: Path, monkeypatch: pytest.Mo
             findings_count=8,
         ),
     )
-    write_watermark(target, wm)
+    write_watermark(wm)
 
     runner = CliRunner()
     result = runner.invoke(

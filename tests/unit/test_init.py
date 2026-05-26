@@ -146,7 +146,7 @@ def test_init_writes_host_identity_baseline_on_success(tmp_path: Path) -> None:
     result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
     assert result.host_registered is True
 
-    baseline = read_baseline(target)
+    baseline = read_baseline()
     assert baseline is not None
     # Hex prefix of the registered host_id is what got recorded.
     registered_hid = host_id_file.read_text().strip()
@@ -166,7 +166,7 @@ def test_init_dry_run_does_not_write_baseline(tmp_path: Path) -> None:
     host_id_file = tmp_path / ".maury-host-id"
     repo = _make_minimal_repo(tmp_path, host_id_file=host_id_file)
     init(source_dir=repo, target_dir=target, host_id_file=host_id_file, dry_run=True)
-    assert not baseline_path(target).exists()
+    assert not baseline_path().exists()
 
 
 def test_init_unregistered_does_not_write_baseline(tmp_path: Path) -> None:
@@ -179,7 +179,7 @@ def test_init_unregistered_does_not_write_baseline(tmp_path: Path) -> None:
     # NOT pre-writing the host-id file from the manifest's hid.
     repo = _make_minimal_repo(tmp_path)
     init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
-    assert not baseline_path(target).exists()
+    assert not baseline_path().exists()
 
 
 def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
@@ -462,7 +462,7 @@ def test_init_emits_init_completed_audit_event(tmp_path: Path) -> None:
     result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
     assert result.rendered is True
 
-    events = list(read_events(target))
+    events = list(read_events())
     kinds = [e.event for e in events]
     assert "init_completed" in kinds
 
@@ -483,5 +483,5 @@ def test_init_dry_run_emits_no_audit_events(tmp_path: Path) -> None:
 
     init(source_dir=repo, target_dir=target, host_id_file=host_id_file, dry_run=True)
 
-    events = list(read_events(target))
+    events = list(read_events())
     assert events == []

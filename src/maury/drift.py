@@ -118,26 +118,25 @@ class LastRender:
         )
 
 
-def state_path(target_dir: Path | None = None) -> Path:
+def state_path() -> Path:
     """Return the path to last-render.json.
 
-    `target_dir` is accepted for signature stability but ignored: per
-    ADR-0029 last-render.json lives at `paths.state_dir()/last-render.json`.
+    Per ADR-0029 last-render.json lives at `paths.state_dir()/last-render.json`.
     """
     return _state_dir() / LAST_RENDER_FILENAME
 
 
-def write_last_render(target_dir: Path, last: LastRender) -> Path:
+def write_last_render(last: LastRender) -> Path:
     """Persist the render manifest. Creates the state dir if needed."""
-    sp = state_path(target_dir)
+    sp = state_path()
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(last.to_json(), encoding="utf-8")
     return sp
 
 
-def read_last_render(target_dir: Path) -> LastRender | None:
-    """Load last-render.json if present; None if maury has never rendered here."""
-    sp = state_path(target_dir)
+def read_last_render() -> LastRender | None:
+    """Load last-render.json if present; None if maury has never rendered."""
+    sp = state_path()
     if not sp.is_file():
         return None
     return LastRender.from_json(sp.read_text(encoding="utf-8"))

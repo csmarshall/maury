@@ -73,14 +73,14 @@ def _check_baseline_missing(*, target_dir: Path, host_id_file: Path) -> list[Fin
 
     if not host_id_file.is_file():
         return []  # No host id yet → nothing to baseline against; not a finding
-    if baseline_path(target_dir).is_file():
+    if baseline_path().is_file():
         return []
     return [
         Finding(
             check_id="baseline-missing",
             severity=Severity.WARN,
             message=(
-                f"`{host_id_file}` exists but `{baseline_path(target_dir)}` does not. "
+                f"`{host_id_file}` exists but `{baseline_path()}` does not. "
                 "This is the pre-2026-05-14 upgrade state — maury's identity guard "
                 "will auto-create the baseline on the next sync, but until then there's "
                 "no protection against accidental `~/.maury-host-id` edits."
@@ -104,7 +104,7 @@ def _check_watermark_stale(*, target_dir: Path) -> list[Finding]:
     from maury.mining_state import MINING_ALGORITHM_VERSION, read_watermark
 
     try:
-        wm = read_watermark(target_dir)
+        wm = read_watermark()
     except Exception:
         return []  # Read errors are surfaced by other tooling, not doctor
     if wm is None:
@@ -152,7 +152,7 @@ def _check_focus_unreachable(
     from maury.manifest import ManifestError, load_manifest
 
     try:
-        baseline = read_baseline(target_dir)
+        baseline = read_baseline()
     except Exception:
         return []  # Read errors surface elsewhere; not doctor's job.
     if baseline is None or baseline.active_focus is None:

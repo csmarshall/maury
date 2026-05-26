@@ -24,7 +24,6 @@ def _write_baseline(
     active_focus: str | None = None,
 ) -> None:
     write_baseline(
-        target_dir,
         HostIdentityBaseline(
             schema_version=SCHEMA_VERSION,
             host_id_hex="24b2a0aa",

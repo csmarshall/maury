@@ -108,14 +108,13 @@ STAGING_DIR = "maury-staging"
 CAPTURES_FILENAME = "captures.jsonl"
 
 
-def staging_dir(target_dir: Path | None = None) -> Path:
+def staging_dir() -> Path:
     """Capture-staging dir. Per ADR-0029 this lives at `paths.staging_dir()`
-    (`$XDG_STATE_HOME/maury/staging`), decoupled from the render target;
-    `target_dir` is accepted for signature stability but ignored."""
+    (`$XDG_STATE_HOME/maury/staging`), decoupled from the render target."""
     return _staging_dir()
 
 
-def captures_path(target_dir: Path | None = None) -> Path:
+def captures_path() -> Path:
     return staging_dir() / CAPTURES_FILENAME
 
 
@@ -270,7 +269,6 @@ def reconcile(
 
         with contextlib.suppress(AuditLogError):
             audit_log(
-                target_dir,
                 "reconcile_action",
                 session_id=session_id or None,
                 path=str(entry.path),
@@ -399,7 +397,7 @@ def _do_adopt(
     is_adapt_fallback: bool,
 ) -> ReconcileOutcome:
     """Append a capture record to the staging file. Local file unchanged."""
-    cp = captures_path(target_dir)
+    cp = captures_path()
     cp.parent.mkdir(parents=True, exist_ok=True)
 
     # Compute a small diff-hunk preview. v0: just embed the actual

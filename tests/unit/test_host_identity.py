@@ -42,38 +42,38 @@ def _write_host_id_file(path: Path, host_id: str) -> None:
 def test_baseline_json_round_trip(tmp_path: Path) -> None:
     """write → read produces the same object (modulo trailing whitespace)."""
     b = _make_baseline()
-    target = tmp_path / "target"
-    write_baseline(target, b)
-    loaded = read_baseline(target)
+    tmp_path / "target"
+    write_baseline(b)
+    loaded = read_baseline()
     assert loaded == b
 
 
 def test_baseline_path_is_under_state_dir(tmp_path: Path) -> None:
     """Per ADR-0029 the baseline lives at
     `paths.state_dir()/host-identity.json`, decoupled from the render target."""
-    bp = baseline_path(tmp_path)
+    bp = baseline_path()
     assert bp == paths.state_dir() / "host-identity.json"
     assert not bp.is_relative_to(paths.render_target_dir())
 
 
 def test_read_baseline_absent_returns_none(tmp_path: Path) -> None:
     """A target that's never been initialized has no baseline yet."""
-    assert read_baseline(tmp_path) is None
+    assert read_baseline() is None
 
 
 def test_read_baseline_unsupported_schema_version_raises(tmp_path: Path) -> None:
-    bp = baseline_path(tmp_path)
+    bp = baseline_path()
     bp.parent.mkdir(parents=True, exist_ok=True)
     bp.write_text('{"schema_version": 99, "host_id_hex": "x"}')
     with pytest.raises(HostIdentityError, match="schema_version"):
-        read_baseline(tmp_path)
+        read_baseline()
 
 
 def test_write_baseline_uses_tmp_rename(tmp_path: Path) -> None:
     """The temp file should be cleaned up after rename (atomic semantics).
     Per ADR-0029 invariant #4."""
     b = _make_baseline()
-    write_baseline(tmp_path, b)
+    write_baseline(b)
     state_dir = paths.state_dir()
     files = list(state_dir.iterdir())
     assert files == [state_dir / "host-identity.json"]
@@ -83,12 +83,12 @@ def test_write_baseline_uses_tmp_rename(tmp_path: Path) -> None:
 
 
 def test_check_returns_ok_when_baseline_matches(tmp_path: Path) -> None:
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"
-    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    write_baseline(_make_baseline(host_id_hex="24b2a0aa"))
     _write_host_id_file(host_id_file, "host_24b2a0aa_laptop")
 
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    result = check_host_identity(host_id_file=host_id_file)
     assert result.outcome == IdentityCheckOutcome.OK
     assert result.current_hex == "24b2a0aa"
     assert result.baseline_hex == "24b2a0aa"
@@ -99,12 +99,12 @@ def test_check_tag_only_edit_does_not_trigger_guard(tmp_path: Path) -> None:
     """The guard checks the 8-hex PREFIX only. Editing the tag (from
     `_laptop` to `_workstation` for instance) leaves the hex unchanged
     and must not trigger the abort."""
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"
-    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    write_baseline(_make_baseline(host_id_hex="24b2a0aa"))
     _write_host_id_file(host_id_file, "host_24b2a0aa_workstation")  # edited tag
 
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    result = check_host_identity(host_id_file=host_id_file)
     assert result.outcome == IdentityCheckOutcome.OK
 
 
@@ -113,18 +113,18 @@ def test_check_tag_only_edit_does_not_trigger_guard(tmp_path: Path) -> None:
 
 def test_check_refuses_on_hex_mismatch_by_default(tmp_path: Path) -> None:
     """Hex differs from baseline → REFUSED, no baseline modification."""
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"
-    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    write_baseline(_make_baseline(host_id_hex="24b2a0aa"))
     _write_host_id_file(host_id_file, "host_88ff77ee_anything")
 
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    result = check_host_identity(host_id_file=host_id_file)
     assert result.outcome == IdentityCheckOutcome.CHANGED_REFUSED
     assert result.current_hex == "88ff77ee"
     assert result.baseline_hex == "24b2a0aa"
     # Baseline unchanged on disk
-    assert read_baseline(target) is not None
-    assert read_baseline(target).host_id_hex == "24b2a0aa"  # type: ignore[union-attr]
+    assert read_baseline() is not None
+    assert read_baseline().host_id_hex == "24b2a0aa"  # type: ignore[union-attr]
 
 
 # ---- check_host_identity: acknowledged mismatch -------------------------
@@ -133,19 +133,18 @@ def test_check_refuses_on_hex_mismatch_by_default(tmp_path: Path) -> None:
 def test_check_acknowledged_rewrites_baseline(tmp_path: Path) -> None:
     """`--confirm-identity-change` path: caller passes allow_change=True,
     baseline gets rewritten with the new hex, outcome is ACKNOWLEDGED."""
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"
-    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    write_baseline(_make_baseline(host_id_hex="24b2a0aa"))
     _write_host_id_file(host_id_file, "host_88ff77ee_anything")
 
     result = check_host_identity(
-        target_dir=target,
         host_id_file=host_id_file,
         allow_change=True,
     )
     assert result.outcome == IdentityCheckOutcome.CHANGED_ACKNOWLEDGED
     # Baseline now reflects the new hex
-    new_baseline = read_baseline(target)
+    new_baseline = read_baseline()
     assert new_baseline is not None
     assert new_baseline.host_id_hex == "88ff77ee"
     # Original registered_at and mode info preserved (audit trail)
@@ -157,21 +156,21 @@ def test_check_acknowledged_rewrites_baseline(tmp_path: Path) -> None:
 
 
 def test_check_raises_when_host_id_file_missing(tmp_path: Path) -> None:
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"  # doesn't exist
     with pytest.raises(HostIdentityError, match="Run `maury init`"):
-        check_host_identity(target_dir=target, host_id_file=host_id_file)
+        check_host_identity(host_id_file=host_id_file)
 
 
 def test_check_raises_when_baseline_missing_but_host_id_present(tmp_path: Path) -> None:
     """Host-id file without a baseline is state corruption (init writes
     both atomically). The pre-release "auto-upgrade silently" path was
     retired 2026-05-19."""
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"
     _write_host_id_file(host_id_file, "host_24b2a0aa_laptop")
     with pytest.raises(HostIdentityError, match="baseline missing"):
-        check_host_identity(target_dir=target, host_id_file=host_id_file)
+        check_host_identity(host_id_file=host_id_file)
 
 
 # ---- format_identity_change_message ------------------------------------
@@ -180,14 +179,13 @@ def test_check_raises_when_baseline_missing_but_host_id_present(tmp_path: Path) 
 def test_format_change_message_includes_both_hex_values_and_full_id(tmp_path: Path) -> None:
     """The verbose message must show baseline hex, current hex, full
     current ID, mode info, and both remediation flags."""
-    target = tmp_path / "target"
+    tmp_path / "target"
     host_id_file = tmp_path / ".maury-host-id"
-    write_baseline(target, _make_baseline(host_id_hex="24b2a0aa"))
+    write_baseline(_make_baseline(host_id_hex="24b2a0aa"))
     _write_host_id_file(host_id_file, "host_88ff77ee_work-laptop")
 
-    result = check_host_identity(target_dir=target, host_id_file=host_id_file)
+    result = check_host_identity(host_id_file=host_id_file)
     msg = format_identity_change_message(
-        target_dir=target,
         host_id_file=host_id_file,
         result=result,
     )
@@ -218,8 +216,8 @@ class TestActiveFocusField:
             mode_name_at_bootstrap="personal",
             active_focus="personal:consulting:acme",
         )
-        write_baseline(tmp_path, b)
-        loaded = read_baseline(tmp_path)
+        write_baseline(b)
+        loaded = read_baseline()
         assert loaded is not None
         assert loaded.active_focus == "personal:consulting:acme"
         assert loaded == b
@@ -233,10 +231,10 @@ class TestActiveFocusField:
             '"registered_at": "2026-05-14T15:42:11Z", '
             '"mode_id": "mode_3f1a", "mode_name_at_bootstrap": "personal"}'
         )
-        bp = baseline_path(tmp_path)
+        bp = baseline_path()
         bp.parent.mkdir(parents=True, exist_ok=True)
         bp.write_text(legacy)
-        loaded = read_baseline(tmp_path)
+        loaded = read_baseline()
         assert loaded is not None
         assert loaded.active_focus is None
         assert loaded.host_id_hex == "24b2a0aa"
@@ -250,10 +248,10 @@ class TestActiveFocusField:
             '"registered_at": "x", "mode_id": "m", '
             '"mode_name_at_bootstrap": "personal", "active_focus": null}'
         )
-        bp = baseline_path(tmp_path)
+        bp = baseline_path()
         bp.parent.mkdir(parents=True, exist_ok=True)
         bp.write_text(with_null)
-        loaded = read_baseline(tmp_path)
+        loaded = read_baseline()
         assert loaded is not None
         assert loaded.active_focus is None
 

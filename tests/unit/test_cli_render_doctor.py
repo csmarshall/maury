@@ -336,9 +336,8 @@ def test_doctor_surfaces_system_health_findings(tmp_path: Path, monkeypatch: pyt
         write_watermark,
     )
 
-    target = tmp_path / ".claude"  # matches Path.home()/.claude under monkeypatched HOME
+    tmp_path / ".claude"  # matches Path.home()/.claude under monkeypatched HOME
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -355,7 +354,7 @@ def test_doctor_surfaces_system_health_findings(tmp_path: Path, monkeypatch: pyt
             last_jsonl_mtime="2026-01-01T00:00:00Z",
         ),
     )
-    write_watermark(target, stale)
+    write_watermark(stale)
 
     md = tmp_path / "CLAUDE.md"
     md.write_text("# header\n")
@@ -381,9 +380,8 @@ def test_doctor_fail_on_warn_trips_on_system_health(tmp_path: Path, monkeypatch:
         write_watermark,
     )
 
-    target = tmp_path / ".claude"
+    tmp_path / ".claude"
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -400,7 +398,7 @@ def test_doctor_fail_on_warn_trips_on_system_health(tmp_path: Path, monkeypatch:
             last_jsonl_mtime="2026-01-01T00:00:00Z",
         ),
     )
-    write_watermark(target, stale)
+    write_watermark(stale)
 
     md = tmp_path / "CLAUDE.md"
     md.write_text("# clean content\n\nSome reasonable instructions.\n")
@@ -422,7 +420,6 @@ def test_render_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch
     host_id_file = paths.host_id_file()
     host_id_file.write_text("host_88ff77ee_swapped\n")
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",  # different — guard trips
@@ -466,7 +463,6 @@ def test_doctor_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch
     # ".claude" rather than a flag, so we patch HOME too.
     monkeypatch.setenv("HOME", str(tmp_path))
     write_baseline(
-        tmp_path / ".claude",
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",

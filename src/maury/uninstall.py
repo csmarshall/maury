@@ -214,7 +214,6 @@ def run_uninstall(
     # an audit-log write failure.
     with contextlib.suppress(AuditLogError):
         log(
-            target_dir,
             "uninstall_completed",
             user_hooks_kept=kept_hooks,
             scripts_removed=len(removed_bins),

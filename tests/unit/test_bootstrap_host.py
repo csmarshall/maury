@@ -220,7 +220,7 @@ def test_bootstrap_host_emits_manifest_mutated_event(
     mpath = _make_manifest(tmp_path)
     bootstrap_host(manifest_path=mpath, name="newlaptop", profile="home")
 
-    events = list(read_events(tmp_path))
+    events = list(read_events())
     kinds = [e.event for e in events]
     assert "manifest_mutated" in kinds
     event = next(e for e in events if e.event == "manifest_mutated")
@@ -237,5 +237,5 @@ def test_bootstrap_host_dry_run_emits_no_audit_event(
     mpath = _make_manifest(tmp_path)
     bootstrap_host(manifest_path=mpath, name="newlaptop", profile="home", dry_run=True)
 
-    events = list(read_events(tmp_path))
+    events = list(read_events())
     assert events == []

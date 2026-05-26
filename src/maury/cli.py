@@ -699,7 +699,6 @@ def _enforce_identity_guard(*, target_dir: Path, allow_change: bool = False) -> 
 
     try:
         result = check_host_identity(
-            target_dir=target_dir,
             host_id_file=host_id_file,
             allow_change=allow_change,
         )
@@ -711,7 +710,6 @@ def _enforce_identity_guard(*, target_dir: Path, allow_change: bool = False) -> 
     if result.outcome == IdentityCheckOutcome.CHANGED_REFUSED:
         click.echo(
             format_identity_change_message(
-                target_dir=target_dir,
                 host_id_file=host_id_file,
                 result=result,
             ),
@@ -826,7 +824,7 @@ def init_cmd(
         if hid_file.exists():
             click.echo(f"  --reset: removing {hid_file}")
             hid_file.unlink()
-        bp = baseline_path(target_dir)
+        bp = baseline_path()
         if bp.exists():
             click.echo(f"  --reset: removing {bp}")
             bp.unlink()
@@ -1017,7 +1015,7 @@ def _section_identity_baseline(*, target_dir: Path) -> dict[str, object]:
     from maury.host_identity import baseline_path, read_baseline
     from maury.ids import host_id_hex_prefix
 
-    bp = baseline_path(target_dir)
+    bp = baseline_path()
     if not bp.is_file():
         return {
             "present": False,
@@ -1026,7 +1024,7 @@ def _section_identity_baseline(*, target_dir: Path) -> dict[str, object]:
         }
 
     try:
-        baseline = read_baseline(target_dir)
+        baseline = read_baseline()
     except Exception as e:
         return {"present": False, "note": f"baseline read error: {e}", "path": str(bp)}
     assert baseline is not None
@@ -1155,7 +1153,7 @@ def _git_status_snapshot(repo_path: Path) -> dict[str, object]:
 
 def _section_last_render(*, target_dir: Path) -> dict[str, object]:
     """Summarize last-render.json."""
-    last = read_last_render(target_dir)
+    last = read_last_render()
     if last is None:
         return {
             "present": False,
@@ -1172,7 +1170,7 @@ def _section_last_render(*, target_dir: Path) -> dict[str, object]:
 
 def _section_drift(*, target_dir: Path) -> dict[str, object]:
     """Walk the target dir against last-render and report drift counts."""
-    last = read_last_render(target_dir)
+    last = read_last_render()
     if last is None:
         return {"present": False, "note": "no baseline (run `maury sync` first)"}
     try:
@@ -1197,7 +1195,7 @@ def _section_mining_watermarks(*, target_dir: Path) -> dict[str, object]:
     """Per-project mining watermark summary."""
     from maury.mining_state import MINING_ALGORITHM_VERSION, read_watermark
 
-    wm = read_watermark(target_dir)
+    wm = read_watermark()
     if wm is None:
         return {
             "present": False,
@@ -1399,7 +1397,7 @@ def reconcile_cmd(
     _enforce_identity_guard(target_dir=target_dir)
 
     # Read baseline; refuse if absent (no baseline = no drift to reconcile).
-    last = read_last_render(target_dir)
+    last = read_last_render()
     if last is None:
         click.echo(
             f"no last-render.json found at {paths.state_dir() / 'last-render.json'}. "
@@ -1850,7 +1848,7 @@ def review_cmd(
     """
     import contextlib
 
-    from maury.audit_log import AuditLogError, default_target_dir
+    from maury.audit_log import AuditLogError
     from maury.audit_log import log as audit_log
     from maury.host_identity import read_baseline
     from maury.llm import BackendUnavailableError, get_backend
@@ -1868,8 +1866,7 @@ def review_cmd(
     if reason is not None and not reject_all:
         raise click.ClickException("--reason only applies with --reject-all.")
 
-    target_dir = default_target_dir()
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     curator_host = baseline.host_id_hex if baseline is not None else "(unknown)"
 
     # ADR-0053: load the classification ruleset + manifest from the repo,
@@ -1946,7 +1943,6 @@ def review_cmd(
     # reclassified findings count as accepted (they land on the branch).
     with contextlib.suppress(AuditLogError):
         audit_log(
-            target_dir,
             "review_completed",
             host_id=None,
             run_id=run_id,
@@ -2126,7 +2122,7 @@ def promote_cmd(
         raise click.ClickException(f"could not load manifest {manifest_path}: {e}") from e
 
     target_dir = default_target_dir()
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     curator_host = baseline.host_id_hex if baseline is not None else "(unknown)"
     promoted_id = generate_run_id(host_hex=baseline.host_id_hex if baseline is not None else "unknown")
 
@@ -2138,7 +2134,7 @@ def promote_cmd(
         return _interactive_promote_provider(cand, to_mode)
 
     with contextlib.suppress(AuditLogError):
-        audit_log(target_dir, "promotion_started", host_id=None, from_repo=str(source_repo), to_repo=str(dest_repo))
+        audit_log("promotion_started", host_id=None, from_repo=str(source_repo), to_repo=str(dest_repo))
 
     try:
         result = promote_run(
@@ -2183,7 +2179,6 @@ def promote_cmd(
 
     with contextlib.suppress(AuditLogError):
         audit_log(
-            target_dir,
             "promotion_completed",
             host_id=None,
             commits_promoted=promoted_count,
@@ -2275,7 +2270,7 @@ def _open_promotion_pr(
     url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
     click.echo(f"  --open-pr: opened {url}")
     with contextlib.suppress(AuditLogError):
-        audit_log(target_dir, "pr_opened", host_id=None, repo=str(dest_repo), pr_url=url, commit_count=commit_count)
+        audit_log("pr_opened", host_id=None, repo=str(dest_repo), pr_url=url, commit_count=commit_count)
     return url or None
 
 
@@ -2356,7 +2351,7 @@ def promote_review(
         raise click.ClickException(f"could not load manifest {manifest_path}: {e}") from e
 
     target_dir = default_target_dir()
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     curator_host = baseline.host_id_hex if baseline is not None else "(unknown)"
     promoted_id = generate_run_id(host_hex=baseline.host_id_hex if baseline is not None else "unknown")
 
@@ -2368,7 +2363,7 @@ def promote_review(
         return _interactive_proposal_provider(proposal)
 
     with contextlib.suppress(AuditLogError):
-        audit_log(target_dir, "promotion_started", host_id=None, from_repo=str(source_repo), to_repo=str(dest_repo))
+        audit_log("promotion_started", host_id=None, from_repo=str(source_repo), to_repo=str(dest_repo))
 
     try:
         result = promote_review_run(
@@ -2411,7 +2406,6 @@ def promote_review(
 
     with contextlib.suppress(AuditLogError):
         audit_log(
-            target_dir,
             "promotion_completed",
             host_id=None,
             commits_promoted=promoted_count,
@@ -2800,7 +2794,7 @@ def _emit_mining_run_branch(
             "--write-run-branch requires --repo <path-to-base-repo>; the branch is created in that repo."
         )
 
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     if baseline is None:
         raise click.ClickException(
             "no host-identity baseline; run `maury init` first so the "
@@ -2837,7 +2831,6 @@ def _emit_mining_run_branch(
     # pattern; an audit-write failure must not abort the mining run.
     with contextlib.suppress(AuditLogError):
         audit_log(
-            target_dir,
             "mining_run_created",
             host_id=None,
             run_id=run_result.run_id,
@@ -2994,7 +2987,7 @@ def _resolve_mining_cutoff(
             raise click.ClickException(f"--since: could not parse {since!r} as ISO-8601 date: {e}") from e
         return cutoff_dt.timestamp()
 
-    wm = load_or_init_watermark(target_dir)
+    wm = load_or_init_watermark()
     record = wm.record_for(project_dir_name)
     if record is None:
         return None
@@ -3049,7 +3042,7 @@ def _update_mining_watermark(
         write_watermark,
     )
 
-    wm = load_or_init_watermark(target_dir)
+    wm = load_or_init_watermark()
     now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     mtime_iso = datetime.fromtimestamp(highest_mtime, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     wm.update(
@@ -3061,7 +3054,7 @@ def _update_mining_watermark(
             findings_count=findings_count,
         ),
     )
-    write_watermark(target_dir, wm)
+    write_watermark(wm)
 
 
 def _pick_busiest_project(projects_dir: Path) -> Path:
@@ -4056,7 +4049,6 @@ def sessions_prune(target_dir: Path, max_age_hours: float, dry_run: bool) -> Non
 
         with contextlib.suppress(AuditLogError):
             audit_log(
-                target_dir,
                 "sessions_pruned",
                 pruned_count=len(result.pruned_session_ids),
                 threshold_age=f"{max_age_hours}h",
@@ -4535,7 +4527,6 @@ def focus_use(
         evaluate_focus_use,
     )
 
-    target = target_dir.expanduser()
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
     if not mpath.exists():
         raise click.ClickException(f"manifest file not found: {mpath}")
@@ -4545,8 +4536,8 @@ def focus_use(
         try:
             from maury.focus import active_focus_get
 
-            previous = active_focus_get(target)
-            active_focus_set(target, None)
+            previous = active_focus_get()
+            active_focus_set(None)
         except FocusError as e:
             raise click.ClickException(str(e)) from e
         if previous is None:
@@ -4554,7 +4545,6 @@ def focus_use(
         else:
             click.echo(f"focus: {previous} → (cleared; registered mode is active)")
             _emit_focus_event(
-                target,
                 "focus_switched",
                 from_focus=previous,
                 to_focus=None,
@@ -4568,7 +4558,6 @@ def focus_use(
         raise click.ClickException(f"manifest failed to load: {e}") from e
 
     result = evaluate_focus_use(
-        target_dir=target,
         target_focus=focus_path,
         manifest=manifest,
         force_active_session=force_active_session,
@@ -4576,13 +4565,12 @@ def focus_use(
 
     if result.outcome is FocusUseOutcome.OK:
         try:
-            active_focus_set(target, focus_path)
+            active_focus_set(focus_path)
         except FocusError as e:
             raise click.ClickException(str(e)) from e
         from_label = result.from_focus or "(registered mode)"
         click.echo(f"focus: {from_label} → {focus_path}")
         _emit_focus_event(
-            target,
             "focus_switched",
             from_focus=result.from_focus,
             to_focus=focus_path,
@@ -4592,7 +4580,6 @@ def focus_use(
 
     # Refused. Emit `focus_switch_refused` + print friendly detail + exit non-zero.
     _emit_focus_event(
-        target,
         "focus_switch_refused",
         reason=result.detail,
         precondition=result.outcome.value,
@@ -4601,7 +4588,7 @@ def focus_use(
     raise click.ClickException(result.detail)
 
 
-def _emit_focus_event(target_dir: Path, kind: str, **payload: Any) -> None:
+def _emit_focus_event(kind: str, **payload: Any) -> None:
     """Append a `focus_switched` / `focus_switch_refused` audit event.
 
     Best-effort per ADR-0035: wraps `log()` in `contextlib.suppress`
@@ -4616,7 +4603,7 @@ def _emit_focus_event(target_dir: Path, kind: str, **payload: Any) -> None:
 
     outcome = "failure" if kind == "focus_switch_refused" else "success"
     with contextlib.suppress(AuditLogError):
-        audit_log(target_dir, kind, result=outcome, **payload)
+        audit_log(kind, result=outcome, **payload)
 
 
 @focus.command("current")
@@ -4633,14 +4620,13 @@ def focus_current(target_dir: Path) -> None:
     from maury.focus import active_focus_get
     from maury.host_identity import read_baseline
 
-    target = target_dir.expanduser()
-    baseline = read_baseline(target)
+    baseline = read_baseline()
     if baseline is None:
         raise click.ClickException(
             f"no host-identity baseline at {paths.state_dir() / 'host-identity.json'}; run `maury init` first."
         )
 
-    active = active_focus_get(target)
+    active = active_focus_get()
     if active is None:
         click.echo(f"{baseline.mode_name_at_bootstrap} (no focus set; registered mode is active)")
     else:
@@ -4672,8 +4658,7 @@ def focus_list(manifest_file: Path | None, target_dir: Path) -> None:
     from maury.focus import active_focus_get, list_reachable_modes
     from maury.host_identity import read_baseline
 
-    target = target_dir.expanduser()
-    baseline = read_baseline(target)
+    baseline = read_baseline()
     if baseline is None:
         raise click.ClickException(
             f"no host-identity baseline at {paths.state_dir() / 'host-identity.json'}; run `maury init` first."
@@ -4687,7 +4672,7 @@ def focus_list(manifest_file: Path | None, target_dir: Path) -> None:
     except ManifestError as e:
         raise click.ClickException(f"manifest failed to load: {e}") from e
 
-    active = active_focus_get(target)
+    active = active_focus_get()
     reachable = list_reachable_modes(registered_mode_id=baseline.mode_id, manifest=manifest)
 
     for _mid, name in reachable:
@@ -4737,7 +4722,7 @@ def _statusline_text(target_dir: Path) -> str:
     the click handler catches and falls back to a fixed string."""
     from maury.host_identity import read_baseline
 
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     if baseline is None:
         return "(no maury identity)"
     mode = baseline.mode_name_at_bootstrap or "(no mode)"
@@ -4824,7 +4809,6 @@ def audit_show(
     target_dir = target_dir.expanduser()
     events = list(
         read_events(
-            target_dir,
             kinds=kinds or None,
             since=since,
             until=until,

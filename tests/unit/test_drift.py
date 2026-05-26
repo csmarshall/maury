@@ -140,12 +140,12 @@ class TestStatePersistence:
     def test_state_path_locates_under_state_dir(self, tmp_path: Path) -> None:
         # Per ADR-0029 last-render.json lives at paths.state_dir(), decoupled
         # from the render target (no longer <target>/maury-state/).
-        sp = state_path(tmp_path)
+        sp = state_path()
         assert sp == paths.state_dir() / LAST_RENDER_FILENAME
         assert not sp.is_relative_to(paths.render_target_dir())
 
     def test_read_last_render_returns_none_when_absent(self, tmp_path: Path) -> None:
-        assert read_last_render(tmp_path) is None
+        assert read_last_render() is None
 
     def test_write_then_read_roundtrip(self, tmp_path: Path) -> None:
         original = LastRender(
@@ -154,29 +154,29 @@ class TestStatePersistence:
             profile_id="profile_y",
             files=[FileFingerprint(path="a", sha256="abc", size=3)],
         )
-        path = write_last_render(tmp_path, original)
+        path = write_last_render(original)
         assert path.is_file()
-        restored = read_last_render(tmp_path)
+        restored = read_last_render()
         assert restored == original
 
     def test_write_creates_parent_dir(self, tmp_path: Path) -> None:
-        write_last_render(tmp_path, LastRender())
+        write_last_render(LastRender())
         assert state_path().parent.is_dir()
         assert state_path().is_file()
 
     def test_write_overwrites_existing(self, tmp_path: Path) -> None:
-        write_last_render(tmp_path, LastRender(host_id="first"))
-        write_last_render(tmp_path, LastRender(host_id="second"))
-        result = read_last_render(tmp_path)
+        write_last_render(LastRender(host_id="first"))
+        write_last_render(LastRender(host_id="second"))
+        result = read_last_render()
         assert result is not None
         assert result.host_id == "second"
 
     def test_read_raises_on_corrupted_schema_version(self, tmp_path: Path) -> None:
-        sp = state_path(tmp_path)
+        sp = state_path()
         sp.parent.mkdir(parents=True, exist_ok=True)
         sp.write_text(json.dumps({"schema_version": 42, "files": []}))
         with pytest.raises(DriftStateError):
-            read_last_render(tmp_path)
+            read_last_render()
 
 
 # ---- DriftReport --------------------------------------------------------

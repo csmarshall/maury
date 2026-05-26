@@ -91,24 +91,23 @@ class HostIdentityBaseline:
         )
 
 
-def baseline_path(target_dir: Path | None = None) -> Path:
+def baseline_path() -> Path:
     """Return the canonical baseline-file path.
 
-    `target_dir` is accepted for signature stability but ignored: per
-    ADR-0029 the baseline lives at `paths.state_dir()/host-identity.json`,
-    decoupled from the render target.
+    Per ADR-0029 the baseline lives at `paths.state_dir()/host-identity.json`
+    (`$XDG_STATE_HOME/maury/...`), decoupled from the render target.
     """
     return _state_dir() / HOST_IDENTITY_FILENAME
 
 
-def write_baseline(target_dir: Path, baseline: HostIdentityBaseline) -> Path:
+def write_baseline(baseline: HostIdentityBaseline) -> Path:
     """Persist the baseline atomically via tmp+rename.
 
-    Creates the maury-state subdirectory if missing. The temporary file
-    lives in the same directory as the final path so the rename is
-    atomic on POSIX filesystems (per ADR-0029 invariant #4).
+    Creates the state subdirectory if missing. The temporary file lives in
+    the same directory as the final path so the rename is atomic on POSIX
+    filesystems (per ADR-0029 invariant #4).
     """
-    bp = baseline_path(target_dir)
+    bp = baseline_path()
     bp.parent.mkdir(parents=True, exist_ok=True)
     tmp = bp.with_suffix(bp.suffix + ".tmp")
     tmp.write_text(baseline.to_json(), encoding="utf-8")
@@ -116,10 +115,10 @@ def write_baseline(target_dir: Path, baseline: HostIdentityBaseline) -> Path:
     return bp
 
 
-def read_baseline(target_dir: Path) -> HostIdentityBaseline | None:
+def read_baseline() -> HostIdentityBaseline | None:
     """Load the baseline if present; None if this host has never been
     anchored via `maury init` (or the file was deleted)."""
-    bp = baseline_path(target_dir)
+    bp = baseline_path()
     if not bp.is_file():
         return None
     return HostIdentityBaseline.from_json(bp.read_text(encoding="utf-8"))
@@ -152,16 +151,15 @@ class IdentityCheckResult:
 
 def check_host_identity(
     *,
-    target_dir: Path,
     host_id_file: Path,
     allow_change: bool = False,
 ) -> IdentityCheckResult:
     """Cross-check the current host id against the recorded baseline.
 
+    The baseline is read from `paths.state_dir()` (ADR-0029).
+
     Args:
-        target_dir: The target directory whose maury-state holds the
-            baseline (typically `~/.claude/`).
-        host_id_file: Path to `~/.maury-host-id`.
+        host_id_file: Path to the host-id file (`paths.host_id_file()`).
         allow_change: When True, a detected hex mismatch is treated as
             user-acknowledged (the caller is implementing
             `--confirm-identity-change`); the baseline gets rewritten
@@ -186,10 +184,10 @@ def check_host_identity(
     current_id = host_id_file.read_text(encoding="utf-8").strip()
     current_hex = host_id_hex_prefix(current_id)
 
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     if baseline is None:
         raise HostIdentityError(
-            f"host-identity baseline missing at {baseline_path(target_dir)} "
+            f"host-identity baseline missing at {baseline_path()} "
             f"but {host_id_file} exists. This is unexpected state corruption; "
             f"run `maury init --reset` to re-anchor."
         )
@@ -220,7 +218,7 @@ def check_host_identity(
         mode_id=baseline.mode_id,
         mode_name_at_bootstrap=baseline.mode_name_at_bootstrap,
     )
-    write_baseline(target_dir, new_baseline)
+    write_baseline(new_baseline)
     return IdentityCheckResult(
         outcome=IdentityCheckOutcome.CHANGED_ACKNOWLEDGED,
         current_hex=current_hex,
@@ -231,7 +229,6 @@ def check_host_identity(
 
 def format_identity_change_message(
     *,
-    target_dir: Path,
     host_id_file: Path,
     result: IdentityCheckResult,
 ) -> str:
@@ -247,7 +244,7 @@ def format_identity_change_message(
     return (
         "✗ host identity changed since last sync.\n"
         "\n"
-        f"  baseline (at {baseline_path(target_dir)}):\n"
+        f"  baseline (at {baseline_path()}):\n"
         f"    host_id_hex: {result.baseline.host_id_hex}\n"
         f"    mode: {result.baseline.mode_name_at_bootstrap} ({result.baseline.mode_id})\n"
         f"    registered: {result.baseline.registered_at}\n"

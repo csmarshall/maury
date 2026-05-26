@@ -183,11 +183,10 @@ def bootstrap_host(
         # any maury operation that writes a new manifest version.
         import contextlib
 
-        from maury.audit_log import AuditLogError, default_target_dir, log
+        from maury.audit_log import AuditLogError, log
 
         with contextlib.suppress(AuditLogError):
             log(
-                default_target_dir(),
                 "manifest_mutated",
                 changes=[f"added host {new_hid} ({name!r})"],
                 manifest_path=str(manifest_path),

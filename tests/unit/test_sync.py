@@ -641,7 +641,7 @@ def test_sync_emits_audit_events_on_happy_path(tmp_path: Path) -> None:
         host_id_file=host_id_file,
     )
 
-    events = list(read_events(target))
+    events = list(read_events())
     kinds = [e.event for e in events]
     # newest-first; reverse for chronological
     chronological = list(reversed(kinds))
@@ -672,7 +672,7 @@ def test_sync_dry_run_emits_no_audit_events(tmp_path: Path) -> None:
         dry_run=True,
     )
 
-    events = list(read_events(target))
+    events = list(read_events())
     assert events == []
 
 
@@ -709,7 +709,7 @@ def test_sync_emits_drift_detected_and_sync_aborted_on_default_refusal(tmp_path:
     )
     assert result.has_errors()
 
-    events = list(reversed(list(read_events(target))))
+    events = list(reversed(list(read_events())))
     kinds = [e.event for e in events]
     assert "sync_started" in kinds
     assert "drift_detected" in kinds

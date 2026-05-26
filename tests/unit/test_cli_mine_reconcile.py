@@ -542,7 +542,6 @@ def test_emit_mining_run_branch_writes_branch_and_audit_event(tmp_path: Path) ->
     # Set up the target dir with a baseline (provides host_hex).
     target = tmp_path / "target"
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=SCHEMA_VERSION,
             host_id_hex="aabbccdd",
@@ -590,7 +589,7 @@ def test_emit_mining_run_branch_writes_branch_and_audit_event(tmp_path: Path) ->
     assert "use Python 3.11+" in staging
 
     # Audit event landed.
-    events = list(read_events(target))
+    events = list(read_events())
     assert any(e.event == "mining_run_created" for e in events)
     mining_event = next(e for e in events if e.event == "mining_run_created")
     assert mining_event.details["commit_count"] == 2

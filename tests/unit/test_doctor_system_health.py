@@ -32,7 +32,6 @@ def test_host_id_present_baseline_present_no_finding(tmp_path: Path) -> None:
     host_id_file = tmp_path / ".maury-host-id"
     host_id_file.write_text("host_24b2a0aa_laptop\n")
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -85,7 +84,7 @@ def test_current_watermark_no_finding(tmp_path: Path) -> None:
             last_jsonl_mtime="2026-05-18T13:50:00Z",
         ),
     )
-    write_watermark(target, wm)
+    write_watermark(wm)
     findings = run_system_health_checks(target_dir=target, host_id_file=host_id_file)
     assert all(f.check_id != "watermark-stale" for f in findings)
 
@@ -102,7 +101,7 @@ def test_stale_watermark_warns(tmp_path: Path) -> None:
             last_jsonl_mtime="2026-01-01T00:00:00Z",
         ),
     )
-    write_watermark(target, stale)
+    write_watermark(stale)
 
     findings = run_system_health_checks(target_dir=target, host_id_file=host_id_file)
     stale_findings = [f for f in findings if f.check_id == "watermark-stale"]
@@ -128,7 +127,7 @@ def test_multiple_findings_aggregate(tmp_path: Path) -> None:
             last_jsonl_mtime="2026-01-01T00:00:00Z",
         ),
     )
-    write_watermark(target, stale)
+    write_watermark(stale)
 
     findings = run_system_health_checks(target_dir=target, host_id_file=host_id_file)
     check_ids = {f.check_id for f in findings}
@@ -200,7 +199,6 @@ def test_focus_unreachable_no_active_focus_no_finding(tmp_path: Path) -> None:
     host_id_file = tmp_path / ".maury-host-id"
     mpath, personal_pid, _work, _acme = _seed_focus_manifest(tmp_path)
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -224,7 +222,6 @@ def test_focus_unreachable_reachable_focus_no_finding(tmp_path: Path) -> None:
     host_id_file = tmp_path / ".maury-host-id"
     mpath, personal_pid, _work, _acme = _seed_focus_manifest(tmp_path)
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -249,7 +246,6 @@ def test_focus_unreachable_focus_crosses_trust_boundary_warns(tmp_path: Path) ->
     host_id_file = tmp_path / ".maury-host-id"
     mpath, personal_pid, _work, _acme = _seed_focus_manifest(tmp_path)
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -279,7 +275,6 @@ def test_focus_unreachable_focus_unknown_mode_warns(tmp_path: Path) -> None:
     host_id_file = tmp_path / ".maury-host-id"
     mpath, personal_pid, _work, _acme = _seed_focus_manifest(tmp_path)
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -307,7 +302,6 @@ def test_focus_unreachable_no_manifest_silently_skipped(tmp_path: Path) -> None:
     host_id_file = tmp_path / ".maury-host-id"
     _mpath, personal_pid, _work, _acme = _seed_focus_manifest(tmp_path)
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",

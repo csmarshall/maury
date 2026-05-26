@@ -13,8 +13,8 @@ This module is the pure-logic / state-management layer. The CLI verbs
 
 Engine surface:
   - `is_reachable(target, registered, manifest)` — trust-boundary check.
-  - `active_focus_get(target_dir)` — read the active-focus pointer.
-  - `active_focus_set(target_dir, focus)` — write/clear it (atomic).
+  - `active_focus_get()` — read the active-focus pointer.
+  - `active_focus_set(focus)` — write/clear it (atomic).
   - `evaluate_focus_use(...)` — run the full precondition cascade,
     returning a `FocusUseResult` the caller maps to CLI output + audit
     events.
@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 
 from maury.active_sessions import (
     active_sessions_path,
@@ -126,16 +125,16 @@ def is_reachable(
 # ---- active-focus pointer get / set --------------------------------------
 
 
-def active_focus_get(target_dir: Path) -> str | None:
+def active_focus_get() -> str | None:
     """Return the active focus dotted-path, or None when no focus has been
     set (the registered mode is implicitly the active mode)."""
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     if baseline is None:
         return None
     return baseline.active_focus
 
 
-def active_focus_set(target_dir: Path, focus: str | None) -> None:
+def active_focus_set(focus: str | None) -> None:
     """Update the `active_focus` field on the baseline atomically.
 
     Passing `None` clears the field (the registered mode resumes as the
@@ -144,7 +143,7 @@ def active_focus_set(target_dir: Path, focus: str | None) -> None:
     Raises FocusError if no baseline exists (caller should `maury init`
     first); raises whatever `write_baseline` raises on IO failure.
     """
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     if baseline is None:
         raise FocusError(f"no host-identity baseline at {baseline_path()}; run `maury init` first.")
     new = HostIdentityBaseline(
@@ -155,7 +154,7 @@ def active_focus_set(target_dir: Path, focus: str | None) -> None:
         mode_name_at_bootstrap=baseline.mode_name_at_bootstrap,
         active_focus=focus,
     )
-    write_baseline(target_dir, new)
+    write_baseline(new)
 
 
 # ---- precondition cascade for `maury focus use` --------------------------
@@ -163,7 +162,6 @@ def active_focus_set(target_dir: Path, focus: str | None) -> None:
 
 def evaluate_focus_use(
     *,
-    target_dir: Path,
     target_focus: str,
     manifest: Manifest,
     force_active_session: bool = False,
@@ -181,7 +179,7 @@ def evaluate_focus_use(
     On success, returns OK; the caller is responsible for calling
     `active_focus_set` to persist the change.
     """
-    baseline = read_baseline(target_dir)
+    baseline = read_baseline()
     if baseline is None:
         return FocusUseResult(
             outcome=FocusUseOutcome.NOT_REGISTERED,
@@ -218,7 +216,7 @@ def evaluate_focus_use(
         )
 
     if not force_active_session:
-        active_ids = _live_session_ids(target_dir)
+        active_ids = _live_session_ids()
         if active_ids:
             return FocusUseResult(
                 outcome=FocusUseOutcome.ACTIVE_SESSIONS,
@@ -274,7 +272,7 @@ def list_reachable_modes(
 # ---- internals -----------------------------------------------------------
 
 
-def _live_session_ids(target_dir: Path) -> list[str]:
+def _live_session_ids() -> list[str]:
     """Read active-sessions.jsonl and return IDs of sessions still running.
 
     Returns an empty list if the log doesn't exist (no sessions ever, or

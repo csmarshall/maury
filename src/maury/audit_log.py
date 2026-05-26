@@ -140,14 +140,14 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def append_event(target_dir: Path, event: AuditEvent) -> None:
+def append_event(event: AuditEvent) -> None:
     """Append `event` to the audit log (`audit_log_path()`) atomically.
 
-    `target_dir` is accepted for signature stability but no longer
-    determines the location (ADR-0029; see `audit_log_path()`).
-    Uses POSIX O_APPEND so concurrent writers from different processes
-    interleave at line boundaries (per cc-contract:concurrent-sessions).
-    Refuses to write lines longer than MAX_LINE_BYTES.
+    Per ADR-0029 the location is `paths.state_dir()/audit.jsonl` (see
+    `audit_log_path()`). Uses POSIX O_APPEND so concurrent writers from
+    different processes interleave at line boundaries (per
+    cc-contract:concurrent-sessions). Refuses to write lines longer than
+    MAX_LINE_BYTES.
     """
     if event.actor not in VALID_ACTORS:
         raise AuditLogError(f"invalid actor {event.actor!r}; expected one of {sorted(VALID_ACTORS)}")
@@ -171,7 +171,6 @@ def append_event(target_dir: Path, event: AuditEvent) -> None:
 
 
 def log(
-    target_dir: Path,
     event_kind: str,
     *,
     host_id: str | None = None,
@@ -185,7 +184,7 @@ def log(
 
     Usage from a command site:
         from maury.audit_log import log
-        log(target_dir, "sync_started", host_id=hid, repos=[...])
+        log("sync_started", host_id=hid, repos=[...])
 
     Excess kwargs land in the event's `details` payload. The caller
     is responsible for keeping the resulting line ≤4 KB; oversize
@@ -201,11 +200,10 @@ def log(
         details=dict(details),
         result=result,
     )
-    append_event(target_dir, event)
+    append_event(event)
 
 
 def read_events(
-    target_dir: Path,
     *,
     kinds: Iterable[str] | None = None,
     since: str | None = None,
@@ -213,10 +211,9 @@ def read_events(
     actor: str | None = None,
     limit: int | None = None,
 ) -> Iterator[AuditEvent]:
-    """Read the audit log, yielding `AuditEvent`s newest-first.
+    """Read the audit log (`audit_log_path()`), yielding `AuditEvent`s newest-first.
 
     Args:
-        target_dir: typically `~/.claude`.
         kinds: include only these event kinds (None = all).
         since: ISO-8601 UTC timestamp; exclude events with `ts < since`.
         until: ISO-8601 UTC timestamp; exclude events with `ts >= until`.

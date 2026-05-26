@@ -41,7 +41,7 @@ def _make_event(**overrides: object) -> AuditEvent:
 
 
 def test_append_event_writes_jsonl_line(tmp_path: Path) -> None:
-    append_event(tmp_path, _make_event())
+    append_event(_make_event())
     log_path = audit_log_path()
     body = log_path.read_text()
     lines = [ln for ln in body.splitlines() if ln.strip()]
@@ -53,34 +53,34 @@ def test_append_event_writes_jsonl_line(tmp_path: Path) -> None:
 
 
 def test_append_event_appends_to_existing(tmp_path: Path) -> None:
-    append_event(tmp_path, _make_event(event="sync_started"))
-    append_event(tmp_path, _make_event(event="sync_completed"))
+    append_event(_make_event(event="sync_started"))
+    append_event(_make_event(event="sync_completed"))
     body = (audit_log_path()).read_text()
     events = [json.loads(ln) for ln in body.splitlines() if ln.strip()]
     assert [e["event"] for e in events] == ["sync_started", "sync_completed"]
 
 
 def test_append_event_creates_parent_directory(tmp_path: Path) -> None:
-    target = tmp_path / "deeply" / "nested"
-    append_event(target, _make_event())
+    tmp_path / "deeply" / "nested"
+    append_event(_make_event())
     assert (audit_log_path()).is_file()
 
 
 def test_append_event_rejects_invalid_actor(tmp_path: Path) -> None:
     with pytest.raises(AuditLogError, match="invalid actor"):
-        append_event(tmp_path, _make_event(actor="bogus"))
+        append_event(_make_event(actor="bogus"))
 
 
 def test_append_event_rejects_invalid_result(tmp_path: Path) -> None:
     with pytest.raises(AuditLogError, match="invalid result"):
-        append_event(tmp_path, _make_event(result="unknown"))
+        append_event(_make_event(result="unknown"))
 
 
 def test_append_event_rejects_oversize_line(tmp_path: Path) -> None:
     """Lines exceeding MAX_LINE_BYTES break POSIX O_APPEND atomicity."""
     bloat = "x" * (MAX_LINE_BYTES * 2)
     with pytest.raises(AuditLogError, match="exceeds"):
-        append_event(tmp_path, _make_event(details={"bloat": bloat}))
+        append_event(_make_event(details={"bloat": bloat}))
 
 
 def test_audit_event_to_json_is_single_line(tmp_path: Path) -> None:
@@ -97,7 +97,7 @@ def test_audit_event_to_json_is_single_line(tmp_path: Path) -> None:
 
 
 def test_log_writes_event(tmp_path: Path) -> None:
-    log(tmp_path, "render_applied", host_id="host_abc", files_written=["a", "b"])
+    log("render_applied", host_id="host_abc", files_written=["a", "b"])
     events = [json.loads(ln) for ln in (audit_log_path()).read_text().splitlines() if ln.strip()]
     assert len(events) == 1
     assert events[0]["event"] == "render_applied"
@@ -105,13 +105,13 @@ def test_log_writes_event(tmp_path: Path) -> None:
 
 
 def test_log_default_actor_is_maury(tmp_path: Path) -> None:
-    log(tmp_path, "anything")
+    log("anything")
     event = next(iter(json.loads(ln) for ln in (audit_log_path()).read_text().splitlines() if ln.strip()))
     assert event["actor"] == "maury"
 
 
 def test_log_with_hook_actor(tmp_path: Path) -> None:
-    log(tmp_path, "tool_use_logged", actor=ACTOR_HOOK, tool="Edit")
+    log("tool_use_logged", actor=ACTOR_HOOK, tool="Edit")
     event = json.loads((audit_log_path()).read_text().splitlines()[0])
     assert event["actor"] == "hook"
     assert event["event"] == "tool_use_logged"
@@ -119,7 +119,7 @@ def test_log_with_hook_actor(tmp_path: Path) -> None:
 
 def test_log_ts_is_iso_utc(tmp_path: Path) -> None:
     """Timestamps round-trip through datetime.fromisoformat after stripping Z."""
-    log(tmp_path, "sync_started")
+    log("sync_started")
     event = json.loads((audit_log_path()).read_text().splitlines()[0])
     parsed = datetime.fromisoformat(event["ts"].replace("Z", "+00:00"))
     assert parsed.tzinfo == UTC
@@ -131,58 +131,55 @@ def test_log_ts_is_iso_utc(tmp_path: Path) -> None:
 def _seed_log(tmp_path: Path) -> None:
     """Three events spanning two kinds + two actors."""
     append_event(
-        tmp_path,
         _make_event(ts="2026-05-19T10:00:00Z", event="sync_started", actor=ACTOR_MAURY),
     )
     append_event(
-        tmp_path,
         _make_event(ts="2026-05-19T10:05:00Z", event="tool_use_logged", actor=ACTOR_HOOK),
     )
     append_event(
-        tmp_path,
         _make_event(ts="2026-05-19T10:10:00Z", event="sync_completed", actor=ACTOR_MAURY),
     )
 
 
 def test_read_events_yields_newest_first(tmp_path: Path) -> None:
     _seed_log(tmp_path)
-    events = list(read_events(tmp_path))
+    events = list(read_events())
     assert [e.event for e in events] == ["sync_completed", "tool_use_logged", "sync_started"]
 
 
 def test_read_events_kind_filter(tmp_path: Path) -> None:
     _seed_log(tmp_path)
-    events = list(read_events(tmp_path, kinds=["sync_started", "sync_completed"]))
+    events = list(read_events(kinds=["sync_started", "sync_completed"]))
     assert {e.event for e in events} == {"sync_started", "sync_completed"}
     assert "tool_use_logged" not in {e.event for e in events}
 
 
 def test_read_events_since_filter(tmp_path: Path) -> None:
     _seed_log(tmp_path)
-    events = list(read_events(tmp_path, since="2026-05-19T10:07:00Z"))
+    events = list(read_events(since="2026-05-19T10:07:00Z"))
     assert [e.event for e in events] == ["sync_completed"]
 
 
 def test_read_events_until_filter(tmp_path: Path) -> None:
     _seed_log(tmp_path)
-    events = list(read_events(tmp_path, until="2026-05-19T10:07:00Z"))
+    events = list(read_events(until="2026-05-19T10:07:00Z"))
     assert {e.event for e in events} == {"sync_started", "tool_use_logged"}
 
 
 def test_read_events_actor_filter(tmp_path: Path) -> None:
     _seed_log(tmp_path)
-    events = list(read_events(tmp_path, actor=ACTOR_HOOK))
+    events = list(read_events(actor=ACTOR_HOOK))
     assert [e.event for e in events] == ["tool_use_logged"]
 
 
 def test_read_events_limit(tmp_path: Path) -> None:
     _seed_log(tmp_path)
-    events = list(read_events(tmp_path, limit=2))
+    events = list(read_events(limit=2))
     assert len(events) == 2
 
 
 def test_read_events_missing_log_returns_empty(tmp_path: Path) -> None:
-    assert list(read_events(tmp_path)) == []
+    assert list(read_events()) == []
 
 
 def test_read_events_skips_malformed_lines(tmp_path: Path) -> None:
@@ -195,7 +192,7 @@ def test_read_events_skips_malformed_lines(tmp_path: Path) -> None:
         "\n"  # blank line
          + _make_event(event="sync_completed").to_json() + "\n"
     )
-    events = list(read_events(tmp_path))
+    events = list(read_events())
     assert {e.event for e in events} == {"sync_started", "sync_completed"}
 
 
@@ -210,8 +207,8 @@ def test_concurrent_appends_interleave_at_line_boundaries(tmp_path: Path) -> Non
     (a regression guard against accidentally truncating or overwriting
     on append).
     """
-    append_event(tmp_path, _make_event(event="sync_started", host_id="host_a"))
-    append_event(tmp_path, _make_event(event="sync_started", host_id="host_b"))
+    append_event(_make_event(event="sync_started", host_id="host_a"))
+    append_event(_make_event(event="sync_started", host_id="host_b"))
     body = (audit_log_path()).read_text()
     lines = [ln for ln in body.splitlines() if ln.strip()]
     assert len(lines) == 2

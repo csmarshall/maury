@@ -13,9 +13,9 @@ from maury.cli import main
 
 
 def _seed(target_dir: Path) -> None:
-    log(target_dir, "sync_started", host_id="host_a", repos=["base"])
-    log(target_dir, "render_applied", host_id="host_a", files_written=["CLAUDE.md"])
-    log(target_dir, "sync_completed", host_id="host_a")
+    log("sync_started", host_id="host_a", repos=["base"])
+    log("render_applied", host_id="host_a", files_written=["CLAUDE.md"])
+    log("sync_completed", host_id="host_a")
 
 
 def test_audit_show_text_format(tmp_path: Path) -> None:
@@ -76,8 +76,8 @@ def test_audit_show_no_matches_message(tmp_path: Path) -> None:
 
 
 def test_audit_show_actor_filter(tmp_path: Path) -> None:
-    log(tmp_path, "sync_started", actor="maury")
-    log(tmp_path, "tool_use_logged", actor="hook", tool="Edit")
+    log("sync_started", actor="maury")
+    log("tool_use_logged", actor="hook", tool="Edit")
     runner = CliRunner()
     result = runner.invoke(main, ["audit", "show", "--target", str(tmp_path), "--actor", "hook"])
     assert result.exit_code == 0, result.output
@@ -86,7 +86,7 @@ def test_audit_show_actor_filter(tmp_path: Path) -> None:
 
 
 def test_audit_show_surfaces_details(tmp_path: Path) -> None:
-    log(tmp_path, "render_applied", host_id="host_a", files_written=["CLAUDE.md", "settings.json"])
+    log("render_applied", host_id="host_a", files_written=["CLAUDE.md", "settings.json"])
     runner = CliRunner()
     result = runner.invoke(main, ["audit", "show", "--target", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -95,7 +95,7 @@ def test_audit_show_surfaces_details(tmp_path: Path) -> None:
 
 def test_audit_show_actor_label_omitted_for_default(tmp_path: Path) -> None:
     """Default actor (maury) doesn't get a `[maury]` label since it's the assumed case."""
-    log(tmp_path, "sync_started")
+    log("sync_started")
     runner = CliRunner()
     result = runner.invoke(main, ["audit", "show", "--target", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -103,7 +103,7 @@ def test_audit_show_actor_label_omitted_for_default(tmp_path: Path) -> None:
 
 
 def test_audit_show_actor_label_shown_for_non_default(tmp_path: Path) -> None:
-    log(tmp_path, "tool_use_logged", actor="hook")
+    log("tool_use_logged", actor="hook")
     runner = CliRunner()
     result = runner.invoke(main, ["audit", "show", "--target", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -113,7 +113,7 @@ def test_audit_show_actor_label_shown_for_non_default(tmp_path: Path) -> None:
 def test_audit_log_directory_layout_per_adr_0029(tmp_path: Path) -> None:
     """ADR-0029: the audit log lives at `paths.state_dir()/audit.jsonl`,
     under maury's XDG state root — NOT under the render target ~/.claude/."""
-    log(tmp_path, "sync_started")
+    log("sync_started")
     alog = audit_log_path()
     assert alog.is_file()
     assert alog == paths.state_dir() / "audit.jsonl"

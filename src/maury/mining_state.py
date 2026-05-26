@@ -119,18 +119,17 @@ class MiningWatermark:
         self.projects[project_dir_name] = record
 
 
-def watermark_path(target_dir: Path | None = None) -> Path:
+def watermark_path() -> Path:
     """Return the canonical watermark-file path.
 
-    `target_dir` is accepted for signature stability but ignored: per
-    ADR-0029 the watermark lives at `paths.state_dir()/last-mine.json`.
+    Per ADR-0029 the watermark lives at `paths.state_dir()/last-mine.json`.
     """
     return _state_dir() / LAST_MINE_FILENAME
 
 
-def write_watermark(target_dir: Path, watermark: MiningWatermark) -> Path:
+def write_watermark(watermark: MiningWatermark) -> Path:
     """Persist the watermark atomically via tmp+rename (ADR-0029 #4)."""
-    wp = watermark_path(target_dir)
+    wp = watermark_path()
     wp.parent.mkdir(parents=True, exist_ok=True)
     tmp = wp.with_suffix(wp.suffix + ".tmp")
     tmp.write_text(watermark.to_json(), encoding="utf-8")
@@ -138,15 +137,15 @@ def write_watermark(target_dir: Path, watermark: MiningWatermark) -> Path:
     return wp
 
 
-def read_watermark(target_dir: Path) -> MiningWatermark | None:
+def read_watermark() -> MiningWatermark | None:
     """Load the watermark if present; None if maury has never mined."""
-    wp = watermark_path(target_dir)
+    wp = watermark_path()
     if not wp.is_file():
         return None
     return MiningWatermark.from_json(wp.read_text(encoding="utf-8"))
 
 
-def load_or_init_watermark(target_dir: Path) -> MiningWatermark:
+def load_or_init_watermark() -> MiningWatermark:
     """Return the current watermark or a fresh empty one if absent.
 
     Caller mutates the returned object and writes back via
@@ -154,7 +153,7 @@ def load_or_init_watermark(target_dir: Path) -> MiningWatermark:
     if the loaded watermark is stale, returns a fresh one so the
     caller's subsequent comparisons fall through to "no record."
     """
-    wm = read_watermark(target_dir)
+    wm = read_watermark()
     if wm is None or wm.is_stale():
         return MiningWatermark()
     return wm

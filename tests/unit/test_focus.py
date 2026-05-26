@@ -95,7 +95,7 @@ def _write_baseline_for(target_dir: Path, *, mode_id: str, mode_name: str, activ
         mode_name_at_bootstrap=mode_name,
         active_focus=active_focus,
     )
-    write_baseline(target_dir, baseline)
+    write_baseline(baseline)
 
 
 # ---- is_reachable --------------------------------------------------------
@@ -157,20 +157,20 @@ def test_is_reachable_unknown_target_mode_id() -> None:
 
 
 def test_active_focus_get_returns_none_when_no_baseline(tmp_path: Path) -> None:
-    assert active_focus_get(tmp_path) is None
+    assert active_focus_get() is None
 
 
 def test_active_focus_get_returns_none_when_field_unset(tmp_path: Path) -> None:
     _, ids, _ = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
-    assert active_focus_get(tmp_path) is None
+    assert active_focus_get() is None
 
 
 def test_active_focus_set_persists_value(tmp_path: Path) -> None:
     _, ids, _ = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
-    active_focus_set(tmp_path, "personal:consulting:acme")
-    assert active_focus_get(tmp_path) == "personal:consulting:acme"
+    active_focus_set("personal:consulting:acme")
+    assert active_focus_get() == "personal:consulting:acme"
 
 
 def test_active_focus_set_to_none_clears_field(tmp_path: Path) -> None:
@@ -178,13 +178,13 @@ def test_active_focus_set_to_none_clears_field(tmp_path: Path) -> None:
     _write_baseline_for(
         tmp_path, mode_id=ids["personal"], mode_name="personal", active_focus="personal:consulting:acme"
     )
-    active_focus_set(tmp_path, None)
-    assert active_focus_get(tmp_path) is None
+    active_focus_set(None)
+    assert active_focus_get() is None
 
 
 def test_active_focus_set_raises_when_no_baseline(tmp_path: Path) -> None:
     with pytest.raises(FocusError, match="no host-identity baseline"):
-        active_focus_set(tmp_path, "personal:consulting:acme")
+        active_focus_set("personal:consulting:acme")
 
 
 def test_active_focus_set_preserves_other_baseline_fields(tmp_path: Path) -> None:
@@ -193,11 +193,11 @@ def test_active_focus_set_preserves_other_baseline_fields(tmp_path: Path) -> Non
 
     _, ids, _ = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
-    before = read_baseline(tmp_path)
+    before = read_baseline()
     assert before is not None
 
-    active_focus_set(tmp_path, "personal:consulting:acme")
-    after = read_baseline(tmp_path)
+    active_focus_set("personal:consulting:acme")
+    after = read_baseline()
     assert after is not None
     assert after.host_id_hex == before.host_id_hex
     assert after.registered_at == before.registered_at
@@ -212,7 +212,6 @@ def test_active_focus_set_preserves_other_baseline_fields(tmp_path: Path) -> Non
 def test_evaluate_returns_not_registered_when_baseline_missing(tmp_path: Path) -> None:
     _, _, manifest = _make_tree_manifest()
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:consulting:acme",
         manifest=manifest,
     )
@@ -225,7 +224,6 @@ def test_evaluate_returns_unknown_focus_when_target_not_in_manifest(tmp_path: Pa
     _, ids, manifest = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:does-not-exist",
         manifest=manifest,
     )
@@ -238,7 +236,6 @@ def test_evaluate_returns_not_reachable_when_target_crosses_trust_boundary(tmp_p
     _, ids, manifest = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="work",
         manifest=manifest,
     )
@@ -253,7 +250,6 @@ def test_evaluate_returns_ok_when_target_is_reachable_descendant(tmp_path: Path)
     _, ids, manifest = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:consulting:acme",
         manifest=manifest,
     )
@@ -273,7 +269,6 @@ def test_evaluate_captures_from_focus_when_replacing_existing_focus(tmp_path: Pa
         active_focus="personal:consulting:acme",
     )
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:consulting:exampleco",
         manifest=manifest,
     )
@@ -293,7 +288,6 @@ def test_evaluate_returns_active_sessions_when_sessions_running(tmp_path: Path) 
     log.write_text('{"event": "session_start", "session_id": "sess-running", "ts": "2026-05-20T10:00:00Z"}\n')
 
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:consulting:acme",
         manifest=manifest,
     )
@@ -310,7 +304,6 @@ def test_evaluate_force_active_session_overrides_refusal(tmp_path: Path) -> None
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text('{"event": "session_start", "session_id": "sess-running", "ts": "2026-05-20T10:00:00Z"}\n')
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:consulting:acme",
         manifest=manifest,
         force_active_session=True,
@@ -329,7 +322,6 @@ def test_evaluate_active_sessions_ignores_ended_sessions(tmp_path: Path) -> None
         '{"event": "session_end", "session_id": "sess-old", "ts": "2026-05-20T09:30:00Z"}\n'
     )
     result = evaluate_focus_use(
-        target_dir=tmp_path,
         target_focus="personal:consulting:acme",
         manifest=manifest,
     )

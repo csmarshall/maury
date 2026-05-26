@@ -350,7 +350,6 @@ def test_sync_identity_guard_refuses_on_hex_change(tmp_path: Path, monkeypatch: 
 
     target = tmp_path / "out"
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",  # different hex → REFUSED
@@ -398,7 +397,6 @@ def test_sync_confirm_identity_change_acks_and_rewrites_baseline(
 
     target = tmp_path / "out"
     write_baseline(
-        target,
         HostIdentityBaseline(
             schema_version=1,
             host_id_hex="24b2a0aa",
@@ -438,7 +436,7 @@ def test_sync_confirm_identity_change_acks_and_rewrites_baseline(
     # SyncError stub fails the operation.
     assert "--confirm-identity-change accepted" in result.output
     # Baseline got rewritten with the new hex.
-    new_baseline = read_baseline(target)
+    new_baseline = read_baseline()
     assert new_baseline is not None
     assert new_baseline.host_id_hex == "88ff77ee"
 
@@ -454,7 +452,7 @@ def test_sync_baseline_missing_raises_state_corruption(tmp_path: Path, monkeypat
     host_id_file.write_text("host_24b2a0aa_laptop\n")
 
     target = tmp_path / "out"
-    assert not baseline_path(target).exists()
+    assert not baseline_path().exists()
 
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath)

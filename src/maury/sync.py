@@ -241,7 +241,7 @@ def sync(
 
     # Drift detection per ADR-0017. Run BEFORE apply so we can refuse
     # before clobbering hand-edits.
-    last = read_last_render(target_dir)
+    last = read_last_render()
     if last is None:
         # First-time render on this target. No baseline to compare
         # against — bootstrap case. Skip drift detection; proceed to
@@ -340,7 +340,7 @@ def sync(
                 for f in rendered.files
             ],
         )
-        write_last_render(target_dir, new_baseline)
+        write_last_render(new_baseline)
 
         # Audit-log: render_applied + sync_completed.
         # apply_actions is a list of human-readable status strings:
@@ -385,7 +385,7 @@ def _audit(
     from maury.audit_log import AuditLogError, log
 
     with contextlib.suppress(AuditLogError):
-        log(target_dir, event_kind, host_id=host_id, result=result, **details)
+        log(event_kind, host_id=host_id, result=result, **details)
 
 
 def _now_iso() -> str:

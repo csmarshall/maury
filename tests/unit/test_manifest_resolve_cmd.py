@@ -868,7 +868,7 @@ def test_resolve_manifest_emits_manifest_merge_resolved_event(
 
     resolve_manifest(manifest, prompter=lambda _c: "a")
 
-    events = list(read_events(tmp_path))
+    events = list(read_events())
     kinds = [e.event for e in events]
     assert "manifest_merge_resolved" in kinds
     event = next(e for e in events if e.event == "manifest_merge_resolved")
