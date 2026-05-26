@@ -180,7 +180,7 @@ class TestRevert:
     def test_revert_removes_untracked_file(self, tmp_path: Path) -> None:
         # User added a file maury doesn't render. Revert = remove it.
         target = tmp_path / "skills" / "user-added.md"
-        target.parent.mkdir(parents=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("user added this\n")
         report = DriftReport(
             entries=[_drift_entry("skills/user-added.md", kind=DriftKind.UNTRACKED, expected_sha=None)],
@@ -260,7 +260,7 @@ class TestMarkManaged:
         base_repo = tmp_path / "base-repo"
         # Pre-existing hand-managed.json with one entry
         hm = base_repo / "profiles" / "personal" / "hosts" / "ws1" / "hand-managed.json"
-        hm.parent.mkdir(parents=True)
+        hm.parent.mkdir(parents=True, exist_ok=True)
         hm.write_text(json.dumps({"schema_version": 1, "paths": ["existing.md"]}))
 
         report = DriftReport(entries=[_drift_entry("new.md")], has_last_render=True)
@@ -310,7 +310,7 @@ class TestMarkManaged:
     def test_mark_managed_refuses_unknown_schema_version(self, tmp_path: Path) -> None:
         base_repo = tmp_path / "base-repo"
         hm = base_repo / "profiles" / "p" / "hosts" / "h" / "hand-managed.json"
-        hm.parent.mkdir(parents=True)
+        hm.parent.mkdir(parents=True, exist_ok=True)
         hm.write_text(json.dumps({"schema_version": 99, "paths": []}))
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)
         summary = reconcile(
@@ -365,7 +365,7 @@ class TestAdopt:
 
     def test_adopt_appends_to_existing_captures_file(self, tmp_path: Path) -> None:
         cp = captures_path(tmp_path)
-        cp.parent.mkdir(parents=True)
+        cp.parent.mkdir(parents=True, exist_ok=True)
         cp.write_text(json.dumps({"existing": "record"}) + "\n")
         (tmp_path / "CLAUDE.md").write_text("new\n")
         report = DriftReport(entries=[_drift_entry("CLAUDE.md")], has_last_render=True)

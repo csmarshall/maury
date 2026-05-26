@@ -11,7 +11,7 @@ identity-change` as the explicit acknowledgement gate). Bound to
 ADR-0041's three-piece work/home trust contract as the fourth
 physical checkpoint.
 
-Schema: `~/.claude/maury-state/host-identity.json`
+Schema (at `paths.state_dir()/host-identity.json`, per ADR-0029):
   {
     "schema_version": 1,
     "host_id_hex": "<8 hex>",
@@ -33,7 +33,12 @@ from enum import StrEnum
 from pathlib import Path
 
 from maury.ids import host_id_hex_prefix
+from maury.paths import state_dir as _state_dir
 
+# Retained for back-compat + drift's skip logic. State no longer lives
+# under the render target's maury-state/; per ADR-0029 it's at
+# `paths.state_dir()` (`$XDG_STATE_HOME/maury`, default
+# `~/.local/state/maury/`), decoupled from `~/.claude/`.
 STATE_SUBDIR = "maury-state"
 HOST_IDENTITY_FILENAME = "host-identity.json"
 SCHEMA_VERSION = 1
@@ -86,9 +91,14 @@ class HostIdentityBaseline:
         )
 
 
-def baseline_path(target_dir: Path) -> Path:
-    """Return the canonical baseline-file path for a target dir."""
-    return target_dir / STATE_SUBDIR / HOST_IDENTITY_FILENAME
+def baseline_path(target_dir: Path | None = None) -> Path:
+    """Return the canonical baseline-file path.
+
+    `target_dir` is accepted for signature stability but ignored: per
+    ADR-0029 the baseline lives at `paths.state_dir()/host-identity.json`,
+    decoupled from the render target.
+    """
+    return _state_dir() / HOST_IDENTITY_FILENAME
 
 
 def write_baseline(target_dir: Path, baseline: HostIdentityBaseline) -> Path:

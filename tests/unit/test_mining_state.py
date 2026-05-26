@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.mining_state import (
     MINING_ALGORITHM_VERSION,
     SCHEMA_VERSION,
@@ -46,7 +47,7 @@ def test_watermark_round_trip(tmp_path: Path) -> None:
 
 
 def test_watermark_path_under_maury_state(tmp_path: Path) -> None:
-    assert watermark_path(tmp_path) == tmp_path / "maury-state" / "last-mine.json"
+    assert watermark_path(tmp_path) == paths.state_dir() / "last-mine.json"
 
 
 def test_read_absent_returns_none(tmp_path: Path) -> None:
@@ -55,7 +56,7 @@ def test_read_absent_returns_none(tmp_path: Path) -> None:
 
 def test_unsupported_schema_version_raises(tmp_path: Path) -> None:
     wp = watermark_path(tmp_path)
-    wp.parent.mkdir(parents=True)
+    wp.parent.mkdir(parents=True, exist_ok=True)
     wp.write_text('{"schema_version": 99, "projects": {}}')
     with pytest.raises(MiningStateError, match="schema_version"):
         read_watermark(tmp_path)
@@ -66,7 +67,7 @@ def test_write_atomic_no_stale_tmp_file(tmp_path: Path) -> None:
     wm = MiningWatermark()
     wm.update("-Users-jdoe-project", _make_record())
     write_watermark(tmp_path, wm)
-    state_dir = tmp_path / "maury-state"
+    state_dir = paths.state_dir()
     files = sorted(p.name for p in state_dir.iterdir())
     assert files == ["last-mine.json"]
 

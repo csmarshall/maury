@@ -113,7 +113,6 @@ def test_deregister_actions_record_intent(tmp_path: Path) -> None:
 
 def test_deregister_host_emits_manifest_mutated_event(
     tmp_path: Path,
-    _isolate_audit_target_dir: Path,
 ) -> None:
     """Successful deregister_host fires a `manifest_mutated` event."""
     from maury.audit_log import read_events
@@ -122,7 +121,7 @@ def test_deregister_host_emits_manifest_mutated_event(
     _write_manifest(mpath)
     deregister_host(manifest_path=mpath, host="workstation")
 
-    events = list(read_events(_isolate_audit_target_dir))
+    events = list(read_events(tmp_path))
     kinds = [e.event for e in events]
     assert "manifest_mutated" in kinds
     event = next(e for e in events if e.event == "manifest_mutated")
@@ -132,11 +131,10 @@ def test_deregister_host_emits_manifest_mutated_event(
 
 def test_deregister_dry_run_emits_no_audit_event(
     tmp_path: Path,
-    _isolate_audit_target_dir: Path,
 ) -> None:
     from maury.audit_log import read_events
 
     mpath = tmp_path / "manifest.json"
     _write_manifest(mpath)
     deregister_host(manifest_path=mpath, host="workstation", dry_run=True)
-    assert list(read_events(_isolate_audit_target_dir)) == []
+    assert list(read_events(tmp_path)) == []

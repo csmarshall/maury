@@ -152,6 +152,6 @@ def test_read_empty_when_no_queue(tmp_path: Path) -> None:
 
 def test_read_skips_malformed_files(tmp_path: Path) -> None:
     bad = tmp_path / "proposals" / "promote-to-base" / "junk.md"
-    bad.parent.mkdir(parents=True)
+    bad.parent.mkdir(parents=True, exist_ok=True)
     bad.write_text("not a real proposal\n")
     assert read_proposals(tmp_path) == []

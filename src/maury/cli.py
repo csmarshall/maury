@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
 from maury import __version__
 from maury.active_sessions import (
-    ACTIVE_SESSIONS_REL_PATH,
     DEFAULT_MAX_AGE,
+    active_sessions_path,
 )
 from maury.active_sessions import prune as prune_active_sessions
 from maury.agency import AgencyInitError, init_agency
@@ -4025,7 +4025,7 @@ def sessions_prune(target_dir: Path, max_age_hours: float, dry_run: bool) -> Non
     from datetime import timedelta
 
     target_dir = target_dir.expanduser()
-    log_path = target_dir / ACTIVE_SESSIONS_REL_PATH
+    log_path = active_sessions_path()
     max_age = timedelta(hours=max_age_hours)
 
     if not log_path.is_file():
@@ -4075,27 +4075,19 @@ def sessions_prune(target_dir: Path, max_age_hours: float, dry_run: bool) -> Non
     help="Target directory (typically ~/.claude).",
 )
 @click.option(
-    "--home",
-    "home_dir",
-    type=click.Path(file_okay=False, path_type=Path),
-    default="~",
-    show_default=True,
-    help="Home directory containing ~/.maury-host-id (override for tests).",
-)
-@click.option(
     "--yes",
     "skip_confirm",
     is_flag=True,
     help="Skip the confirmation prompt (for scripting).",
 )
-def uninstall(target_dir: Path, home_dir: Path, skip_confirm: bool) -> None:
+def uninstall(target_dir: Path, skip_confirm: bool) -> None:
     """Strip maury's footprint from this host (per ADR-0023 §8).
 
     Removes:
       1. maury-managed entries from ~/.claude/settings.json (hooks block).
       2. ~/.claude/bin/maury-* scripts.
-      3. ~/.claude/maury-state/ (last-render.json, watermarks, etc).
-      4. ~/.maury-host-id.
+      3. maury's state dir (paths.state_dir(), preserving audit.jsonl).
+      4. the host-id file (paths.host_id_file()).
 
     Leaves alone:
       - User-authored hooks in settings.json (anything without `# maury-managed`).
@@ -4103,17 +4095,20 @@ def uninstall(target_dir: Path, home_dir: Path, skip_confirm: bool) -> None:
       - Repo clones at the configured repos_root (delete manually if desired).
       - The pip/uv-installed `maury` CLI itself (use `pipx uninstall maury`).
     """
+    from maury import paths
+
     target_dir = target_dir.expanduser()
-    home_dir = home_dir.expanduser()
+    host_id_path = paths.host_id_file()
+    state_path = paths.state_dir()
 
     if not skip_confirm:
-        click.echo(f"This will strip maury's footprint from {target_dir} and remove {home_dir}/.maury-host-id.")
+        click.echo(f"This will strip maury's footprint from {target_dir} and remove {host_id_path} + {state_path}/.")
         click.echo("User content (CLAUDE.md, hand-authored hooks, repo clones) will be left intact.")
         if not click.confirm("Proceed?", default=False):
             click.echo("cancelled.")
             sys.exit(0)
 
-    summary = run_uninstall(target_dir=target_dir, home_dir=home_dir)
+    summary = run_uninstall(target_dir=target_dir)
 
     click.echo(
         f"removed {summary.settings_hooks_removed} maury-managed hook(s); "
@@ -4124,9 +4119,9 @@ def uninstall(target_dir: Path, home_dir: Path, skip_confirm: bool) -> None:
     else:
         click.echo(f"no maury scripts to delete under {target_dir}/bin/")
     if summary.state_dir_removed:
-        click.echo(f"deleted {target_dir}/maury-state/")
+        click.echo(f"deleted {state_path}/ (audit.jsonl preserved)")
     if summary.host_id_removed:
-        click.echo(f"deleted {home_dir}/.maury-host-id")
+        click.echo(f"deleted {host_id_path}")
     click.echo("repo clones (if any) were not touched; delete them manually if desired.")
 
 
@@ -4836,8 +4831,11 @@ def audit_show(
         )
     )
     if not events:
-        if not (target_dir / "maury-state" / "audit.jsonl").is_file():
-            click.echo(f"no audit log at {target_dir}/maury-state/audit.jsonl.")
+        from maury.audit_log import audit_log_path
+
+        alog = audit_log_path()
+        if not alog.is_file():
+            click.echo(f"no audit log at {alog}.")
         else:
             click.echo("no events match the given filters.")
         return

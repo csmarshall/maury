@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
+from maury.audit_log import audit_log_path
 from maury.ids import new_host_id, new_profile_id
 from maury.sync import RepoSyncResult, SyncError, sync
 
@@ -303,7 +305,7 @@ def test_sync_writes_last_render_after_first_apply(tmp_path: Path) -> None:
         host_id_file=tmp_path / ".maury-host-id",
     )
     # last-render.json is now present and lists the rendered files
-    last_render_path = target / "maury-state" / "last-render.json"
+    last_render_path = paths.state_dir() / "last-render.json"
     assert last_render_path.is_file()
     content = json.loads(last_render_path.read_text())
     assert content["schema_version"] == 1
@@ -443,7 +445,7 @@ def test_sync_dry_run_does_not_write_last_render(tmp_path: Path) -> None:
         dry_run=True,
     )
     # Dry-run shouldn't have created the maury-state dir at all
-    assert not (target / "maury-state").exists()
+    assert not (paths.state_dir() / "last-render.json").exists()
 
 
 def test_sync_force_after_drift_writes_new_baseline(tmp_path: Path) -> None:
@@ -456,7 +458,7 @@ def test_sync_force_after_drift_writes_new_baseline(tmp_path: Path) -> None:
         repos_root=tmp_path / "repos",
         host_id_file=tmp_path / ".maury-host-id",
     )
-    last_render_path = target / "maury-state" / "last-render.json"
+    last_render_path = paths.state_dir() / "last-render.json"
     assert last_render_path.is_file()
     # Drift then force
     (target / "CLAUDE.md").write_text("drift\n")
@@ -697,7 +699,7 @@ def test_sync_emits_drift_detected_and_sync_aborted_on_default_refusal(tmp_path:
     rendered_path.write_text("hand-edited drift content\n")
 
     # Wipe the audit log so we can assert just the second sync's events.
-    (target / "maury-state" / "audit.jsonl").unlink()
+    audit_log_path().unlink()
 
     result = sync(
         manifest_path=seed / ".meta" / "manifest.json",

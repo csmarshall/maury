@@ -31,7 +31,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from maury.active_sessions import (
-    ACTIVE_SESSIONS_REL_PATH,
+    active_sessions_path,
     build_state_map,
     is_active,
     read_events,
@@ -284,7 +284,7 @@ def _live_session_ids(target_dir: Path) -> list[str]:
     counts as "live" if it has a session_start event but no matching
     session_end.
     """
-    log_path = target_dir / ACTIVE_SESSIONS_REL_PATH
+    log_path = active_sessions_path()
     if not log_path.is_file():
         return []
     events, _skipped = read_events(log_path)

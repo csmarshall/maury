@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from maury import paths
 from maury.uninstall import (
     MARKER,
     _is_maury_managed,
@@ -132,8 +133,8 @@ def test_strip_marker_hooks_preserves_top_level_keys() -> None:
 # ---- run_uninstall (integration) -----------------------------------------
 
 
-def _seed_full_install(target_dir: Path, home_dir: Path) -> None:
-    """Create a representative ~/.claude/ + ~/.maury-host-id."""
+def _seed_full_install(target_dir: Path) -> None:
+    """Create a representative ~/.claude/ + maury state + host-id (XDG)."""
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "settings.json").write_text(
         json.dumps(
@@ -159,24 +160,22 @@ def _seed_full_install(target_dir: Path, home_dir: Path) -> None:
     (bin_dir / "maury-stage").write_text("#!/bin/sh\n")
     (bin_dir / "maury-tools.sh").write_text("# tools\n")
     (bin_dir / "user-script").write_text("# user's own script\n")
-    state = target_dir / "maury-state"
-    state.mkdir()
+    state = paths.state_dir()
+    state.mkdir(parents=True, exist_ok=True)
     (state / "last-render.json").write_text("{}")
     (state / "claude-writes.jsonl").write_text("")
     # User content that must NOT be touched
     (target_dir / "CLAUDE.md").write_text("# user CLAUDE.md")
     (target_dir / "rules").mkdir()
     (target_dir / "rules" / "personal.md").write_text("# personal rule")
-    # Host ID file
-    home_dir.mkdir(parents=True, exist_ok=True)
-    (home_dir / ".maury-host-id").write_text("host_abc12345_workstation\n")
+    # Host-id file (paths.host_id_file(); parent pre-created by the XDG fixture)
+    paths.host_id_file().write_text("host_abc12345_workstation\n")
 
 
 def test_run_uninstall_strips_settings_hooks(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed_full_install(target, home)
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    _seed_full_install(target)
+    summary = run_uninstall(target_dir=target)
     assert summary.settings_hooks_removed == 2
     assert summary.settings_hooks_kept == 1
     loaded = json.loads((target / "settings.json").read_text())
@@ -186,9 +185,8 @@ def test_run_uninstall_strips_settings_hooks(tmp_path: Path) -> None:
 
 def test_run_uninstall_deletes_maury_bin_files_only(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed_full_install(target, home)
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    _seed_full_install(target)
+    summary = run_uninstall(target_dir=target)
     removed_names = {p.name for p in summary.bin_files_removed}
     assert removed_names == {"maury-log", "maury-stage", "maury-tools.sh"}
     # User script preserved
@@ -202,35 +200,32 @@ def test_run_uninstall_removes_state_dir_but_preserves_audit_log(tmp_path: Path)
     user (or a successor admin) can see when maury was removed.
     """
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed_full_install(target, home)
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    _seed_full_install(target)
+    summary = run_uninstall(target_dir=target)
     assert summary.state_dir_removed
     # The dir survives because audit.jsonl was preserved.
-    assert (target / "maury-state").exists()
-    assert (target / "maury-state" / "audit.jsonl").is_file()
+    assert (paths.state_dir()).exists()
+    assert (paths.state_dir() / "audit.jsonl").is_file()
     # last-render.json and claude-writes.jsonl were wiped.
-    assert not (target / "maury-state" / "last-render.json").exists()
-    assert not (target / "maury-state" / "claude-writes.jsonl").exists()
+    assert not (paths.state_dir() / "last-render.json").exists()
+    assert not (paths.state_dir() / "claude-writes.jsonl").exists()
     # The preserved audit log contains the uninstall_completed event.
-    body = (target / "maury-state" / "audit.jsonl").read_text()
+    body = (paths.state_dir() / "audit.jsonl").read_text()
     assert "uninstall_completed" in body
 
 
 def test_run_uninstall_removes_host_id(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed_full_install(target, home)
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    _seed_full_install(target)
+    summary = run_uninstall(target_dir=target)
     assert summary.host_id_removed
-    assert not (home / ".maury-host-id").exists()
+    assert not paths.host_id_file().exists()
 
 
 def test_run_uninstall_leaves_user_content_untouched(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed_full_install(target, home)
-    run_uninstall(target_dir=target, home_dir=home)
+    _seed_full_install(target)
+    run_uninstall(target_dir=target)
     # User content survives
     assert (target / "CLAUDE.md").read_text() == "# user CLAUDE.md"
     assert (target / "rules" / "personal.md").read_text() == "# personal rule"
@@ -245,10 +240,9 @@ def test_run_uninstall_idempotent_when_already_clean(tmp_path: Path) -> None:
     installation, not about silencing audit-log writes).
     """
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed_full_install(target, home)
-    run_uninstall(target_dir=target, home_dir=home)
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    _seed_full_install(target)
+    run_uninstall(target_dir=target)
+    summary = run_uninstall(target_dir=target)
     assert summary.settings_hooks_removed == 0
     assert summary.bin_files_removed == ()
     # state_dir_removed is True because the dir still exists (audit.jsonl
@@ -257,7 +251,7 @@ def test_run_uninstall_idempotent_when_already_clean(tmp_path: Path) -> None:
     assert summary.state_dir_removed
     assert not summary.host_id_removed
     # Second uninstall_completed event was appended.
-    body = (target / "maury-state" / "audit.jsonl").read_text()
+    body = (paths.state_dir() / "audit.jsonl").read_text()
     assert body.count("uninstall_completed") == 2
 
 
@@ -268,10 +262,8 @@ def test_run_uninstall_handles_completely_clean_host(tmp_path: Path) -> None:
     (the log dir + file are created on demand).
     """
     target = tmp_path / "claude"
-    home = tmp_path / "home"
     target.mkdir()
-    home.mkdir()
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    summary = run_uninstall(target_dir=target)
     assert summary.settings_hooks_removed == 0
     assert summary.bin_files_removed == ()
     assert not summary.host_id_removed
@@ -280,17 +272,15 @@ def test_run_uninstall_handles_completely_clean_host(tmp_path: Path) -> None:
     # (created by the audit-log write) was entered for the "delete
     # except preserved" pass. The audit log survives.
     assert summary.state_dir_removed
-    assert (target / "maury-state" / "audit.jsonl").is_file()
+    assert (paths.state_dir() / "audit.jsonl").is_file()
 
 
 def test_run_uninstall_skips_malformed_settings_json(tmp_path: Path) -> None:
     """Don't compound the user's problem if settings.json is broken."""
     target = tmp_path / "claude"
-    home = tmp_path / "home"
     target.mkdir()
-    home.mkdir()
     (target / "settings.json").write_text("{ this is not: valid json")
-    summary = run_uninstall(target_dir=target, home_dir=home)
+    summary = run_uninstall(target_dir=target)
     assert summary.settings_file_existed
     assert summary.settings_hooks_removed == 0
     # File preserved verbatim

@@ -60,7 +60,7 @@ def test_missing_staging_file_is_silent(tmp_path: Path) -> None:
 def test_empty_staging_file_is_silent(tmp_path: Path) -> None:
     """Zero-byte staging file → exit 0, no output (the `[ -s ]` check)."""
     staging = tmp_path / ".claude" / "maury-staging"
-    staging.mkdir(parents=True)
+    staging.mkdir(parents=True, exist_ok=True)
     (staging / "captures.jsonl").write_text("")
     rc, out, err = _run_script(tmp_path)
     assert rc == 0
@@ -73,7 +73,7 @@ def test_non_empty_staging_prints_count(tmp_path: Path) -> None:
     to stderr; stdout stays clean so it doesn't interleave with
     assistant output."""
     staging = tmp_path / ".claude" / "maury-staging" / "captures.jsonl"
-    staging.parent.mkdir(parents=True)
+    staging.parent.mkdir(parents=True, exist_ok=True)
     staging.write_text('{"text":"hello"}\n')
     rc, out, err = _run_script(tmp_path)
     assert rc == 0
@@ -85,7 +85,7 @@ def test_non_empty_staging_prints_count(tmp_path: Path) -> None:
 def test_count_reflects_line_count(tmp_path: Path) -> None:
     """The count is the number of JSONL lines (each line = one capture)."""
     staging = tmp_path / ".claude" / "maury-staging" / "captures.jsonl"
-    staging.parent.mkdir(parents=True)
+    staging.parent.mkdir(parents=True, exist_ok=True)
     staging.write_text('{"t":"a"}\n{"t":"b"}\n{"t":"c"}\n{"t":"d"}\n{"t":"e"}\n')
     rc, _, err = _run_script(tmp_path)
     assert rc == 0
@@ -97,7 +97,7 @@ def test_corrupted_staging_does_not_explode(tmp_path: Path) -> None:
     still uses line-count and prints accordingly (or exits silent if
     the line count somehow comes out non-numeric). Mustn't crash."""
     staging = tmp_path / ".claude" / "maury-staging" / "captures.jsonl"
-    staging.parent.mkdir(parents=True)
+    staging.parent.mkdir(parents=True, exist_ok=True)
     staging.write_text("this is not jsonl\nbut wc -l still works\n")
     rc, _, _ = _run_script(tmp_path)
     assert rc == 0  # No crash; clean exit regardless of content shape

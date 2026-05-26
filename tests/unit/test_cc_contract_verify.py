@@ -222,8 +222,8 @@ def test_default_snapshot_dir_returns_most_recent(tmp_path: Path) -> None:
     snaps = repo / "docs" / "claude-code-snapshots"
     older = snaps / "2026-01-01"
     newer = snaps / "2026-05-07"
-    older.mkdir(parents=True)
-    newer.mkdir(parents=True)
+    older.mkdir(parents=True, exist_ok=True)
+    newer.mkdir(parents=True, exist_ok=True)
     (older / "MANIFEST.txt").write_text("")
     (newer / "MANIFEST.txt").write_text("")
     assert default_snapshot_dir(repo) == newer
@@ -237,7 +237,7 @@ def test_default_snapshot_dir_skips_dirs_without_manifest(tmp_path: Path) -> Non
     repo = tmp_path / "fake-repo"
     snaps = repo / "docs" / "claude-code-snapshots"
     incomplete = snaps / "2026-05-07"
-    incomplete.mkdir(parents=True)
+    incomplete.mkdir(parents=True, exist_ok=True)
     # No MANIFEST.txt — should be excluded.
     assert default_snapshot_dir(repo) is None
 

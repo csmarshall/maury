@@ -105,7 +105,7 @@ def test_init_repo_refuses_existing_marker(tmp_path: Path) -> None:
 
 def test_init_repo_refuses_existing_governance(tmp_path: Path) -> None:
     """Even if marker absent, an existing governance file triggers refusal."""
-    (tmp_path / GOVERNANCE_REL_PATH).parent.mkdir(parents=True)
+    (tmp_path / GOVERNANCE_REL_PATH).parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / GOVERNANCE_REL_PATH).write_text("{}")
     with pytest.raises(RepoInitError, match=r"maury-governance\.json already exists"):
         init_repo(tmp_path, agency_id=AGENCY_ID, owners=["a@b.c"], git_init=False)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.bootstrap import InitError, init
 from maury.ids import new_host_id, new_profile_id
 
@@ -262,7 +263,7 @@ def test_init_clean_target_writes_last_render(tmp_path: Path) -> None:
     result = init(source_dir=repo, target_dir=target, host_id_file=host_id_file)
     assert result.rendered is True
     assert result.drift_action == "none"
-    last_render_path = target / "maury-state" / "last-render.json"
+    last_render_path = paths.state_dir() / "last-render.json"
     assert last_render_path.is_file()
     content = json.loads(last_render_path.read_text())
     assert content["schema_version"] == 1
@@ -280,7 +281,7 @@ def test_init_dry_run_does_not_write_last_render(tmp_path: Path) -> None:
         host_id_file=host_id_file,
         dry_run=True,
     )
-    assert not (target / "maury-state").exists()
+    assert not (paths.state_dir() / "last-render.json").exists()
 
 
 def test_init_default_mode_refuses_pre_existing_collision(tmp_path: Path) -> None:
@@ -298,7 +299,7 @@ def test_init_default_mode_refuses_pre_existing_collision(tmp_path: Path) -> Non
     # Pre-existing content preserved
     assert (target / "CLAUDE.md").read_text() == "user's pre-existing notes\n"
     # No baseline written when we refused
-    assert not (target / "maury-state").exists()
+    assert not (paths.state_dir() / "last-render.json").exists()
 
 
 def test_init_force_mode_overwrites_pre_existing_collision(tmp_path: Path) -> None:
@@ -321,7 +322,7 @@ def test_init_force_mode_overwrites_pre_existing_collision(tmp_path: Path) -> No
     # Hand-edit gone; rendered content present
     assert "hand-edited" not in (target / "CLAUDE.md").read_text()
     # Baseline was written so next sync can detect future drift
-    assert (target / "maury-state" / "last-render.json").is_file()
+    assert (paths.state_dir() / "last-render.json").is_file()
 
 
 def test_init_non_interactive_mode_refuses_pre_existing_collision(tmp_path: Path) -> None:

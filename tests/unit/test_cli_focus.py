@@ -12,6 +12,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 from maury.host_identity import SCHEMA_VERSION, HostIdentityBaseline, write_baseline
 from maury.ids import new_host_id, new_profile_id
@@ -167,6 +168,11 @@ def test_focus_use_cross_trust_boundary_refused_with_pointer(tmp_path: Path) -> 
 
 def test_focus_use_no_baseline_yet_errors(tmp_path: Path) -> None:
     mpath, _target, _ = _seed_tree(tmp_path)
+    # Per ADR-0029 the baseline is global (paths.state_dir()), so remove the
+    # one _seed_tree wrote to exercise the "no baseline yet" path.
+    from maury.host_identity import baseline_path
+
+    baseline_path().unlink(missing_ok=True)
     runner = CliRunner()
     # Target dir without a baseline.
     bare_target = tmp_path / "bare"
@@ -182,7 +188,7 @@ def test_focus_use_no_baseline_yet_errors(tmp_path: Path) -> None:
 def test_focus_use_active_session_blocks_by_default(tmp_path: Path) -> None:
     mpath, target, _ = _seed_tree(tmp_path)
     # Inject a live session.
-    log = target / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text('{"event": "session_start", "session_id": "live", "ts": "2026-05-20T10:00:00Z"}\n')
 
@@ -199,7 +205,7 @@ def test_focus_use_active_session_blocks_by_default(tmp_path: Path) -> None:
 
 def test_focus_use_force_active_session_overrides(tmp_path: Path) -> None:
     mpath, target, _ = _seed_tree(tmp_path)
-    log = target / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text('{"event": "session_start", "session_id": "live", "ts": "2026-05-20T10:00:00Z"}\n')
 
@@ -325,7 +331,7 @@ def test_focus_use_clear_emits_focus_switched(tmp_path: Path) -> None:
         ["focus", "use", "--manifest-file", str(mpath), "--target", str(target), "personal:consulting:acme"],
     )
     # Wipe to isolate the second event.
-    (target / "maury-state" / "audit.jsonl").unlink()
+    (paths.state_dir() / "audit.jsonl").unlink()
 
     result = runner.invoke(
         main,
@@ -382,7 +388,7 @@ def test_focus_use_active_session_refusal_emits_event(tmp_path: Path) -> None:
     from maury.audit_log import read_events
 
     mpath, target, _ = _seed_tree(tmp_path)
-    log = target / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text('{"event": "session_start", "session_id": "live", "ts": "2026-05-20T10:00:00Z"}\n')
 

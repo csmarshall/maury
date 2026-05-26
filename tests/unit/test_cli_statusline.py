@@ -12,6 +12,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 from maury.host_identity import SCHEMA_VERSION, HostIdentityBaseline, write_baseline
 
@@ -83,8 +84,8 @@ def test_statusline_with_corrupted_baseline_does_not_crash(tmp_path: Path) -> No
     """Garbled host-identity.json must not break the user's prompt.
     Per ADR-0052 the command catches every exception and prints a
     fallback string."""
-    bp = tmp_path / "maury-state" / "host-identity.json"
-    bp.parent.mkdir(parents=True)
+    bp = paths.state_dir() / "host-identity.json"
+    bp.parent.mkdir(parents=True, exist_ok=True)
     bp.write_text("{ this is not valid json")
     runner = CliRunner()
     result = runner.invoke(main, ["statusline", "--target", str(tmp_path)])
@@ -98,8 +99,8 @@ def test_statusline_with_corrupted_baseline_does_not_crash(tmp_path: Path) -> No
 def test_statusline_with_unsupported_schema_version_does_not_crash(tmp_path: Path) -> None:
     """A future schema_version we can't read still must not break the
     user's prompt."""
-    bp = tmp_path / "maury-state" / "host-identity.json"
-    bp.parent.mkdir(parents=True)
+    bp = paths.state_dir() / "host-identity.json"
+    bp.parent.mkdir(parents=True, exist_ok=True)
     bp.write_text('{"schema_version": 99, "host_id_hex": "x", "mode_name_at_bootstrap": "personal"}')
     runner = CliRunner()
     result = runner.invoke(main, ["statusline", "--target", str(tmp_path)])

@@ -33,6 +33,10 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from maury.paths import state_dir as _state_dir
+
+# Per ADR-0029 the watermark lives at `paths.state_dir()` (`$XDG_STATE_HOME
+# /maury`, default `~/.local/state/maury/`), decoupled from `~/.claude/`.
 STATE_SUBDIR = "maury-state"
 LAST_MINE_FILENAME = "last-mine.json"
 SCHEMA_VERSION = 1
@@ -115,9 +119,13 @@ class MiningWatermark:
         self.projects[project_dir_name] = record
 
 
-def watermark_path(target_dir: Path) -> Path:
-    """Return the canonical watermark-file path for a target dir."""
-    return target_dir / STATE_SUBDIR / LAST_MINE_FILENAME
+def watermark_path(target_dir: Path | None = None) -> Path:
+    """Return the canonical watermark-file path.
+
+    `target_dir` is accepted for signature stability but ignored: per
+    ADR-0029 the watermark lives at `paths.state_dir()/last-mine.json`.
+    """
+    return _state_dir() / LAST_MINE_FILENAME
 
 
 def write_watermark(target_dir: Path, watermark: MiningWatermark) -> Path:

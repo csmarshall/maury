@@ -7,12 +7,12 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 
 
-def _seed(target_dir: Path, home_dir: Path) -> None:
+def _seed(target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
-    home_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "settings.json").write_text(
         json.dumps(
             {
@@ -28,71 +28,66 @@ def _seed(target_dir: Path, home_dir: Path) -> None:
     bin_dir = target_dir / "bin"
     bin_dir.mkdir()
     (bin_dir / "maury-log").write_text("#!/bin/sh\n")
-    state = target_dir / "maury-state"
-    state.mkdir()
+    state = paths.state_dir()
+    state.mkdir(parents=True, exist_ok=True)
     (state / "last-render.json").write_text("{}")
-    (home_dir / ".maury-host-id").write_text("host_abc\n")
+    paths.host_id_file().write_text("host_abc\n")
 
 
 def test_uninstall_with_yes_flag_skips_confirm(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed(target, home)
+    _seed(target)
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["uninstall", "--target", str(target), "--home", str(home), "--yes"],
+        ["uninstall", "--target", str(target), "--yes"],
     )
     assert result.exit_code == 0, result.output
     assert "removed 1 maury-managed hook(s)" in result.output
     assert "left 1 user hook(s) intact" in result.output
-    assert not (home / ".maury-host-id").exists()
+    assert not paths.host_id_file().exists()
     # Per ADR-0035, audit.jsonl is preserved as the forensic trail.
     # The state dir survives because of it; everything else inside it is gone.
-    assert (target / "maury-state" / "audit.jsonl").is_file()
-    assert not (target / "maury-state" / "last-render.json").exists()
+    assert (paths.state_dir() / "audit.jsonl").is_file()
+    assert not (paths.state_dir() / "last-render.json").exists()
 
 
 def test_uninstall_prompts_and_aborts_on_no(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed(target, home)
+    _seed(target)
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["uninstall", "--target", str(target), "--home", str(home)],
+        ["uninstall", "--target", str(target)],
         input="n\n",
     )
     assert result.exit_code == 0, result.output
     assert "cancelled" in result.output
     # Nothing should have been removed
-    assert (home / ".maury-host-id").exists()
-    assert (target / "maury-state").exists()
+    assert paths.host_id_file().exists()
+    assert (paths.state_dir()).exists()
 
 
 def test_uninstall_prompts_and_proceeds_on_yes(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
-    _seed(target, home)
+    _seed(target)
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["uninstall", "--target", str(target), "--home", str(home)],
+        ["uninstall", "--target", str(target)],
         input="y\n",
     )
     assert result.exit_code == 0, result.output
-    assert not (home / ".maury-host-id").exists()
+    assert not paths.host_id_file().exists()
 
 
 def test_uninstall_handles_clean_host(tmp_path: Path) -> None:
     target = tmp_path / "claude"
-    home = tmp_path / "home"
     target.mkdir()
-    home.mkdir()
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["uninstall", "--target", str(target), "--home", str(home), "--yes"],
+        ["uninstall", "--target", str(target), "--yes"],
     )
     assert result.exit_code == 0, result.output
     assert "removed 0 maury-managed hook(s)" in result.output

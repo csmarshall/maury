@@ -844,7 +844,6 @@ def test_try_auto_merge_surfaces_real_conflict_without_writing(tmp_path: Path) -
 @pytest.mark.skipif(not _git_available(), reason="git not on PATH")
 def test_resolve_manifest_emits_manifest_merge_resolved_event(
     tmp_path: Path,
-    _isolate_audit_target_dir: Path,
 ) -> None:
     """Successful resolve_manifest (additive auto-merge) emits a
     `manifest_merge_resolved` audit event."""
@@ -869,7 +868,7 @@ def test_resolve_manifest_emits_manifest_merge_resolved_event(
 
     resolve_manifest(manifest, prompter=lambda _c: "a")
 
-    events = list(read_events(_isolate_audit_target_dir))
+    events = list(read_events(tmp_path))
     kinds = [e.event for e in events]
     assert "manifest_merge_resolved" in kinds
     event = next(e for e in events if e.event == "manifest_merge_resolved")

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.host_identity import (
     SCHEMA_VERSION,
     HostIdentityBaseline,
@@ -51,7 +52,7 @@ def test_baseline_path_is_under_maury_state(tmp_path: Path) -> None:
     """Per ADR-0029 invariant: baseline lives at
     `<target>/maury-state/host-identity.json`."""
     bp = baseline_path(tmp_path)
-    assert bp == tmp_path / "maury-state" / "host-identity.json"
+    assert bp == paths.state_dir() / "host-identity.json"
 
 
 def test_read_baseline_absent_returns_none(tmp_path: Path) -> None:
@@ -61,7 +62,7 @@ def test_read_baseline_absent_returns_none(tmp_path: Path) -> None:
 
 def test_read_baseline_unsupported_schema_version_raises(tmp_path: Path) -> None:
     bp = baseline_path(tmp_path)
-    bp.parent.mkdir(parents=True)
+    bp.parent.mkdir(parents=True, exist_ok=True)
     bp.write_text('{"schema_version": 99, "host_id_hex": "x"}')
     with pytest.raises(HostIdentityError, match="schema_version"):
         read_baseline(tmp_path)
@@ -72,7 +73,7 @@ def test_write_baseline_uses_tmp_rename(tmp_path: Path) -> None:
     Per ADR-0029 invariant #4."""
     b = _make_baseline()
     write_baseline(tmp_path, b)
-    state_dir = tmp_path / "maury-state"
+    state_dir = paths.state_dir()
     files = list(state_dir.iterdir())
     assert files == [state_dir / "host-identity.json"]
 
@@ -232,7 +233,7 @@ class TestActiveFocusField:
             '"mode_id": "mode_3f1a", "mode_name_at_bootstrap": "personal"}'
         )
         bp = baseline_path(tmp_path)
-        bp.parent.mkdir(parents=True)
+        bp.parent.mkdir(parents=True, exist_ok=True)
         bp.write_text(legacy)
         loaded = read_baseline(tmp_path)
         assert loaded is not None
@@ -249,7 +250,7 @@ class TestActiveFocusField:
             '"mode_name_at_bootstrap": "personal", "active_focus": null}'
         )
         bp = baseline_path(tmp_path)
-        bp.parent.mkdir(parents=True)
+        bp.parent.mkdir(parents=True, exist_ok=True)
         bp.write_text(with_null)
         loaded = read_baseline(tmp_path)
         assert loaded is not None

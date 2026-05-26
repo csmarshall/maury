@@ -7,7 +7,8 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from maury.audit_log import AUDIT_REL_PATH, log
+from maury import paths
+from maury.audit_log import audit_log_path, log
 from maury.cli import main
 
 
@@ -110,8 +111,12 @@ def test_audit_show_actor_label_shown_for_non_default(tmp_path: Path) -> None:
 
 
 def test_audit_log_directory_layout_per_adr_0029(tmp_path: Path) -> None:
-    """ADR-0029 mandates ~/.claude/maury-state/audit.jsonl."""
+    """ADR-0029: the audit log lives at `paths.state_dir()/audit.jsonl`,
+    under maury's XDG state root — NOT under the render target ~/.claude/."""
     log(tmp_path, "sync_started")
-    assert (tmp_path / AUDIT_REL_PATH).is_file()
-    assert AUDIT_REL_PATH.parent.name == "maury-state"
-    assert AUDIT_REL_PATH.name == "audit.jsonl"
+    alog = audit_log_path()
+    assert alog.is_file()
+    assert alog == paths.state_dir() / "audit.jsonl"
+    assert alog.name == "audit.jsonl"
+    # Decoupled from the render target.
+    assert not alog.is_relative_to(paths.render_target_dir())

@@ -31,8 +31,12 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-# Where the last-render manifest lives, relative to the target dir.
-# Per ADR-0017: `~/.claude/maury-state/last-render.json`.
+from maury.paths import state_dir as _state_dir
+
+# Per ADR-0029 the last-render manifest lives at `paths.state_dir()`
+# (`$XDG_STATE_HOME/maury`, default `~/.local/state/maury/`), decoupled
+# from `~/.claude/`. STATE_SUBDIR is retained for the render-target scan's
+# skip logic below (defensive; nothing maury-owned lives there anymore).
 STATE_SUBDIR = "maury-state"
 LAST_RENDER_FILENAME = "last-render.json"
 
@@ -114,9 +118,13 @@ class LastRender:
         )
 
 
-def state_path(target_dir: Path) -> Path:
-    """Return the path to last-render.json given the target dir."""
-    return target_dir / STATE_SUBDIR / LAST_RENDER_FILENAME
+def state_path(target_dir: Path | None = None) -> Path:
+    """Return the path to last-render.json.
+
+    `target_dir` is accepted for signature stability but ignored: per
+    ADR-0029 last-render.json lives at `paths.state_dir()/last-render.json`.
+    """
+    return _state_dir() / LAST_RENDER_FILENAME
 
 
 def write_last_render(target_dir: Path, last: LastRender) -> Path:

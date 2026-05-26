@@ -27,6 +27,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Final
 
+from maury.paths import state_dir as _state_dir
+
 
 class EventKind(Enum):
     """Event types maury-installed hooks write to active-sessions.jsonl."""
@@ -81,8 +83,19 @@ class PruneResult:
     skipped_unparseable: int = 0
 
 
-# Default location of the active-sessions log relative to target dir.
+# Legacy relative location (target_dir/maury-state/active-sessions.jsonl).
+# Retained for back-compat references; the live path is `active_sessions_path()`.
 ACTIVE_SESSIONS_REL_PATH: Final[Path] = Path("maury-state") / "active-sessions.jsonl"
+
+
+def active_sessions_path() -> Path:
+    """Canonical active-sessions log path: `paths.state_dir()/active-sessions.jsonl`.
+
+    Per ADR-0029 this lives under maury's XDG state root, decoupled from
+    the render target `~/.claude/`. Tests isolate it via `$XDG_STATE_HOME`.
+    """
+    return _state_dir() / "active-sessions.jsonl"
+
 
 # Default prune cutoff: session_end older than this is considered dead.
 DEFAULT_MAX_AGE: Final[timedelta] = timedelta(hours=24)

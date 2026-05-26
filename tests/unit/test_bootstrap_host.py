@@ -213,7 +213,6 @@ def test_bootstrap_host_cli_smoke(tmp_path: Path) -> None:
 
 def test_bootstrap_host_emits_manifest_mutated_event(
     tmp_path: Path,
-    _isolate_audit_target_dir: Path,
 ) -> None:
     """Successful bootstrap_host fires a `manifest_mutated` event."""
     from maury.audit_log import read_events
@@ -221,7 +220,7 @@ def test_bootstrap_host_emits_manifest_mutated_event(
     mpath = _make_manifest(tmp_path)
     bootstrap_host(manifest_path=mpath, name="newlaptop", profile="home")
 
-    events = list(read_events(_isolate_audit_target_dir))
+    events = list(read_events(tmp_path))
     kinds = [e.event for e in events]
     assert "manifest_mutated" in kinds
     event = next(e for e in events if e.event == "manifest_mutated")
@@ -231,7 +230,6 @@ def test_bootstrap_host_emits_manifest_mutated_event(
 
 def test_bootstrap_host_dry_run_emits_no_audit_event(
     tmp_path: Path,
-    _isolate_audit_target_dir: Path,
 ) -> None:
     """--check (dry_run) must not pollute the audit log."""
     from maury.audit_log import read_events
@@ -239,5 +237,5 @@ def test_bootstrap_host_dry_run_emits_no_audit_event(
     mpath = _make_manifest(tmp_path)
     bootstrap_host(manifest_path=mpath, name="newlaptop", profile="home", dry_run=True)
 
-    events = list(read_events(_isolate_audit_target_dir))
+    events = list(read_events(tmp_path))
     assert events == []

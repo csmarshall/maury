@@ -342,7 +342,7 @@ def test_derive_collision_pair_produces_same_name(tmp_path: Path) -> None:
     hyphen_form = tmp_path / "a-b-c"
     slash_form = tmp_path / "a" / "b" / "c"
     hyphen_form.mkdir()
-    slash_form.mkdir(parents=True)
+    slash_form.mkdir(parents=True, exist_ok=True)
     assert derive_project_dir(hyphen_form) == derive_project_dir(slash_form)
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.drift import (
     LAST_RENDER_FILENAME,
     STATE_SUBDIR,
@@ -136,10 +137,12 @@ class TestLastRender:
 
 
 class TestStatePersistence:
-    def test_state_path_locates_under_maury_state(self, tmp_path: Path) -> None:
+    def test_state_path_locates_under_state_dir(self, tmp_path: Path) -> None:
+        # Per ADR-0029 last-render.json lives at paths.state_dir(), decoupled
+        # from the render target (no longer <target>/maury-state/).
         sp = state_path(tmp_path)
-        assert sp == tmp_path / STATE_SUBDIR / LAST_RENDER_FILENAME
-        assert sp.parent.name == STATE_SUBDIR
+        assert sp == paths.state_dir() / LAST_RENDER_FILENAME
+        assert not sp.is_relative_to(paths.render_target_dir())
 
     def test_read_last_render_returns_none_when_absent(self, tmp_path: Path) -> None:
         assert read_last_render(tmp_path) is None
@@ -157,11 +160,9 @@ class TestStatePersistence:
         assert restored == original
 
     def test_write_creates_parent_dir(self, tmp_path: Path) -> None:
-        # maury-state/ doesn't exist yet
-        assert not (tmp_path / STATE_SUBDIR).exists()
         write_last_render(tmp_path, LastRender())
-        assert (tmp_path / STATE_SUBDIR).is_dir()
-        assert (tmp_path / STATE_SUBDIR / LAST_RENDER_FILENAME).is_file()
+        assert state_path().parent.is_dir()
+        assert state_path().is_file()
 
     def test_write_overwrites_existing(self, tmp_path: Path) -> None:
         write_last_render(tmp_path, LastRender(host_id="first"))

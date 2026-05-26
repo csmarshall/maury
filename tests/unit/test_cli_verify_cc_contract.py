@@ -38,7 +38,7 @@ def test_verify_cc_contract_check_only_lists_entries(tmp_path: Path) -> None:
 
 def test_verify_cc_contract_check_only_errors_on_missing_manifest(tmp_path: Path) -> None:
     snap = tmp_path / "2026-05-07"
-    snap.mkdir(parents=True)
+    snap.mkdir(parents=True, exist_ok=True)
     runner = CliRunner()
     result = runner.invoke(
         main,

@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from maury import paths
 from maury.focus import (
     FocusError,
     FocusUseOutcome,
@@ -287,7 +288,7 @@ def test_evaluate_returns_active_sessions_when_sessions_running(tmp_path: Path) 
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
 
     # Write a fake active-sessions.jsonl with one live session.
-    log = tmp_path / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text('{"event": "session_start", "session_id": "sess-running", "ts": "2026-05-20T10:00:00Z"}\n')
 
@@ -305,7 +306,7 @@ def test_evaluate_force_active_session_overrides_refusal(tmp_path: Path) -> None
     """`force_active_session=True` bypasses precondition 4."""
     _, ids, manifest = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
-    log = tmp_path / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text('{"event": "session_start", "session_id": "sess-running", "ts": "2026-05-20T10:00:00Z"}\n')
     result = evaluate_focus_use(
@@ -321,7 +322,7 @@ def test_evaluate_active_sessions_ignores_ended_sessions(tmp_path: Path) -> None
     """A session with session_end logged isn't 'active' and doesn't block."""
     _, ids, manifest = _make_tree_manifest()
     _write_baseline_for(tmp_path, mode_id=ids["personal"], mode_name="personal")
-    log = tmp_path / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(
         '{"event": "session_start", "session_id": "sess-old", "ts": "2026-05-20T09:00:00Z"}\n'

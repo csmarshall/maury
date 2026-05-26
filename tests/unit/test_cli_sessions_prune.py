@@ -7,6 +7,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import main
 
 
@@ -16,7 +17,7 @@ def _line(**fields: object) -> str:
 
 def _seed(target_dir: Path, *, old_age_hours: float = 48.0) -> Path:
     """Create active-sessions.jsonl with one ended-old + one open session."""
-    log = target_dir / "maury-state" / "active-sessions.jsonl"
+    log = paths.state_dir() / "active-sessions.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     # Times relative to "now" — both clearly old enough to be prunable.
     log.write_text(

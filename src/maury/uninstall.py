@@ -5,8 +5,11 @@ Per ADR-0023 §8, uninstall must:
 1. Strip every `# maury-managed`-marked entry from `settings.json`'s
    `hooks` block; leave non-marked entries (user hooks) untouched.
 2. Delete `~/.claude/bin/maury-*` and `~/.claude/bin/maury-tools.sh`.
-3. Delete `~/.claude/maury-state/`.
-4. Delete `~/.maury-host-id`.
+3. Delete maury's state dir (`paths.state_dir()`, per ADR-0029 —
+   `$XDG_STATE_HOME/maury`, default `~/.local/state/maury/`), preserving
+   `audit.jsonl`.
+4. Delete the host-id file (`paths.host_id_file()`, per ADR-0029 —
+   `$XDG_CONFIG_HOME/maury/host-id`, default `~/.config/maury/host-id`).
 5. Leave repo clones alone (the user may still want their git history).
 
 This module owns the file-system mutations; the CLI subcommand in
@@ -20,6 +23,8 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
+
+from maury import paths
 
 MARKER: Final[str] = "# maury-managed"
 
@@ -179,13 +184,15 @@ def _delete_host_id(host_id_path: Path) -> bool:
 def run_uninstall(
     *,
     target_dir: Path,
-    home_dir: Path,
 ) -> UninstallSummary:
     """Execute the full uninstall sequence.
 
     `target_dir` is the maury-managed Claude Code directory (typically
-    `~/.claude`); `home_dir` is the user's home (`~`) so `~/.maury-host-id`
-    can be located. Splitting the two enables hermetic testing.
+    `~/.claude`), from which maury-managed hooks + bin scripts are
+    stripped. maury's own state (`paths.state_dir()`) and host-id
+    (`paths.host_id_file()`) live outside it per ADR-0029 and are removed
+    via the resolver; tests isolate both via `$XDG_STATE_HOME` /
+    `$XDG_CONFIG_HOME`.
 
     Per ADR-0035 §"`uninstall_completed`": writes the audit event
     BEFORE deleting state, and `audit.jsonl` is preserved alongside
@@ -213,11 +220,9 @@ def run_uninstall(
             scripts_removed=len(removed_bins),
         )
 
-    state_dir = target_dir / "maury-state"
-    state_removed = _delete_state_dir(state_dir, preserve=("audit.jsonl",))
+    state_removed = _delete_state_dir(paths.state_dir(), preserve=("audit.jsonl",))
 
-    host_id_path = home_dir / ".maury-host-id"
-    host_id_removed = _delete_host_id(host_id_path)
+    host_id_removed = _delete_host_id(paths.host_id_file())
 
     return UninstallSummary(
         settings_hooks_removed=removed_hooks,

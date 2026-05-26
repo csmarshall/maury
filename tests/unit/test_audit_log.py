@@ -11,12 +11,12 @@ import pytest
 from maury.audit_log import (
     ACTOR_HOOK,
     ACTOR_MAURY,
-    AUDIT_REL_PATH,
     MAX_LINE_BYTES,
     RESULT_SUCCESS,
     AuditEvent,
     AuditLogError,
     append_event,
+    audit_log_path,
     log,
     read_events,
 )
@@ -42,7 +42,7 @@ def _make_event(**overrides: object) -> AuditEvent:
 
 def test_append_event_writes_jsonl_line(tmp_path: Path) -> None:
     append_event(tmp_path, _make_event())
-    log_path = tmp_path / AUDIT_REL_PATH
+    log_path = audit_log_path()
     body = log_path.read_text()
     lines = [ln for ln in body.splitlines() if ln.strip()]
     assert len(lines) == 1
@@ -55,7 +55,7 @@ def test_append_event_writes_jsonl_line(tmp_path: Path) -> None:
 def test_append_event_appends_to_existing(tmp_path: Path) -> None:
     append_event(tmp_path, _make_event(event="sync_started"))
     append_event(tmp_path, _make_event(event="sync_completed"))
-    body = (tmp_path / AUDIT_REL_PATH).read_text()
+    body = (audit_log_path()).read_text()
     events = [json.loads(ln) for ln in body.splitlines() if ln.strip()]
     assert [e["event"] for e in events] == ["sync_started", "sync_completed"]
 
@@ -63,7 +63,7 @@ def test_append_event_appends_to_existing(tmp_path: Path) -> None:
 def test_append_event_creates_parent_directory(tmp_path: Path) -> None:
     target = tmp_path / "deeply" / "nested"
     append_event(target, _make_event())
-    assert (target / AUDIT_REL_PATH).is_file()
+    assert (audit_log_path()).is_file()
 
 
 def test_append_event_rejects_invalid_actor(tmp_path: Path) -> None:
@@ -98,7 +98,7 @@ def test_audit_event_to_json_is_single_line(tmp_path: Path) -> None:
 
 def test_log_writes_event(tmp_path: Path) -> None:
     log(tmp_path, "render_applied", host_id="host_abc", files_written=["a", "b"])
-    events = [json.loads(ln) for ln in (tmp_path / AUDIT_REL_PATH).read_text().splitlines() if ln.strip()]
+    events = [json.loads(ln) for ln in (audit_log_path()).read_text().splitlines() if ln.strip()]
     assert len(events) == 1
     assert events[0]["event"] == "render_applied"
     assert events[0]["details"] == {"files_written": ["a", "b"]}
@@ -106,13 +106,13 @@ def test_log_writes_event(tmp_path: Path) -> None:
 
 def test_log_default_actor_is_maury(tmp_path: Path) -> None:
     log(tmp_path, "anything")
-    event = next(iter(json.loads(ln) for ln in (tmp_path / AUDIT_REL_PATH).read_text().splitlines() if ln.strip()))
+    event = next(iter(json.loads(ln) for ln in (audit_log_path()).read_text().splitlines() if ln.strip()))
     assert event["actor"] == "maury"
 
 
 def test_log_with_hook_actor(tmp_path: Path) -> None:
     log(tmp_path, "tool_use_logged", actor=ACTOR_HOOK, tool="Edit")
-    event = json.loads((tmp_path / AUDIT_REL_PATH).read_text().splitlines()[0])
+    event = json.loads((audit_log_path()).read_text().splitlines()[0])
     assert event["actor"] == "hook"
     assert event["event"] == "tool_use_logged"
 
@@ -120,7 +120,7 @@ def test_log_with_hook_actor(tmp_path: Path) -> None:
 def test_log_ts_is_iso_utc(tmp_path: Path) -> None:
     """Timestamps round-trip through datetime.fromisoformat after stripping Z."""
     log(tmp_path, "sync_started")
-    event = json.loads((tmp_path / AUDIT_REL_PATH).read_text().splitlines()[0])
+    event = json.loads((audit_log_path()).read_text().splitlines()[0])
     parsed = datetime.fromisoformat(event["ts"].replace("Z", "+00:00"))
     assert parsed.tzinfo == UTC
 
@@ -187,8 +187,8 @@ def test_read_events_missing_log_returns_empty(tmp_path: Path) -> None:
 
 def test_read_events_skips_malformed_lines(tmp_path: Path) -> None:
     """Partial-write residue or future-schema lines are skipped, not raised."""
-    log_path = tmp_path / AUDIT_REL_PATH
-    log_path.parent.mkdir(parents=True)
+    log_path = audit_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(
         _make_event(event="sync_started").to_json() + "\n"
         "{ partial wri\n"
@@ -212,7 +212,7 @@ def test_concurrent_appends_interleave_at_line_boundaries(tmp_path: Path) -> Non
     """
     append_event(tmp_path, _make_event(event="sync_started", host_id="host_a"))
     append_event(tmp_path, _make_event(event="sync_started", host_id="host_b"))
-    body = (tmp_path / AUDIT_REL_PATH).read_text()
+    body = (audit_log_path()).read_text()
     lines = [ln for ln in body.splitlines() if ln.strip()]
     assert len(lines) == 2
     parsed = [json.loads(ln) for ln in lines]

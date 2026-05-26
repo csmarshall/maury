@@ -35,18 +35,30 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
+from maury.paths import state_dir as _state_dir
+
 AUDIT_REL_PATH: Final[Path] = Path("maury-state") / "audit.jsonl"
-"""Audit-log location relative to the target dir (typically `~/.claude`)."""
+"""Legacy relative location (target_dir/maury-state/audit.jsonl). Retained
+for back-compat references; the live path is `audit_log_path()`."""
+
+
+def audit_log_path() -> Path:
+    """Canonical audit-log path: `paths.state_dir()/audit.jsonl`.
+
+    Per ADR-0029 the audit log lives under maury's XDG state root
+    (`$XDG_STATE_HOME/maury`, default `~/.local/state/maury/`), decoupled
+    from the render target `~/.claude/`. Tests isolate it via
+    `$XDG_STATE_HOME`.
+    """
+    return _state_dir() / "audit.jsonl"
 
 
 def default_target_dir() -> Path:
-    """Return the canonical audit-log target dir (`~/.claude`).
+    """Return `~/.claude` (the render target).
 
-    Used by command sites that don't carry an explicit `target_dir`
-    parameter (curator-side manifest mutations, etc.) so they can still
-    emit audit events into the operator's `~/.claude/maury-state/`.
-    Factored out as a function so tests can monkey-patch it to a tmp
-    dir without touching every call site.
+    Retained for signature stability: curator-side command sites still
+    pass a `target_dir` into `log()`/`append_event()`, but that argument
+    no longer determines the audit-log location (see `audit_log_path()`).
     """
     return Path.home() / ".claude"
 
@@ -129,8 +141,10 @@ def _utc_now_iso() -> str:
 
 
 def append_event(target_dir: Path, event: AuditEvent) -> None:
-    """Append `event` to `<target_dir>/maury-state/audit.jsonl` atomically.
+    """Append `event` to the audit log (`audit_log_path()`) atomically.
 
+    `target_dir` is accepted for signature stability but no longer
+    determines the location (ADR-0029; see `audit_log_path()`).
     Uses POSIX O_APPEND so concurrent writers from different processes
     interleave at line boundaries (per cc-contract:concurrent-sessions).
     Refuses to write lines longer than MAX_LINE_BYTES.
@@ -147,7 +161,7 @@ def append_event(target_dir: Path, event: AuditEvent) -> None:
             f"O_APPEND atomicity ceiling. Trim the details payload."
         )
 
-    log_path = target_dir / AUDIT_REL_PATH
+    log_path = audit_log_path()
     log_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     try:
@@ -212,7 +226,7 @@ def read_events(
     Unparseable lines are skipped (forward-compat with future schema
     bumps and tolerant of partial-write residue).
     """
-    log_path = target_dir / AUDIT_REL_PATH
+    log_path = audit_log_path()
     if not log_path.is_file():
         return
     kind_filter = set(kinds) if kinds is not None else None
@@ -276,6 +290,7 @@ __all__ = [
     "AuditEvent",
     "AuditLogError",
     "append_event",
+    "audit_log_path",
     "default_target_dir",
     "log",
     "read_events",

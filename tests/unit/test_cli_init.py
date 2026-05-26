@@ -148,7 +148,7 @@ def test_init_cli_clean_target_succeeds_and_writes_baseline(tmp_path: Path, monk
         ["init", "--from-dir", str(repo), "--target", str(target)],
     )
     assert result.exit_code == 0, result.output
-    assert (target / "maury-state" / "last-render.json").is_file()
+    assert (paths.state_dir() / "last-render.json").is_file()
 
 
 # ---- --tag flag + interactive prompt (ADR-0039 §"Tag UX at bootstrap") --

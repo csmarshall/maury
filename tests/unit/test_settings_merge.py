@@ -171,7 +171,7 @@ def test_render_engine_emits_merged_settings(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     (repo).mkdir()
     (repo / "settings.json").write_text('{"theme": "dark", "permissions": ["read"]}')
-    (repo / "profiles" / "home").mkdir(parents=True)
+    (repo / "profiles" / "home").mkdir(parents=True, exist_ok=True)
     (repo / "profiles" / "home" / "settings.fragment.json").write_text(
         '{"theme": "dark-daltonized", "permissions": ["write"]}'
     )

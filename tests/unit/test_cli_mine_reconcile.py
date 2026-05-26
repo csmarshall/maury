@@ -20,6 +20,7 @@ from typing import Any
 
 from click.testing import CliRunner
 
+from maury import paths
 from maury.cli import _findings_as_json, _findings_as_text, main
 from maury.ids import new_host_id, new_profile_id
 from maury.mining import Finding
@@ -115,7 +116,7 @@ def test_mine_empty_jsonl_in_project_says_nothing_to_mine(tmp_path: Path) -> Non
     """A project dir with empty JSONL → CLI says 'nothing to mine' without LLM call."""
     projects = tmp_path / "projects"
     project = projects / "empty-project"
-    project.mkdir(parents=True)
+    project.mkdir(parents=True, exist_ok=True)
     # An empty JSONL file = zero messages
     (project / "session.jsonl").write_text("")
     runner = CliRunner()
@@ -160,7 +161,7 @@ def test_mine_cwd_override_derives_project(tmp_path: Path) -> None:
     demo_cwd.mkdir()
     derived_name = derive_project_dir(demo_cwd)
     project = projects / derived_name
-    project.mkdir(parents=True)
+    project.mkdir(parents=True, exist_ok=True)
     (project / "session.jsonl").write_text("")
 
     runner = CliRunner()
@@ -192,7 +193,7 @@ def test_mine_cwd_no_match_falls_back_to_busiest_real(tmp_path: Path) -> None:
     """
     projects = tmp_path / "projects"
     busiest = projects / "busiest-project"
-    busiest.mkdir(parents=True)
+    busiest.mkdir(parents=True, exist_ok=True)
     (busiest / "session.jsonl").write_text("")
 
     other_cwd = tmp_path / "unrelated"
@@ -221,7 +222,7 @@ def test_mine_cwd_no_match_falls_back_to_busiest_real(tmp_path: Path) -> None:
 def test_mine_since_invalid_date_errors(tmp_path: Path) -> None:
     projects = tmp_path / "projects"
     project = projects / "p"
-    project.mkdir(parents=True)
+    project.mkdir(parents=True, exist_ok=True)
     (project / "s.jsonl").write_text("")
 
     runner = CliRunner()
@@ -251,7 +252,7 @@ def test_mine_since_no_jsonls_after_cutoff_says_nothing_new(tmp_path: Path) -> N
 
     projects = tmp_path / "projects"
     project = projects / "p"
-    project.mkdir(parents=True)
+    project.mkdir(parents=True, exist_ok=True)
     f = project / "s.jsonl"
     f.write_text("")
     # Force mtime well in the past.
@@ -449,8 +450,8 @@ def test_reconcile_baseline_host_not_in_manifest_errors(tmp_path: Path) -> None:
     mpath = tmp_path / "manifest.json"
     _write_minimal_manifest(mpath)
     target = tmp_path / "target"
-    state_dir = target / "maury-state"
-    state_dir.mkdir(parents=True)
+    state_dir = paths.state_dir()
+    state_dir.mkdir(parents=True, exist_ok=True)
     # Construct a last-render.json that references a non-manifest host_id
     bogus_hid = new_host_id("h")
     last_render = {

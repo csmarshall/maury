@@ -258,7 +258,7 @@ def test_status_repos_section_reports_git_status_for_cloned_repo(
     # Create a real git repo at the expected clone path
     repos_root = tmp_path / "repos"
     clone_path = repos_root / "base"
-    clone_path.mkdir(parents=True)
+    clone_path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=clone_path, check=True)
     subprocess.run(["git", "-C", str(clone_path), "config", "user.email", "t@e.com"], check=True)
     subprocess.run(["git", "-C", str(clone_path), "config", "user.name", "T"], check=True)
@@ -294,7 +294,7 @@ def test_status_repos_section_reports_dirty_worktree(tmp_path: Path, monkeypatch
 
     repos_root = tmp_path / "repos"
     clone_path = repos_root / "base"
-    clone_path.mkdir(parents=True)
+    clone_path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=clone_path, check=True)
     subprocess.run(["git", "-C", str(clone_path), "config", "user.email", "t@e.com"], check=True)
     subprocess.run(["git", "-C", str(clone_path), "config", "user.name", "T"], check=True)
