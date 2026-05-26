@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from maury.promotion.promote import PromotionCandidate
     from maury.promotion.proposal import Proposal
 
-from maury import __version__
+from maury import __version__, paths
 from maury.active_sessions import (
     DEFAULT_MAX_AGE,
     active_sessions_path,
@@ -882,8 +882,8 @@ def init_cmd(
     "--repos-root",
     "repos_root",
     type=click.Path(file_okay=False, path_type=Path),
-    default="~/.config/maury/repos",
-    show_default=True,
+    default=None,
+    show_default="~/.config/maury/repos ($XDG_CONFIG_HOME-aware)",
     help="Where local clones live. Each repo nickname becomes a subdir.",
 )
 @click.option(
@@ -896,7 +896,7 @@ def init_cmd(
 def status_cmd(
     manifest_file: Path | None,
     target_dir: Path,
-    repos_root: Path,
+    repos_root: Path | None,
     output_format: str,
 ) -> None:
     """Diagnostic snapshot of this host's maury state.
@@ -913,7 +913,7 @@ def status_cmd(
     counterpart you reach for when you suspect something's off.
     """
     target_dir = target_dir.expanduser()
-    repos_root = repos_root.expanduser()
+    repos_root = (repos_root or paths.repos_root()).expanduser()
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
     report = _build_status_report(
         target_dir=target_dir,
@@ -1371,14 +1371,14 @@ def _render_status_text(report: dict[str, object]) -> str:
     "--repos-root",
     "repos_root",
     type=click.Path(file_okay=False, path_type=Path),
-    default="~/.config/maury/repos",
-    show_default=True,
+    default=None,
+    show_default="~/.config/maury/repos ($XDG_CONFIG_HOME-aware)",
     help="Where local clones live.",
 )
 def reconcile_cmd(
     manifest_file: Path | None,
     target_dir: Path,
-    repos_root: Path,
+    repos_root: Path | None,
 ) -> None:
     """Walk hand-edit drift on the target dir and prompt for each.
 
@@ -1390,7 +1390,7 @@ def reconcile_cmd(
     when claude-writes.jsonl attribution is wired (Phase 5.x.a slice 5).
     """
     target_dir = target_dir.expanduser()
-    repos_root = repos_root.expanduser()
+    repos_root = (repos_root or paths.repos_root()).expanduser()
     mpath = manifest_file or DEFAULT_MANIFEST_PATH
     if not mpath.exists():
         raise click.ClickException(f"manifest file not found: {mpath}")
@@ -1518,8 +1518,8 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
     "--repos-root",
     "repos_root",
     type=click.Path(file_okay=False, path_type=Path),
-    default="~/.config/maury/repos",
-    show_default=True,
+    default=None,
+    show_default="~/.config/maury/repos ($XDG_CONFIG_HOME-aware)",
     help="Where local clones live. Each repo nickname becomes a subdir.",
 )
 @click.option(
@@ -1555,7 +1555,7 @@ DEFAULT_REPOS_ROOT = Path.home() / ".config" / "maury" / "repos"
 def sync_cmd(
     manifest_file: Path | None,
     target_dir: Path,
-    repos_root: Path,
+    repos_root: Path | None,
     check: bool,
     force: bool,
     non_interactive: bool,
@@ -1569,7 +1569,7 @@ def sync_cmd(
     flows is wired in (--check / --non-interactive / --force / default).
     """
     target_dir = target_dir.expanduser()
-    repos_root = repos_root.expanduser()
+    repos_root = (repos_root or paths.repos_root()).expanduser()
     if force and non_interactive:
         raise click.ClickException("--force and --non-interactive are mutually exclusive.")
     mpath = manifest_file or DEFAULT_MANIFEST_PATH

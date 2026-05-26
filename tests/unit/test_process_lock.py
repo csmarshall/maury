@@ -8,17 +8,18 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.process_lock import (
-    DEFAULT_LOCK_PATH,
     ProcessLockHeldError,
     process_lock,
 )
 
 
 def test_default_lock_path_under_xdg_config(tmp_path: Path) -> None:
-    """Default lives under ~/.config/maury/."""
-    assert DEFAULT_LOCK_PATH.name == ".lock"
-    assert DEFAULT_LOCK_PATH.parent.name == "maury"
+    """Default lives under maury's XDG config root (paths.lock_file())."""
+    lock = paths.lock_file()
+    assert lock.name == ".lock"
+    assert lock.parent.name == "maury"
 
 
 def test_acquire_and_release(tmp_path: Path) -> None:

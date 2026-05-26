@@ -45,6 +45,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from maury.drift import DriftEntry, DriftKind, DriftReport
+from maury.paths import staging_dir as _staging_dir
 from maury.render import RenderedFile, RenderResult
 
 # ---- public action enum -------------------------------------------------
@@ -107,12 +108,15 @@ STAGING_DIR = "maury-staging"
 CAPTURES_FILENAME = "captures.jsonl"
 
 
-def staging_dir(target_dir: Path) -> Path:
-    return target_dir / STAGING_DIR
+def staging_dir(target_dir: Path | None = None) -> Path:
+    """Capture-staging dir. Per ADR-0029 this lives at `paths.staging_dir()`
+    (`$XDG_STATE_HOME/maury/staging`), decoupled from the render target;
+    `target_dir` is accepted for signature stability but ignored."""
+    return _staging_dir()
 
 
-def captures_path(target_dir: Path) -> Path:
-    return staging_dir(target_dir) / CAPTURES_FILENAME
+def captures_path(target_dir: Path | None = None) -> Path:
+    return staging_dir() / CAPTURES_FILENAME
 
 
 # ---- hand-managed registry ----------------------------------------------

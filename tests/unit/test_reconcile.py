@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from maury import paths
 from maury.drift import DriftEntry, DriftKind, DriftReport
 from maury.reconcile import (
     ALL_ACTIONS,
@@ -86,9 +87,12 @@ class TestModuleSurface:
         assert ReconcileAction.SKIP_ONCE.value == "skip-once"
 
     def test_captures_path_lives_under_staging(self, tmp_path: Path) -> None:
+        # Per ADR-0029 staging lives at paths.staging_dir()
+        # ($XDG_STATE_HOME/maury/staging), decoupled from the render target.
         cp = captures_path(tmp_path)
         assert cp.name == CAPTURES_FILENAME
-        assert cp.parent.name == "maury-staging"
+        assert cp == paths.staging_dir() / CAPTURES_FILENAME
+        assert not cp.is_relative_to(paths.render_target_dir())
 
     def test_hand_managed_path_layout(self, tmp_path: Path) -> None:
         hm = hand_managed_path(base_repo=tmp_path, profile_name="personal", host_name="ws1")

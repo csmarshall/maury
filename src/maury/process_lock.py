@@ -19,9 +19,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
 
-DEFAULT_LOCK_PATH: Final[Path] = Path.home() / ".config" / "maury" / ".lock"
+from maury.paths import lock_file as _lock_file
 
 
 @dataclass(frozen=True)
@@ -42,15 +41,16 @@ class ProcessLockHeldError(RuntimeError):
 def process_lock(lock_path: Path | None = None) -> Iterator[Path]:
     """Acquire an exclusive advisory fcntl lock on `lock_path`.
 
-    Defaults to `~/.config/maury/.lock`. Raises `ProcessLockHeldError` if
-    another process holds the lock. Releases on exit (normal or
-    exception).
+    Defaults to `paths.lock_file()` (`$XDG_CONFIG_HOME/maury/.lock`,
+    default `~/.config/maury/.lock`; ADR-0029). Raises
+    `ProcessLockHeldError` if another process holds the lock. Releases on
+    exit (normal or exception).
 
     The lock file is created if absent; not deleted on release (so
     callers can inspect it). `fcntl.flock` is per-file-descriptor
     advisory locking, so different processes contend correctly.
     """
-    path = (lock_path or DEFAULT_LOCK_PATH).expanduser()
+    path = (lock_path or _lock_file()).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Open in append mode so we don't truncate someone else's lock
@@ -79,4 +79,4 @@ def process_lock(lock_path: Path | None = None) -> Iterator[Path]:
         os.close(fd)
 
 
-__all__ = ["DEFAULT_LOCK_PATH", "ProcessLockHeldError", "process_lock"]
+__all__ = ["ProcessLockHeldError", "process_lock"]
