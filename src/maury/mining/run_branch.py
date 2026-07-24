@@ -204,7 +204,11 @@ def _format_window_range(finding: Finding) -> str:
     # ExtractionWindow exposes its messages; first/last give the range.
     if not w.messages:
         return "messages <empty window>"
-    start_idx = w.index * len(w.messages)
+    # The absolute start is the window's position in the fixed-stride chunking
+    # (index * window_size), NOT index * this-window's-length. The final window
+    # of a multi-window run is short, so multiplying by len(messages) would write
+    # a wrong Source-Window range into permanent git history.
+    start_idx = w.index * w.window_size
     end_idx = start_idx + len(w.messages) - 1
     return f"messages {start_idx}-{end_idx}"
 
@@ -334,14 +338,15 @@ def existing_content_hashes(repo_dir: Path) -> set[str]:
     """
     hashes: set[str] = set()
     for trailer in (TRAILER_CONTENT_HASH, TRAILER_REJECTED_CONTENT_HASH):
+        # `--grep` may over-match on a poison line quoted in evidence prose, but
+        # `%(trailers:only)` renders ONLY git-parsed trailer blocks, so such a
+        # commit contributes nothing and no poison hash can enter the set.
         rc, out = _run_git(
-            ["git", "log", "--all", f"--grep=^{trailer}:"],
+            ["git", "log", "--all", f"--grep=^{trailer}:", "--format=%(trailers:only=true,unfold=true)"],
             cwd=repo_dir,
         )
         if rc != 0:
             continue
-        # Parse each "^{Trailer}: <hash>" line; tolerant of leading
-        # whitespace (git -log indents bodies by 4 spaces).
         for line in out.splitlines():
             stripped = line.strip()
             if stripped.startswith(f"{trailer}:"):
@@ -388,7 +393,15 @@ def existing_finding_keys(repo_dir: Path) -> FindingKeys:
     Empty `FindingKeys` on a fresh repo or a transient git error (mining
     must not break on a git hiccup).
     """
-    rc, out = _run_git(["git", "log", "--all", "-z", "--format=%b"], cwd=repo_dir)
+    # `%(trailers:only)` asks git's own trailer parser for ONLY the final
+    # trailer block of each commit — evidence prose above it (which may quote a
+    # transcript line shaped like `Content-Hash: ...`) is excluded, so it can
+    # never poison this append-only dedup ledger (ADR-0022). Scanning the raw
+    # `%b` body top-down would have returned such a poisoned first match.
+    rc, out = _run_git(
+        ["git", "log", "--all", "-z", "--format=%(trailers:only=true,unfold=true)"],
+        cwd=repo_dir,
+    )
     pairs: set[tuple[str, str]] = set()
     if rc != 0:
         return FindingKeys(frozenset())

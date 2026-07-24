@@ -44,6 +44,7 @@ from maury.mining.review import (
     Editor,
     RejectedFinding,
     _default_editor,
+    commit_trailers,
     format_rejection_commit_body,
     parse_trailer_values,
 )
@@ -437,8 +438,11 @@ def _enumerate_candidates(source_repo: Path, source_main: str) -> list[Promotion
 def _build_candidate(source_repo: Path, sha: str, branch: str) -> PromotionCandidate:
     subject = _git_or_raise(["git", "show", "-s", "--format=%s", sha], cwd=source_repo, action="read subject").strip()
     message = _git_or_raise(["git", "show", "-s", "--format=%B", sha], cwd=source_repo, action="read message")
-    hashes = parse_trailer_values(message, TRAILER_CONTENT_HASH)
-    modes = parse_trailer_values(message, TRAILER_SOURCE_MODE)
+    # Parse identity from the trailer block only; `message` is retained full on
+    # the candidate, but its evidence prose must not be scanned (poison guard).
+    trailers = commit_trailers(message)
+    hashes = parse_trailer_values(trailers, TRAILER_CONTENT_HASH)
+    modes = parse_trailer_values(trailers, TRAILER_SOURCE_MODE)
     block = _appended_block(source_repo, sha)
     return PromotionCandidate(
         src_sha=sha,
@@ -529,7 +533,12 @@ def _write_rejection_commit(
 
 def _applied_content_hashes(dest_repo: Path, dest_main: str, promoted_branch: str) -> set[str]:
     """Content-Hash values already on the promoted branch (resume set)."""
-    rc, out = _run_git(["git", "log", f"{dest_main}..{promoted_branch}"], cwd=dest_repo)
+    # Trailer blocks only, so evidence prose in a promoted finding commit can't
+    # inflate the resume set (poison guard).
+    rc, out = _run_git(
+        ["git", "log", f"{dest_main}..{promoted_branch}", "--format=%(trailers:only=true,unfold=true)"],
+        cwd=dest_repo,
+    )
     if rc != 0:
         return set()
     applied = set(parse_trailer_values(out, TRAILER_CONTENT_HASH))

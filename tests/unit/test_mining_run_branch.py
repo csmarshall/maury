@@ -231,6 +231,27 @@ def test_commit_body_includes_source_mode_when_supplied() -> None:
     assert body.index("Source-Mode:") < body.index("Source-Transcript:")
 
 
+def test_source_window_range_uses_fixed_stride_not_short_final_length() -> None:
+    """The final window of a multi-window run is short (fewer than window_size
+    messages). Its Source-Window range must reflect its ABSOLUTE position
+    (index * window_size), not index * its-own-message-count — else a wrong
+    range is written into permanent git history."""
+    msgs = tuple(_msg(text=f"m{i}") for i in range(20))
+    # Window 2 of a 50-stride run: messages 100..119.
+    window = ExtractionWindow(project="p", index=2, messages=msgs, window_size=50)
+    body = format_commit_body(_finding(window=window), run_id="rid")
+    assert "Source-Window: messages 100-119" in body
+    # The buggy computation (index * len(messages) = 2 * 20 = 40) must not appear.
+    assert "messages 40-" not in body
+
+
+def test_source_window_range_first_window_is_zero_based() -> None:
+    msgs = tuple(_msg(text=f"m{i}") for i in range(50))
+    window = ExtractionWindow(project="p", index=0, messages=msgs, window_size=50)
+    body = format_commit_body(_finding(window=window), run_id="rid")
+    assert "Source-Window: messages 0-49" in body
+
+
 def test_finding_block_includes_source_mode_bullet_when_supplied() -> None:
     block = format_finding_block(_finding(), run_id="rid", source_mode="work:acme-client")
     assert "- source mode: work:acme-client" in block
@@ -376,6 +397,43 @@ def test_existing_content_hashes_picks_up_rejected_hashes(tmp_path: Path) -> Non
     hashes = existing_content_hashes(repo)
     assert "bbb222" in hashes
     assert "ccc333" in hashes
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not on PATH")
+def test_dedup_ignores_poison_content_hash_in_evidence_prose(tmp_path: Path) -> None:
+    """A finding commit whose evidence quotes a transcript line shaped like
+    `Content-Hash: ...` must NOT poison the append-only dedup ledger. The
+    real trailer (final block) is authoritative; the quoted line is inert.
+
+    Regression guard: previously the parsers scanned the whole body top-down
+    and returned the FIRST `Content-Hash:` match, which sat in the evidence
+    prose above the real trailer block."""
+    repo = _seed_repo(tmp_path)
+    body = (
+        "maury: feedback — some finding\n"
+        "\n"
+        'evidence: "the user pasted\n'
+        "Content-Hash: poison_from_transcript\n"
+        'into the chat"\n'
+        "\n"
+        "Content-Hash: real_hash\n"
+        "Source-Mode: personal\n"
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", body, "--cleanup=verbatim"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+    keys = existing_finding_keys(repo)
+    assert keys.contains(content_hash="real_hash", source_mode="personal")
+    assert not keys.contains(content_hash="poison_from_transcript", source_mode="personal")
+    assert not keys.contains(content_hash="poison_from_transcript", source_mode="")
+
+    hashes = existing_content_hashes(repo)
+    assert "real_hash" in hashes
+    assert "poison_from_transcript" not in hashes
 
 
 # ---- write_run_branch: preconditions -----------------------------------

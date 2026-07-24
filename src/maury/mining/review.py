@@ -219,6 +219,32 @@ def parse_trailer_values(message: str, trailer: str) -> list[str]:
     return values
 
 
+def commit_trailers(message: str) -> str:
+    """Return only the trailer block (final paragraph) of a *single* commit.
+
+    Git defines trailers as the last blank-line-delimited block of a commit
+    message. maury writes finding/rejection commit bodies as
+    ``<prose>\\n\\n<trailer block>`` (see run_branch.format_commit_body), so
+    evidence prose above the block — which may quote a transcript line shaped
+    like ``Content-Hash: ...`` — must never be scanned for trailers. Returning
+    the last non-empty paragraph mirrors git's own trailer-block rule for the
+    format maury controls and keeps the dedup/resume sets poison-free.
+
+    Operates on ONE commit message (a full ``%B``/``%b`` body). Do not pass
+    multi-commit ``git log`` output — there is no per-commit boundary to split
+    on; those call sites ask git for ``%(trailers:only)`` instead.
+    """
+    lines = message.split("\n")
+    while lines and not lines[-1].strip():
+        lines.pop()  # drop trailing blank lines
+    start = 0
+    for i in range(len(lines) - 1, -1, -1):
+        if not lines[i].strip():
+            start = i + 1  # trailer block is everything after the last blank line
+            break
+    return "\n".join(lines[start:])
+
+
 def content_hashes_in_log(log_text: str) -> set[str]:
     """Return the set of `Content-Hash` values present in `git log` text.
 
@@ -590,7 +616,7 @@ def _apply_reclassify(
     also_stage: tuple[str, ...] = ()
     synthesized = False
     if llm is not None:
-        kinds = parse_trailer_values(view.body, TRAILER_KIND)
+        kinds = parse_trailer_values(commit_trailers(view.body), TRAILER_KIND)
         proposal = synthesize_classify_rule(
             finding_text=_finding_text_from_block(view.block),
             finding_kind=kinds[0] if kinds else "preference",
@@ -720,9 +746,12 @@ def _build_commit_view(
 ) -> CommitView:
     subject = _git_or_raise(["git", "show", "-s", "--format=%s", sha], cwd=repo_dir, action="read subject").strip()
     body = _git_or_raise(["git", "show", "-s", "--format=%b", sha], cwd=repo_dir, action="read body")
-    hashes = parse_trailer_values(body, TRAILER_CONTENT_HASH)
+    # Parse identity from the trailer block only; `body` is retained full for
+    # display/debug but its evidence prose must not be scanned (poison guard).
+    trailers = commit_trailers(body)
+    hashes = parse_trailer_values(trailers, TRAILER_CONTENT_HASH)
     content_hash = hashes[0] if hashes else ""
-    modes = parse_trailer_values(body, TRAILER_SOURCE_MODE)
+    modes = parse_trailer_values(trailers, TRAILER_SOURCE_MODE)
     source_mode = modes[0] if modes else ""
     block = _appended_block(repo_dir, sha)
     # ADR-0053: classify the finding for auto-placement, when rules were
@@ -764,7 +793,12 @@ def _file_at_ref(repo_dir: Path, ref_path: str) -> str | None:
 def _applied_hashes(repo_dir: Path, main_ref: str, review_branch: str) -> set[str]:
     """Content-Hash + Rejected-Content-Hash already recorded on the review
     branch (`main..review_branch`) — the resume-skip set."""
-    rc, out = _run_git(["git", "log", f"{main_ref}..{review_branch}"], cwd=repo_dir)
+    # Ask git for only the trailer blocks so evidence prose in any accepted
+    # finding commit cannot inflate the resume-skip set (poison guard).
+    rc, out = _run_git(
+        ["git", "log", f"{main_ref}..{review_branch}", "--format=%(trailers:only=true,unfold=true)"],
+        cwd=repo_dir,
+    )
     if rc != 0:
         return set()
     applied = set(parse_trailer_values(out, TRAILER_CONTENT_HASH))
@@ -867,6 +901,7 @@ __all__ = [
     "RejectedFinding",
     "ReviewError",
     "ReviewResult",
+    "commit_trailers",
     "content_hashes_in_log",
     "format_rejection_commit_body",
     "is_stale_base",

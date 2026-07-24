@@ -74,6 +74,10 @@ class ExtractionWindow:
     messages: tuple[TranscriptMessage, ...]
     project: str
     index: int  # 0-based window index within the project
+    window_size: int = DEFAULT_WINDOW_SIZE
+    """The fixed stride `make_windows` chunked by. Carried so provenance ranges
+    reflect the window's absolute position (`index * window_size`), not its own
+    (possibly short, final) message count — see run_branch._format_window_range."""
 
     @property
     def first_timestamp(self) -> str:
@@ -128,6 +132,7 @@ def make_windows(
                 messages=tuple(chunk),
                 project=project,
                 index=len(windows),
+                window_size=window_size,
             )
         )
     return windows

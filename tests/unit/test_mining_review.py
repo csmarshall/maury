@@ -12,6 +12,7 @@ from maury.mining.review import (
     NO_REASON_SENTINEL,
     REJECTION_COMMIT_SUBJECT,
     RejectedFinding,
+    commit_trailers,
     content_hashes_in_log,
     format_rejection_commit_body,
     is_stale_base,
@@ -211,6 +212,49 @@ def test_content_hashes_in_log_returns_set() -> None:
 
 def test_content_hashes_in_log_empty() -> None:
     assert content_hashes_in_log("no trailers here\n") == set()
+
+
+# ---- commit_trailers (poison guard) -------------------------------------
+
+
+def test_commit_trailers_returns_only_final_block() -> None:
+    """Evidence prose above the trailer block — even a line shaped like a
+    trailer, quoted from a transcript — must be excluded."""
+    message = (
+        "subject\n"
+        "\n"
+        'evidence: "the user said\n'
+        "Content-Hash: poison_from_transcript\n"
+        'and then more"\n'
+        "\n"
+        "Content-Hash: real_hash\n"
+        "Source-Mode: personal\n"
+    )
+    block = commit_trailers(message)
+    assert "Content-Hash: real_hash" in block
+    assert "Source-Mode: personal" in block
+    assert "poison_from_transcript" not in block
+    assert "evidence" not in block
+
+
+def test_commit_trailers_poison_defeated_end_to_end() -> None:
+    """The composed guard: extract the block, then scan it — the poison
+    Content-Hash must not survive into the parsed values."""
+    message = 'e: "Content-Hash: poison"\n\nContent-Hash: real\n'
+    assert parse_trailer_values(commit_trailers(message), "Content-Hash") == ["real"]
+
+
+def test_commit_trailers_single_paragraph_message() -> None:
+    """A message that is only a trailer block (no prose) round-trips whole."""
+    assert commit_trailers("Content-Hash: x\nSource-Mode: y\n") == "Content-Hash: x\nSource-Mode: y"
+
+
+def test_commit_trailers_tolerates_trailing_blank_lines() -> None:
+    assert commit_trailers("prose\n\nContent-Hash: x\n\n\n") == "Content-Hash: x"
+
+
+def test_commit_trailers_empty_message() -> None:
+    assert commit_trailers("") == ""
 
 
 # ---- git layer (slice 2) -----------------------------------------------
